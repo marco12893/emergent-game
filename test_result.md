@@ -285,7 +285,7 @@ agent_communication:
       
   - agent: "main"
     message: |
-      BUGS FIXED:
+      BUGS FIXED (Round 1):
       1. ✅ Unit removal: Added click-to-remove functionality - click on your placed unit to remove it
       2. ✅ Setup phase: Added visual list of placed units showing their positions
       3. ✅ Added helpful tip: "Click units on map to remove"
@@ -296,5 +296,33 @@ agent_communication:
       - Added "Your Units" panel in setup phase showing all placed units
       - Added hotseat mode notice when one player is ready
       - Added green tip text explaining removal feature
+      
+  - agent: "user"
+    message: |
+      Still stuck: Clicked "Ready for Battle" but nothing happens. Cannot switch to Player 1, Player 0 cannot move units.
+      
+  - agent: "main"
+    message: |
+      BUGS FIXED (Round 2):
+      ROOT CAUSE: Setup phase had no turn management - both players trying to act simultaneously in hotseat mode
+      
+      Changes made:
+      1. ✅ Added turn configuration to setup phase in /app/game/GameLogic.js
+         - Setup phase now has proper turn-based gameplay
+         - Players alternate turns during unit placement
+         
+      2. ✅ Added "End Turn" button in setup phase (/app/app/page.js)
+         - Players can now pass their turn to the other player
+         - Button shows "⏭️ End Turn (Pass to Other Player)"
+         
+      3. ✅ Improved UI feedback
+         - Turn indicator shows "Your turn!" or "Waiting for Player X's turn"
+         - Updated tips: "Click placed units to remove • Click 'End Turn' to pass"
+         
+      HOW TO PROCEED NOW:
+      1. Player 0 places units, then clicks "End Turn" or "Ready for Battle"
+      2. Player 1's turn activates automatically
+      3. Player 1 places units, then clicks "Ready for Battle"
+      4. Game transitions to Battle phase automatically
       
       Ready for user to re-test!
