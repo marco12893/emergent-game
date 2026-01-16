@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getGame, createNewGame } from '@/lib/gameState'
+import { getGame, createNewGame, saveGame } from '@/lib/gameState'
 
 // Handle OPTIONS requests for CORS preflight
 export async function OPTIONS() {
@@ -14,29 +14,51 @@ export async function OPTIONS() {
 }
 
 export async function POST(request) {
-  // Add CORS headers
-  const response = NextResponse.next()
-  response.headers.set('Access-Control-Allow-Origin', '*')
-  response.headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS')
-  response.headers.set('Access-Control-Allow-Headers', 'Content-Type')
-  
-  const body = await request.json()
-  const { gameId, playerID } = body
-  
-  if (!getGame(gameId)) {
-    createNewGame(gameId)
-  }
-  
-  const game = getGame(gameId)
-  game.players[playerID] = { joined: true, joinTime: Date.now() }
-  
-  console.log(`🎮 Player ${playerID} joined game ${gameId}`)
-  
-  return NextResponse.json({ success: true, gameState: game }, {
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
+  try {
+    const body = await request.json()
+    const { gameId, playerID } = body
+    
+    console.log(`🎮 Join request - Game: ${gameId}, Player: ${playerID}`)
+    
+    // Check if game exists, create if not
+    let game = await getGame(gameId)
+    
+    if (!game) {
+      console.log(`📦 Creating new game: ${gameId}`)
+      game = await createNewGame(gameId)
     }
-  })
+    
+    // Add player to game
+    game.players[playerID] = { 
+      joined: true, 
+      joinTime: Date.now(),
+      lastSeen: Date.now()
+    }
+    
+    // Save updated game state
+    await saveGame(gameId, game)
+    
+    console.log(`✅ Player ${playerID} joined game ${gameId}`)
+    
+    return NextResponse.json({ success: true, gameState: game }, {
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+      }
+    })
+  } catch (error) {
+    console.error('❌ Error in /api/join:', error)
+    return NextResponse.json({ 
+      error: 'Failed to join game',
+      message: error.message 
+    }, { 
+      status: 500,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+      }
+    })
+  }
 }
