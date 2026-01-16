@@ -102,8 +102,17 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
     
     if (!isActive) return
     
-    // Setup Phase: Place units
+    // Setup Phase: Place or Remove units
     if (phase === 'setup') {
+      // Check if clicking on own unit to remove it
+      const unitOnHex = G.units.find(u => u.q === hex.q && u.r === hex.r && u.ownerID === playerID)
+      if (unitOnHex) {
+        // Remove the unit
+        moves.removeUnit(unitOnHex.id)
+        return
+      }
+      
+      // Otherwise, try to place a unit
       const isSpawnZone = playerID === '0' ? hex.q <= -5 : hex.q >= 4
       if (isSpawnZone && hex.terrain !== 'MOUNTAIN') {
         // Check if hex is occupied
