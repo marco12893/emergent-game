@@ -54,10 +54,9 @@ const getTerrainType = (q, r, s) => {
 
 // Determine spawn zone based on q coordinate
 const getSpawnZone = (q, r) => {
-  // Adjust for offset coordinates
-  const effectiveQ = q + Math.floor(r / 2)
-  if (effectiveQ <= -4) return 0 // Player 0 (Left/Blue)
-  if (effectiveQ >= 4) return 1  // Player 1 (Right/Red)
+  // For pointy-top hexes, columns are determined by q primarily
+  if (q <= -5) return 0 // Player 0 (Left/Blue)
+  if (q >= 4) return 1  // Player 1 (Right/Red)
   return null // No spawn zone
 }
 
