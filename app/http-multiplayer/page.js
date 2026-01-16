@@ -324,26 +324,18 @@ export default function HTTPMultiplayerPage() {
         }
         
         // Check if clicking on empty hex to move
-        if (!unitOnHex && !selectedUnit.hasMoved) {
-          // Simple movement validation
-          const distance = Math.max(
-            Math.abs(selectedUnit.q - hex.q),
-            Math.abs(selectedUnit.r - hex.r),
-            Math.abs(selectedUnit.s - hex.s)
-          )
+        if (!unitOnHex && selectedUnit.movePoints > 0) {
+          // Check if this hex is in the highlighted reachable hexes
+          const isReachable = highlightedHexes.some(h => h.q === hex.q && h.r === hex.r)
           
-          // Allow movement within 1 hex (simplified)
-          if (distance === 1) {
-            const targetOccupied = gameState.units.some(u => u.q === hex.q && u.r === hex.r)
-            if (!targetOccupied) {
-              sendAction('moveUnit', {
-                unitId: selectedUnit.id,
-                targetQ: hex.q,
-                targetR: hex.r,
-                playerID
-              })
-              return
-            }
+          if (isReachable) {
+            sendAction('moveUnit', {
+              unitId: selectedUnit.id,
+              targetQ: hex.q,
+              targetR: hex.r,
+              playerID
+            })
+            return
           }
         }
         

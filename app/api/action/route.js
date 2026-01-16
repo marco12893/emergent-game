@@ -185,16 +185,53 @@ export async function POST(request) {
           }
           
           const movingUnit = game.units.find(u => u.id === payload.unitId)
-          if (movingUnit && !movingUnit.hasMoved) {
-            movingUnit.q = payload.targetQ
-            movingUnit.r = payload.targetR
-            movingUnit.s = -payload.targetQ - payload.targetR
-            movingUnit.hasMoved = true
-            game.log.push(`Player ${payload.playerID}'s ${movingUnit.name} moved to (${payload.targetQ}, ${payload.targetR})`)
-            game.lastUpdate = Date.now()
+          if (movingUnit && movingUnit.movePoints > 0) {
+            // Calculate terrain cost
+            const terrainKey = `${payload.targetQ},${payload.targetR}`
+            const terrain = game.terrainMap[terrainKey] || 'PLAIN'
+            const terrainTypes = {
+              PLAIN: { moveCost: 1, passable: true },
+              FOREST: { moveCost: 1, passable: true },
+              MOUNTAIN: { moveCost: Infinity, passable: false }
+            }
+            const terrainData = terrainTypes[terrain]
+            
+            if (!terrainData.passable) {
+              return NextResponse.json({ 
+                error: 'Cannot move to impassable terrain' 
+              }, { 
+                status: 400,
+                headers: {
+                  'Access-Control-Allow-Origin': '*',
+                  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                  'Access-Control-Allow-Headers': 'Content-Type',
+                }
+              })
+            }
+            
+            if (movingUnit.movePoints >= terrainData.moveCost) {
+              movingUnit.q = payload.targetQ
+              movingUnit.r = payload.targetR
+              movingUnit.s = -payload.targetQ - payload.targetR
+              movingUnit.movePoints -= terrainData.moveCost
+              movingUnit.hasMoved = movingUnit.movePoints <= 0 // Mark as moved if no movement points left
+              game.log.push(`Player ${payload.playerID}'s ${movingUnit.name} moved to (${payload.targetQ}, ${payload.targetR})`)
+              game.lastUpdate = Date.now()
+            } else {
+              return NextResponse.json({ 
+                error: 'Not enough movement points' 
+              }, { 
+                status: 400,
+                headers: {
+                  'Access-Control-Allow-Origin': '*',
+                  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                  'Access-Control-Allow-Headers': 'Content-Type',
+                }
+              })
+            }
           } else {
             return NextResponse.json({ 
-              error: 'Unit cannot move (not found or already moved)' 
+              error: 'Unit cannot move (not found, already moved, or no movement points)' 
             }, { 
               status: 400,
               headers: {
@@ -268,6 +305,7 @@ export async function POST(request) {
           game.units.forEach(unit => {
             unit.hasMoved = false
             unit.hasAttacked = false
+            unit.movePoints = unit.maxMovePoints // Reset movement points
           })
           game.log.push(`Player ${payload.playerID} ended turn. Player ${game.currentPlayer}'s turn begins.`)
           game.lastUpdate = Date.now()
