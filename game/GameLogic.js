@@ -191,6 +191,10 @@ export const getAttackableHexes = (unit, allHexes, units) => {
 // Setup phase: Players place units in spawn zones
 const setupPhase = {
   start: true,
+  turn: {
+    minMoves: 0,
+    maxMoves: 100,
+  },
   moves: {
     placeUnit: ({ G, ctx, playerID }, unitType, q, r) => {
       // Validate unit type
