@@ -1,19 +1,6 @@
-import { MongoClient } from 'mongodb'
+import { kv } from '@vercel/kv'
 import { v4 as uuidv4 } from 'uuid'
 import { NextResponse } from 'next/server'
-
-// MongoDB connection
-let client
-let db
-
-async function connectToMongo() {
-  if (!client) {
-    client = new MongoClient(process.env.MONGO_URL)
-    await client.connect()
-    db = client.db(process.env.DB_NAME)
-  }
-  return db
-}
 
 // Helper function to handle CORS
 function handleCORS(response) {
@@ -36,15 +23,19 @@ async function handleRoute(request, { params }) {
   const method = request.method
 
   try {
-    const db = await connectToMongo()
-
-    // Root endpoint - GET /api/root (since /api/ is not accessible with catch-all)
-    if (route === '/root' && method === 'GET') {
-      return handleCORS(NextResponse.json({ message: "Hello World" }))
-    }
-    // Root endpoint - GET /api/root (since /api/ is not accessible with catch-all)
-    if (route === '/' && method === 'GET') {
-      return handleCORS(NextResponse.json({ message: "Hello World" }))
+    // Root endpoint - GET /api/root or /api/
+    if ((route === '/root' || route === '/') && method === 'GET') {
+      return handleCORS(NextResponse.json({ 
+        message: "Emergent Game API - KV Powered",
+        status: "healthy",
+        timestamp: new Date().toISOString(),
+        endpoints: {
+          join: "POST /api/join",
+          action: "POST /api/action", 
+          game: "GET /api/game/:id",
+          health: "GET /api/game/health"
+        }
+      }))
     }
 
     // Status endpoints - POST /api/status
@@ -61,36 +52,66 @@ async function handleRoute(request, { params }) {
       const statusObj = {
         id: uuidv4(),
         client_name: body.client_name,
-        timestamp: new Date()
+        timestamp: new Date().toISOString()
       }
 
-      await db.collection('status_checks').insertOne(statusObj)
+      // Store in KV with 24 hour TTL
+      await kv.set(`status:${statusObj.id}`, statusObj, { ex: 86400 })
       return handleCORS(NextResponse.json(statusObj))
     }
 
     // Status endpoints - GET /api/status
     if (route === '/status' && method === 'GET') {
-      const statusChecks = await db.collection('status_checks')
-        .find({})
-        .limit(1000)
-        .toArray()
+      try {
+        const statusKeys = await kv.keys('status:*')
+        const statusChecks = []
+        
+        for (const key of statusKeys) {
+          const status = await kv.get(key)
+          if (status) {
+            statusChecks.push(status)
+          }
+        }
 
-      // Remove MongoDB's _id field from response
-      const cleanedStatusChecks = statusChecks.map(({ _id, ...rest }) => rest)
-      
-      return handleCORS(NextResponse.json(cleanedStatusChecks))
+        // Sort by timestamp (newest first)
+        statusChecks.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+        
+        return handleCORS(NextResponse.json(statusChecks.slice(0, 1000))) // Limit to 1000
+      } catch (kvError) {
+        console.error('KV error fetching status:', kvError)
+        return handleCORS(NextResponse.json(
+          { error: "Failed to retrieve status checks" }, 
+          { status: 503 }
+        ))
+      }
     }
 
     // Route not found
     return handleCORS(NextResponse.json(
-      { error: `Route ${route} not found` }, 
+      { 
+        error: `Route ${route} not found`,
+        availableRoutes: [
+          "GET /api/",
+          "GET /api/root", 
+          "POST /api/status",
+          "GET /api/status",
+          "POST /api/join",
+          "POST /api/action",
+          "GET /api/game/:id",
+          "GET /api/game/health"
+        ]
+      }, 
       { status: 404 }
     ))
 
   } catch (error) {
     console.error('API Error:', error)
     return handleCORS(NextResponse.json(
-      { error: "Internal server error" }, 
+      { 
+        error: "Internal server error",
+        details: error.message,
+        timestamp: new Date().toISOString()
+      }, 
       { status: 500 }
     ))
   }

@@ -10,7 +10,7 @@
         "start": "next start"
     },
     "dependencies": {
-        "@vercel/kv": "^3.0.0",
+        "@boardgame.io/redis-pubsub": "^0.0.1",
         "@hookform/resolvers": "^5.1.1",
         "@radix-ui/react-accordion": "^1.2.11",
         "@radix-ui/react-alert-dialog": "^1.1.14",
@@ -40,6 +40,8 @@
         "@radix-ui/react-toggle-group": "^1.1.10",
         "@radix-ui/react-tooltip": "^1.2.7",
         "@tanstack/react-table": "^8.21.3",
+        "@vercel/kv": "^3.0.0",
+        "autoprefixer": "^10.4.23",
         "axios": "^1.10.0",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
@@ -59,6 +61,7 @@
         "react-hook-form": "^7.58.1",
         "react-resizable-panels": "^3.0.3",
         "recharts": "^2.15.3",
+        "redis": "^5.10.0",
         "socket.io": "^4.8.3",
         "socket.io-client": "^4.8.3",
         "sonner": "^2.0.5",
@@ -66,8 +69,7 @@
         "tailwindcss-animate": "^1.0.7",
         "uuid": "^9.0.1",
         "vaul": "^1.1.2",
-        "zod": "^3.25.67",
-        "autoprefixer": "^10.4.23"
+        "zod": "^3.25.67"
     },
     "devDependencies": {
         "globals": "^16.2.0",
