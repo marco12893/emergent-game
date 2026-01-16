@@ -75,12 +75,14 @@ const GameBoard = ({ onHexClick, selectedHex, highlightedHexes = [], units = [] 
 
   // Handle hex click - react-hexgrid passes (event, {data, state, props})
   const handleHexClick = useCallback((e, source) => {
+    // source contains { data, state, props } where props has q, r, s
+    if (!source || !source.props) {
+      console.log('Click source:', source)
+      return
+    }
+    const { q, r, s } = source.props
     // Find the hex data from our hexData array
-    const clickedHex = hexData.find(h => 
-      h.q === source.props.q && 
-      h.r === source.props.r && 
-      h.s === source.props.s
-    )
+    const clickedHex = hexData.find(h => h.q === q && h.r === r && h.s === s)
     if (onHexClick && clickedHex) {
       onHexClick(clickedHex)
     }
