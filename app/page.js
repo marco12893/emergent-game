@@ -81,7 +81,7 @@ export default function HTTPMultiplayerPage() {
   
   // Dynamic server URL for production
   const serverUrl = process.env.NODE_ENV === 'production' 
-    ? 'https://hex-medieval-simulator-game-4g64dxpah.vercel.app'
+    ? window.location.origin
     : 'http://localhost:3000'
 
   // Poll for game state updates
