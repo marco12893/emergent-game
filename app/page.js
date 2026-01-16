@@ -236,6 +236,27 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
                 </div>
               </div>
               
+              {/* Show Placed Units */}
+              {myUnits.length > 0 && (
+                <div className="bg-slate-800/80 rounded-lg border border-slate-700 p-4">
+                  <h2 className="text-lg font-semibold text-blue-400 mb-3">📋 Your Units</h2>
+                  <div className="space-y-2">
+                    {myUnits.map(unit => (
+                      <div key={unit.id} className="flex items-center gap-2 text-sm bg-slate-700/50 p-2 rounded border border-slate-600 hover:border-yellow-400 cursor-pointer transition-all" title="Click on map to remove">
+                        <span className="text-xl">{unit.emoji}</span>
+                        <div className="flex-1">
+                          <div className="font-medium text-white">{unit.name}</div>
+                          <div className="text-xs text-slate-400">({unit.q}, {unit.r})</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-2 text-xs text-slate-500 italic">
+                    Click units on map to remove
+                  </div>
+                </div>
+              )}
+              
               {/* Ready Button */}
               <button
                 onClick={() => moves.readyForBattle()}
