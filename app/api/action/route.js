@@ -1,6 +1,18 @@
 import { NextResponse } from 'next/server'
 import { getGame } from '@/lib/gameState'
 
+// Handle OPTIONS requests for CORS preflight
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    },
+  })
+}
+
 export async function POST(request) {
   const body = await request.json()
   const { gameId, action: gameAction, payload } = body
@@ -16,9 +28,9 @@ export async function POST(request) {
     case 'placeUnit':
       // Unit placement logic
       const unitStats = {
-        SWORDSMAN: { maxHP: 100, attackPower: 25, movePoints: 2, range: 1 },
-        ARCHER: { maxHP: 60, attackPower: 30, movePoints: 1, range: 2 },
-        KNIGHT: { maxHP: 150, attackPower: 30, movePoints: 3, range: 1 }
+        SWORDSMAN: { maxHP: 100, attackPower: 25, movePoints: 2, range: 1, emoji: '⚔️' },
+        ARCHER: { maxHP: 60, attackPower: 30, movePoints: 1, range: 2, emoji: '🏹' },
+        KNIGHT: { maxHP: 150, attackPower: 30, movePoints: 3, range: 1, emoji: '🐴' }
       }
       
       const stats = unitStats[payload.unitType]
@@ -26,6 +38,7 @@ export async function POST(request) {
         id: Date.now().toString(),
         type: payload.unitType,
         name: payload.unitType.charAt(0) + payload.unitType.slice(1).toLowerCase(),
+        emoji: stats.emoji,
         ownerID: payload.playerID,
         q: payload.q,
         r: payload.r,
