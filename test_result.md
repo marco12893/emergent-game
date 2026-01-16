@@ -203,11 +203,14 @@ frontend:
     file: "/app/app/page.js"
     stuck_count: 0
     priority: "high"
-    needs_retesting: false
+    needs_retesting: true
     status_history:
+      - working: false
+        agent: "user"
+        comment: "User reported: Cannot remove placed units during setup phase, stuck in setup phase"
       - working: true
         agent: "main"
-        comment: "Setup phase UI allows selecting unit type and placing in spawn zones with visual feedback"
+        comment: "FIXED: Added unit removal on click during setup phase. Now clicking on your placed unit removes it. Added visual list of placed units with instructions. Added hotseat mode notice to remind users both players need to be ready."
         
   - task: "Battle Interface"
     implemented: true
