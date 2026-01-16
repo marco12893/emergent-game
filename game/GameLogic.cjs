@@ -1,10 +1,10 @@
-import { INVALID_MOVE } from 'boardgame.io/dist/cjs/core.js'
-import { v4 as uuidv4 } from 'uuid'
+const { INVALID_MOVE } = require('boardgame.io/dist/cjs/core.js');
+const { v4: uuidv4 } = require('uuid');
 
 // ============================================
 // UNIT DEFINITIONS - Medieval Roster
 // ============================================
-export const UNIT_TYPES = {
+const UNIT_TYPES = {
   SWORDSMAN: {
     type: 'SWORDSMAN',
     name: 'Swordsman',
@@ -40,7 +40,7 @@ export const UNIT_TYPES = {
 // ============================================
 // TERRAIN DEFINITIONS
 // ============================================
-export const TERRAIN_TYPES = {
+const TERRAIN_TYPES = {
   PLAIN: { name: 'Plain', defenseBonus: 0, moveCost: 1, passable: true },
   FOREST: { name: 'Forest', defenseBonus: 2, moveCost: 1, passable: true },
   MOUNTAIN: { name: 'Mountain', defenseBonus: 0, moveCost: Infinity, passable: false },
@@ -51,7 +51,7 @@ export const TERRAIN_TYPES = {
 // ============================================
 
 // Create a new unit instance
-export const createUnit = (unitType, ownerID, q, r) => {
+const createUnit = (unitType, ownerID, q, r) => {
   const template = UNIT_TYPES[unitType]
   return {
     id: uuidv4(),
@@ -74,7 +74,7 @@ export const createUnit = (unitType, ownerID, q, r) => {
 }
 
 // Calculate hex distance (cube coordinates)
-export const hexDistance = (hex1, hex2) => {
+const hexDistance = (hex1, hex2) => {
   return Math.max(
     Math.abs(hex1.q - hex2.q),
     Math.abs(hex1.r - hex2.r),
@@ -83,7 +83,7 @@ export const hexDistance = (hex1, hex2) => {
 }
 
 // Get all hexes within range
-export const getHexesInRange = (centerHex, range, allHexes) => {
+const getHexesInRange = (centerHex, range, allHexes) => {
   return allHexes.filter(hex => {
     const dist = hexDistance(centerHex, hex)
     return dist > 0 && dist <= range
@@ -91,7 +91,7 @@ export const getHexesInRange = (centerHex, range, allHexes) => {
 }
 
 // Get neighboring hexes (distance 1)
-export const getNeighbors = (hex, allHexes) => {
+const getNeighbors = (hex, allHexes) => {
   const directions = [
     { q: 1, r: 0, s: -1 },
     { q: 1, r: -1, s: 0 },
@@ -113,17 +113,17 @@ export const getNeighbors = (hex, allHexes) => {
 }
 
 // Check if hex is occupied
-export const isHexOccupied = (q, r, units) => {
+const isHexOccupied = (q, r, units) => {
   return units.some(u => u.q === q && u.r === r && u.currentHP > 0)
 }
 
 // Get unit at hex
-export const getUnitAtHex = (q, r, units) => {
+const getUnitAtHex = (q, r, units) => {
   return units.find(u => u.q === q && u.r === r && u.currentHP > 0)
 }
 
 // Check if hex is in spawn zone
-export const isInSpawnZone = (q, r, playerID) => {
+const isInSpawnZone = (q, r, playerID) => {
   if (playerID === '0') {
     return q <= -5
   } else {
@@ -132,7 +132,7 @@ export const isInSpawnZone = (q, r, playerID) => {
 }
 
 // Calculate reachable hexes for a unit (BFS with move points)
-export const getReachableHexes = (unit, allHexes, units, terrainMap) => {
+const getReachableHexes = (unit, allHexes, units, terrainMap) => {
   const reachable = []
   const visited = new Set()
   const queue = [{ q: unit.q, r: unit.r, s: unit.s, remainingMove: unit.movePoints }]
@@ -175,7 +175,7 @@ export const getReachableHexes = (unit, allHexes, units, terrainMap) => {
 }
 
 // Get attackable hexes for a unit
-export const getAttackableHexes = (unit, allHexes, units) => {
+const getAttackableHexes = (unit, allHexes, units) => {
   const hexesInRange = getHexesInRange(unit, unit.range, allHexes)
   
   return hexesInRange.filter(hex => {
@@ -385,7 +385,7 @@ const battlePhase = {
 // ============================================
 // MAIN GAME DEFINITION
 // ============================================
-export const MedievalBattleGame = {
+const MedievalBattleGame = {
   name: 'medieval-battle',
   
   setup: ({ ctx }) => {
@@ -474,4 +474,17 @@ export const MedievalBattleGame = {
   maxPlayers: 2,
 }
 
-export default MedievalBattleGame
+module.exports = {
+  MedievalBattleGame,
+  UNIT_TYPES,
+  TERRAIN_TYPES,
+  createUnit,
+  hexDistance,
+  getHexesInRange,
+  getNeighbors,
+  isHexOccupied,
+  getUnitAtHex,
+  isInSpawnZone,
+  getReachableHexes,
+  getAttackableHexes,
+}

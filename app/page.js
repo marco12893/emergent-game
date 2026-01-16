@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { Client } from 'boardgame.io/react'
-import { Local } from 'boardgame.io/multiplayer'
+import { Local, SocketIO } from 'boardgame.io/multiplayer'
 import { MedievalBattleGame, UNIT_TYPES, getReachableHexes, getAttackableHexes, hexDistance } from '@/game/GameLogic'
 import GameBoard from '@/components/GameBoard'
 
@@ -279,11 +279,21 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
               </button>
               
               {/* End Turn Button for Setup Phase */}
-              {isMyTurn && !G.playersReady[playerID] && (
+              {isMyTurn && (
                 <button
                   onClick={() => {
-                    if (ctx.events?.endTurn) {
-                      ctx.events.endTurn()
+                    console.log('End Turn clicked!');
+                    console.log('moves:', moves);
+                    console.log('moves.endTurn:', moves.endTurn);
+                    console.log('currentPlayer:', ctx.currentPlayer);
+                    console.log('playerID:', playerID);
+                    console.log('isMyTurn:', isMyTurn);
+                    
+                    if (moves.endTurn) {
+                      console.log('Calling moves.endTurn()');
+                      moves.endTurn();
+                    } else {
+                      console.log('moves.endTurn is not available!');
                     }
                   }}
                   className="w-full py-2 rounded-lg font-semibold bg-blue-600 hover:bg-blue-500 transition-all text-sm"
