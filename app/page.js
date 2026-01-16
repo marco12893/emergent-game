@@ -203,6 +203,9 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
                     {playerID === '0' ? 'Blue' : 'Red'}
                   </span> border) to place.
                 </p>
+                <p className="text-xs text-green-400 mb-3">
+                  💡 Tip: Click on a placed unit to remove it!
+                </p>
                 
                 <div className="space-y-2">
                   {Object.values(UNIT_TYPES).map(unit => (
