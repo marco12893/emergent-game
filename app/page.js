@@ -197,14 +197,20 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
             <>
               <div className="bg-slate-800/80 rounded-lg border border-slate-700 p-4">
                 <h2 className="text-lg font-semibold text-amber-400 mb-3">🎖️ Place Units</h2>
-                <p className="text-xs text-slate-400 mb-3">
-                  Select a unit type, then click on your spawn zone (
-                  <span className={playerID === '0' ? 'text-blue-400' : 'text-red-400'}>
-                    {playerID === '0' ? 'Blue' : 'Red'}
-                  </span> border) to place.
+                <p className="text-xs text-slate-400 mb-2">
+                  {isMyTurn ? (
+                    <>
+                      <span className="text-green-400 font-semibold">Your turn!</span> Select a unit type, then click on your spawn zone (
+                      <span className={playerID === '0' ? 'text-blue-400' : 'text-red-400'}>
+                        {playerID === '0' ? 'Blue' : 'Red'}
+                      </span> border) to place.
+                    </>
+                  ) : (
+                    <span className="text-yellow-400">⏳ Waiting for Player {currentPlayer}'s turn...</span>
+                  )}
                 </p>
                 <p className="text-xs text-green-400 mb-3">
-                  💡 Tip: Click on a placed unit to remove it!
+                  💡 Click placed units to remove • Click "End Turn" to pass
                 </p>
                 
                 <div className="space-y-2">
