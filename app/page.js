@@ -465,6 +465,9 @@ export default function HTTPMultiplayerPage() {
         isMyTurn ? 'bg-green-600/80' : 'bg-slate-700/80'
       }`}>
         {isMyTurn ? "🎯 YOUR TURN!" : `⏳ Waiting for Player ${gameState?.currentPlayer}...`}
+        <div className="text-xs mt-1">
+          You are Player {playerID} | Current: {gameState?.currentPlayer}
+        </div>
       </div>
 
       {/* Error Message */}
