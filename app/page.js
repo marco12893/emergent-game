@@ -271,6 +271,17 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
               >
                 {G.playersReady[playerID] ? '✓ Ready!' : '🚀 Ready for Battle'}
               </button>
+              
+              {/* Hotseat Mode Notice */}
+              {G.playersReady[playerID] && !G.playersReady[playerID === '0' ? '1' : '0'] && (
+                <div className="bg-blue-500/20 border border-blue-400 rounded-lg p-3 text-xs">
+                  <div className="font-semibold text-blue-300 mb-1">⚠️ Hotseat Mode</div>
+                  <div className="text-blue-200">
+                    Switch to <span className="font-bold">{playerID === '0' ? 'Player 1 (Red)' : 'Player 0 (Blue)'}</span> using the top-right toggle. 
+                    Both players must click Ready to start battle!
+                  </div>
+                </div>
+              )}
             </>
           ) : (
             <>
