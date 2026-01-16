@@ -275,7 +275,11 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
               {/* End Turn Button for Setup Phase */}
               {isMyTurn && !G.playersReady[playerID] && (
                 <button
-                  onClick={() => ctx.events.endTurn()}
+                  onClick={() => {
+                    if (ctx.events?.endTurn) {
+                      ctx.events.endTurn()
+                    }
+                  }}
                   className="w-full py-2 rounded-lg font-semibold bg-blue-600 hover:bg-blue-500 transition-all text-sm"
                 >
                   ⏭️ End Turn (Pass to Other Player)
