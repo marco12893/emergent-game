@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useCallback } from 'react'
 import { HexGrid, Layout, Hexagon, Text, Pattern, Path } from 'react-hexgrid'
 
 // Terrain types with their properties
@@ -10,34 +10,39 @@ const TERRAIN_TYPES = {
   MOUNTAIN: { name: 'Mountain', color: '#6B7280', impassable: true },
 }
 
-// Generate hex coordinates for a hex-shaped map
-const generateHexMap = (radius) => {
+// Generate hex coordinates for a rectangular-ish hex map
+const generateHexMap = (width, height) => {
   const hexes = []
-  for (let q = -radius; q <= radius; q++) {
-    const r1 = Math.max(-radius, -q - radius)
-    const r2 = Math.min(radius, -q + radius)
-    for (let r = r1; r <= r2; r++) {
+  for (let r = -height; r <= height; r++) {
+    const rOffset = Math.floor(r / 2)
+    for (let q = -width - rOffset; q <= width - rOffset; q++) {
       hexes.push({ q, r, s: -q - r })
     }
   }
   return hexes
 }
 
-// Determine terrain type based on position (some randomization + logic)
+// Determine terrain type based on position
 const getTerrainType = (q, r, s) => {
-  // Mountains in center-top area
-  if (Math.abs(r) <= 1 && q >= -1 && q <= 1 && r < 0) {
+  // Mountains in center area (strategic barrier)
+  const mountainPositions = [
+    { q: 0, r: -2 }, { q: 0, r: -1 }, { q: 1, r: -2 },
+    { q: -1, r: 0 }, { q: 0, r: 0 },
+  ]
+  if (mountainPositions.some(pos => pos.q === q && pos.r === r)) {
     return 'MOUNTAIN'
   }
   
-  // Forest clusters
+  // Forest clusters for strategic cover
   const forestPositions = [
     // Left forest cluster
-    { q: -4, r: 1 }, { q: -4, r: 2 }, { q: -3, r: 1 },
+    { q: -4, r: 0 }, { q: -4, r: 1 }, { q: -3, r: 0 }, { q: -5, r: 2 },
     // Right forest cluster  
-    { q: 3, r: -1 }, { q: 4, r: -2 }, { q: 4, r: -1 },
-    // Center-bottom forest
-    { q: 0, r: 3 }, { q: 1, r: 2 }, { q: -1, r: 3 },
+    { q: 3, r: -1 }, { q: 4, r: -2 }, { q: 4, r: -1 }, { q: 3, r: 0 },
+    // Bottom forest
+    { q: -1, r: 3 }, { q: 0, r: 3 }, { q: 1, r: 2 },
+    // Top forest
+    { q: -1, r: -3 }, { q: 0, r: -4 }, { q: 1, r: -4 },
   ]
   
   if (forestPositions.some(pos => pos.q === q && pos.r === r)) {
@@ -47,10 +52,12 @@ const getTerrainType = (q, r, s) => {
   return 'PLAIN'
 }
 
-// Determine spawn zone
-const getSpawnZone = (q, radius) => {
-  if (q <= -radius + 2) return 0 // Player 0 (Left/Blue)
-  if (q >= radius - 2) return 1  // Player 1 (Right/Red)
+// Determine spawn zone based on q coordinate
+const getSpawnZone = (q, r) => {
+  // Adjust for offset coordinates
+  const effectiveQ = q + Math.floor(r / 2)
+  if (effectiveQ <= -4) return 0 // Player 0 (Left/Blue)
+  if (effectiveQ >= 4) return 1  // Player 1 (Right/Red)
   return null // No spawn zone
 }
 
