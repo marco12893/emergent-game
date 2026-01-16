@@ -119,11 +119,13 @@ const GameBoard = ({ onHexClick, selectedHex, highlightedHexes = [], units = [] 
 
   return (
     <div className="w-full h-full flex items-center justify-center">
-      <HexGrid width={900} height={700} viewBox="-50 -50 100 100">
-        <Layout size={{ x: 5, y: 5 }} flat={true} spacing={1.02} origin={{ x: 0, y: 0 }}>
+      <HexGrid width={900} height={650} viewBox="-55 -40 110 80">
+        <Layout size={{ x: 4.5, y: 4.5 }} flat={false} spacing={1.05} origin={{ x: 0, y: 0 }}>
           {hexData.map((hex) => {
             const strokeStyle = getHexStroke(hex)
             const unit = getUnitOnHex(hex)
+            const isSelected = selectedHex && selectedHex.q === hex.q && selectedHex.r === hex.r
+            const isHighlighted = highlightedHexes.some(h => h.q === hex.q && h.r === hex.r)
             
             return (
               <Hexagon
@@ -131,34 +133,34 @@ const GameBoard = ({ onHexClick, selectedHex, highlightedHexes = [], units = [] 
                 q={hex.q}
                 r={hex.r}
                 s={hex.s}
-                fill={getHexFill(hex)}
-                style={{
+                onClick={() => handleHexClick(hex)}
+                cellStyle={{
                   fill: getHexFill(hex),
-                  ...strokeStyle,
+                  stroke: strokeStyle.stroke,
+                  strokeWidth: strokeStyle.strokeWidth,
                   cursor: 'pointer',
+                  transition: 'all 0.15s ease',
                 }}
-                onClick={() => onHexClick && onHexClick(hex)}
-                className="transition-all duration-150 hover:brightness-110"
               >
                 {/* Terrain indicator for special terrain */}
                 {hex.terrain === 'MOUNTAIN' && (
                   <text
                     x="0"
-                    y="0.5"
-                    fontSize="3"
+                    y="1"
+                    fontSize="4"
                     textAnchor="middle"
-                    fill="#374151"
+                    style={{ pointerEvents: 'none' }}
                   >
-                    ⛰️
+                    ⛰
                   </text>
                 )}
                 {hex.terrain === 'FOREST' && (
                   <text
                     x="0"
-                    y="0.5"
-                    fontSize="3"
+                    y="1"
+                    fontSize="3.5"
                     textAnchor="middle"
-                    fill="#166534"
+                    style={{ pointerEvents: 'none' }}
                   >
                     🌲
                   </text>
