@@ -81,8 +81,8 @@ export default function HTTPMultiplayerPage() {
   
   // Dynamic server URL for production
   const serverUrl = process.env.NODE_ENV === 'production' 
-    ? 'https://your-game-server.vercel.app' 
-    : 'http://localhost:8000'
+    ? process.env.NEXT_PUBLIC_GAME_SERVER_URL_PROD || 'https://emergent-game.vercel.app'
+    : process.env.NEXT_PUBLIC_GAME_SERVER_URL || 'http://localhost:8000'
 
   // Poll for game state updates
   useEffect(() => {
