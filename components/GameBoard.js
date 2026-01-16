@@ -102,13 +102,13 @@ const GameBoard = ({ onHexClick, selectedHex, highlightedHexes = [], units = [] 
     
     // Spawn zone indicators
     if (hex.spawnZone === 0) {
-      return { stroke: '#3B82F6', strokeWidth: 0.08 } // Blue spawn
+      return { stroke: '#3B82F6', strokeWidth: 0.2 } // Blue spawn
     }
     if (hex.spawnZone === 1) {
-      return { stroke: '#EF4444', strokeWidth: 0.08 } // Red spawn
+      return { stroke: '#EF4444', strokeWidth: 0.2 } // Red spawn
     }
     
-    return { stroke: '#1E293B', strokeWidth: 0.05 }
+    return { stroke: '#1E293B', strokeWidth: 0.06 }
   }
 
   // Get unit on hex if any
