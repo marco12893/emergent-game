@@ -62,16 +62,24 @@ const getSpawnZone = (q, r) => {
 }
 
 const GameBoard = ({ onHexClick, selectedHex, highlightedHexes = [], units = [] }) => {
-  const MAP_RADIUS = 6
+  const MAP_WIDTH = 6
+  const MAP_HEIGHT = 4
   
   // Generate the hex map data
   const hexData = useMemo(() => {
-    return generateHexMap(MAP_RADIUS).map(hex => ({
+    return generateHexMap(MAP_WIDTH, MAP_HEIGHT).map(hex => ({
       ...hex,
       terrain: getTerrainType(hex.q, hex.r, hex.s),
-      spawnZone: getSpawnZone(hex.q, MAP_RADIUS),
+      spawnZone: getSpawnZone(hex.q, hex.r),
     }))
   }, [])
+
+  // Handle hex click
+  const handleHexClick = useCallback((hex) => {
+    if (onHexClick) {
+      onHexClick(hex)
+    }
+  }, [onHexClick])
 
   // Get hex fill color based on terrain and state
   const getHexFill = (hex) => {
