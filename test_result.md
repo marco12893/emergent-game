@@ -276,3 +276,25 @@ agent_communication:
       
       All dependencies installed, app running on localhost:3000.
       Ready for user testing and feedback on what to add/improve next.
+      
+  - agent: "user"
+    message: |
+      Bug reports:
+      1. Cannot remove placed units during setup phase
+      2. Stuck in setup phase, cannot proceed to battle
+      
+  - agent: "main"
+    message: |
+      BUGS FIXED:
+      1. ✅ Unit removal: Added click-to-remove functionality - click on your placed unit to remove it
+      2. ✅ Setup phase: Added visual list of placed units showing their positions
+      3. ✅ Added helpful tip: "Click units on map to remove"
+      4. ✅ Added hotseat mode notice: Reminds users both players must click Ready to start battle
+      
+      Changes made to /app/app/page.js:
+      - Modified handleHexClick to check for units before placing (lines 106-124)
+      - Added "Your Units" panel in setup phase showing all placed units
+      - Added hotseat mode notice when one player is ready
+      - Added green tip text explaining removal feature
+      
+      Ready for user to re-test!
