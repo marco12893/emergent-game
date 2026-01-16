@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getGame, saveGame } from '@/lib/gameState'
+import { getGame, setGame } from '@/lib/gameState'
 
 // Handle OPTIONS requests for CORS preflight
 export async function OPTIONS() {
@@ -18,13 +18,46 @@ export async function POST(request) {
     const body = await request.json()
     const { gameId, action: gameAction, payload } = body
     
-    console.log(`🎮 Action: ${gameAction} - Game: ${gameId}`)
+    console.log(`🎮 Action: ${gameAction} for game ${gameId}`)
     
-    // Get game from storage
-    const game = await getGame(gameId)
+    // Validate input
+    if (!gameId || !gameAction) {
+      return NextResponse.json({ 
+        error: 'Missing required fields: gameId and action' 
+      }, { 
+        status: 400,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
+        }
+      })
+    }
+    
+    let game
+    try {
+      game = await getGame(gameId)
+    } catch (kvError) {
+      console.error('❌ KV getGame failed:', kvError)
+      return NextResponse.json({ 
+        error: 'Database error: Unable to retrieve game',
+        details: 'KV service temporarily unavailable'
+      }, { 
+        status: 503,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
+        }
+      })
+    }
     
     if (!game) {
-      return NextResponse.json({ error: 'Game not found' }, { 
+      console.log('❌ Game not found:', gameId)
+      return NextResponse.json({ 
+        error: 'Game not found',
+        gameId: gameId
+      }, { 
         status: 404,
         headers: {
           'Access-Control-Allow-Origin': '*',
@@ -35,170 +68,298 @@ export async function POST(request) {
     }
     
     // Handle different game actions
-    switch (gameAction) {
-      case 'placeUnit':
-        // Unit placement logic
-        const unitStats = {
-          SWORDSMAN: { maxHP: 100, attackPower: 25, movePoints: 2, range: 1, emoji: '⚔️' },
-          ARCHER: { maxHP: 60, attackPower: 30, movePoints: 1, range: 2, emoji: '🏹' },
-          KNIGHT: { maxHP: 150, attackPower: 30, movePoints: 3, range: 1, emoji: '🐴' }
-        }
-        
-        const stats = unitStats[payload.unitType]
-        if (!stats) {
-          return NextResponse.json({ error: 'Invalid unit type' }, { status: 400 })
-        }
-        
-        const newUnit = {
-          id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          type: payload.unitType,
-          name: payload.unitType.charAt(0) + payload.unitType.slice(1).toLowerCase(),
-          emoji: stats.emoji,
-          ownerID: payload.playerID,
-          q: payload.q,
-          r: payload.r,
-          s: -payload.q - payload.r,
-          currentHP: stats.maxHP,
-          maxHP: stats.maxHP,
-          attackPower: stats.attackPower,
-          movePoints: stats.movePoints,
-          maxMovePoints: stats.movePoints,
-          range: stats.range,
-          hasMoved: false,
-          hasAttacked: false
-        }
-        
-        game.units.push(newUnit)
-        game.log.push(`Player ${payload.playerID} placed ${newUnit.name} at (${payload.q}, ${payload.r})`)
-        game.lastUpdate = Date.now()
-        break
-        
-      case 'removeUnit':
-        game.units = game.units.filter(u => u.id !== payload.unitId)
-        game.log.push(`Player ${payload.playerID} removed a unit`)
-        game.lastUpdate = Date.now()
-        break
-        
-      case 'selectUnit':
-        game.selectedUnitId = payload.unitId
-        break
-        
-      case 'deselectUnit':
-        game.selectedUnitId = null
-        break
-        
-      case 'moveUnit':
-        const movingUnit = game.units.find(u => u.id === payload.unitId)
-        if (movingUnit && !movingUnit.hasMoved) {
-          const oldQ = movingUnit.q
-          const oldR = movingUnit.r
-          movingUnit.q = payload.targetQ
-          movingUnit.r = payload.targetR
-          movingUnit.s = -payload.targetQ - payload.targetR
-          movingUnit.hasMoved = true
-          game.log.push(`Player ${payload.playerID}'s ${movingUnit.name} moved from (${oldQ}, ${oldR}) to (${payload.targetQ}, ${payload.targetR})`)
-          game.lastUpdate = Date.now()
-        }
-        break
-        
-      case 'attackUnit':
-        const attacker = game.units.find(u => u.id === payload.attackerId)
-        const target = game.units.find(u => u.id === payload.targetId)
-        
-        if (attacker && target && !attacker.hasAttacked) {
-          // Calculate damage with terrain defense bonus
-          const targetHexKey = `${target.q},${target.r}`
-          const terrain = game.terrainMap[targetHexKey] || 'PLAIN'
-          const terrainData = game.terrainTypes[terrain]
-          const defenseBonus = terrainData?.defenseBonus || 0
-          
-          const damage = Math.max(1, attacker.attackPower - defenseBonus)
-          target.currentHP -= damage
-          attacker.hasAttacked = true
-          
-          game.log.push(`Player ${payload.playerID}'s ${attacker.name} hit ${target.name} for ${damage} damage!`)
-          
-          if (target.currentHP <= 0) {
-            game.units = game.units.filter(u => u.id !== target.id)
-            game.log.push(`${target.name} was defeated!`)
-          }
-          
-          // Counter-attack for melee (if target is still alive and attacker is in melee range)
-          if (target.currentHP > 0 && attacker.range === 1) {
-            const distance = Math.max(
-              Math.abs(attacker.q - target.q),
-              Math.abs(attacker.r - target.r),
-              Math.abs(attacker.s - target.s)
-            )
-            
-            if (distance === 1) {
-              const counterDamage = Math.max(1, Math.floor(target.attackPower * 0.5))
-              attacker.currentHP -= counterDamage
-              game.log.push(`${target.name} counter-attacked for ${counterDamage} damage!`)
-              
-              if (attacker.currentHP <= 0) {
-                game.units = game.units.filter(u => u.id !== attacker.id)
-                game.log.push(`${attacker.name} was defeated!`)
+    try {
+      switch (gameAction) {
+        case 'placeUnit':
+          // Validate payload
+          if (!payload?.unitType || payload?.q === undefined || payload?.r === undefined || payload?.playerID === undefined) {
+            return NextResponse.json({ 
+              error: 'Missing required fields for placeUnit: unitType, q, r, playerID' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
               }
-            }
+            })
           }
           
+          // Unit placement logic
+          const unitStats = {
+            SWORDSMAN: { maxHP: 100, attackPower: 25, movePoints: 2, range: 1, emoji: '⚔️' },
+            ARCHER: { maxHP: 60, attackPower: 30, movePoints: 1, range: 2, emoji: '🏹' },
+            KNIGHT: { maxHP: 150, attackPower: 30, movePoints: 3, range: 1, emoji: '🐴' }
+          }
+          
+          const stats = unitStats[payload.unitType]
+          if (!stats) {
+            return NextResponse.json({ 
+              error: 'Invalid unit type: ' + payload.unitType 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+          
+          const newUnit = {
+            id: Date.now().toString(),
+            type: payload.unitType,
+            name: payload.unitType.charAt(0) + payload.unitType.slice(1).toLowerCase(),
+            emoji: stats.emoji,
+            ownerID: payload.playerID,
+            q: payload.q,
+            r: payload.r,
+            s: -payload.q - payload.r,
+            currentHP: stats.maxHP,
+            maxHP: stats.maxHP,
+            attackPower: stats.attackPower,
+            movePoints: stats.movePoints,
+            maxMovePoints: stats.movePoints,
+            range: stats.range,
+            hasMoved: false,
+            hasAttacked: false
+          }
+          
+          game.units.push(newUnit)
+          game.log.push(`Player ${payload.playerID} placed ${newUnit.name} at (${payload.q}, ${payload.r})`)
           game.lastUpdate = Date.now()
-        }
-        break
-        
-      case 'endTurn':
-        // Reset unit action flags for current player only
-        game.units.forEach(unit => {
-          if (unit.ownerID === payload.playerID) {
+          break
+          
+        case 'removeUnit':
+          if (!payload?.unitId) {
+            return NextResponse.json({ 
+              error: 'Missing required field for removeUnit: unitId' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+          
+          game.units = game.units.filter(u => u.id !== payload.unitId)
+          game.log.push(`Player ${payload.playerID} removed a unit`)
+          game.lastUpdate = Date.now()
+          break
+          
+        case 'selectUnit':
+          if (!payload?.unitId) {
+            return NextResponse.json({ 
+              error: 'Missing required field for selectUnit: unitId' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+          
+          game.selectedUnitId = payload.unitId
+          break
+          
+        case 'deselectUnit':
+          game.selectedUnitId = null
+          break
+          
+        case 'moveUnit':
+          if (!payload?.unitId || payload?.targetQ === undefined || payload?.targetR === undefined) {
+            return NextResponse.json({ 
+              error: 'Missing required fields for moveUnit: unitId, targetQ, targetR' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+          
+          const movingUnit = game.units.find(u => u.id === payload.unitId)
+          if (movingUnit && !movingUnit.hasMoved) {
+            movingUnit.q = payload.targetQ
+            movingUnit.r = payload.targetR
+            movingUnit.s = -payload.targetQ - payload.targetR
+            movingUnit.hasMoved = true
+            game.log.push(`Player ${payload.playerID}'s ${movingUnit.name} moved to (${payload.targetQ}, ${payload.targetR})`)
+            game.lastUpdate = Date.now()
+          } else {
+            return NextResponse.json({ 
+              error: 'Unit cannot move (not found or already moved)' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+          break
+          
+        case 'attackUnit':
+          if (!payload?.attackerId || !payload?.targetId) {
+            return NextResponse.json({ 
+              error: 'Missing required fields for attackUnit: attackerId, targetId' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+          
+          const attacker = game.units.find(u => u.id === payload.attackerId)
+          const target = game.units.find(u => u.id === payload.targetId)
+          
+          if (attacker && target && !attacker.hasAttacked) {
+            const damage = attacker.attackPower
+            target.currentHP -= damage
+            attacker.hasAttacked = true
+            
+            game.log.push(`Player ${payload.playerID}'s ${attacker.name} hit ${target.name} for ${damage} damage!`)
+            
+            if (target.currentHP <= 0) {
+              game.units = game.units.filter(u => u.id !== target.id)
+              game.log.push(`${target.name} was defeated!`)
+            }
+            
+            game.lastUpdate = Date.now()
+          } else {
+            return NextResponse.json({ 
+              error: 'Attack failed (unit not found or already attacked)' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+          break
+          
+        case 'endTurn':
+          if (!payload?.playerID) {
+            return NextResponse.json({ 
+              error: 'Missing required field for endTurn: playerID' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+          
+          game.currentPlayer = game.currentPlayer === '0' ? '1' : '0'
+          game.units.forEach(unit => {
             unit.hasMoved = false
             unit.hasAttacked = false
+          })
+          game.log.push(`Player ${payload.playerID} ended turn. Player ${game.currentPlayer}'s turn begins.`)
+          game.lastUpdate = Date.now()
+          break
+          
+        case 'readyForBattle':
+          if (!payload?.playerID) {
+            return NextResponse.json({ 
+              error: 'Missing required field for readyForBattle: playerID' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
           }
-        })
-        
-        game.currentPlayer = game.currentPlayer === '0' ? '1' : '0'
-        game.selectedUnitId = null
-        game.log.push(`Player ${payload.playerID} ended turn. Player ${game.currentPlayer}'s turn begins.`)
-        game.lastUpdate = Date.now()
-        break
-        
-      case 'readyForBattle':
-        game.playersReady[payload.playerID] = true
-        game.log.push(`Player ${payload.playerID} is ready for battle!`)
-        
-        // Check if both players are ready
-        const p0Units = game.units.filter(u => u.ownerID === '0').length
-        const p1Units = game.units.filter(u => u.ownerID === '1').length
-        
-        if (game.playersReady['0'] && game.playersReady['1'] && p0Units > 0 && p1Units > 0) {
-          game.phase = 'battle'
-          game.currentPlayer = '0' // Reset to player 0's turn
-          game.log.push('⚔️ BATTLE PHASE BEGINS!')
+          
+          game.playersReady[payload.playerID] = true
+          game.log.push(`Player ${payload.playerID} is ready for battle!`)
+          
+          if (game.playersReady['0'] && game.playersReady['1']) {
+            game.phase = 'battle'
+            game.log.push('⚔️ BATTLE PHASE BEGINS!')
+          }
+          game.lastUpdate = Date.now()
+          break
+          
+        default:
+          return NextResponse.json({ 
+            error: 'Unknown action: ' + gameAction 
+          }, { 
+            status: 400,
+            headers: {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'POST, OPTIONS',
+              'Access-Control-Allow-Headers': 'Content-Type',
+            }
+          })
+      }
+    } catch (actionError) {
+      console.error('❌ Action processing error:', actionError)
+      return NextResponse.json({ 
+        error: 'Action processing failed',
+        details: actionError.message
+      }, { 
+        status: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
         }
-        game.lastUpdate = Date.now()
-        break
-        
-      default:
-        return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
+      })
     }
     
-    // Save updated game state to storage
-    await saveGame(gameId, game)
+    // Save updated game state
+    try {
+      await setGame(gameId, game)
+    } catch (saveError) {
+      console.error('❌ KV setGame failed:', saveError)
+      return NextResponse.json({ 
+        error: 'Database error: Unable to save game',
+        details: 'KV service temporarily unavailable'
+      }, { 
+        status: 503,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
+        }
+      })
+    }
     
-    console.log(`✅ Action ${gameAction} completed for game ${gameId}`)
-    
-    return NextResponse.json({ success: true, gameState: game }, {
+    console.log('📡 Broadcasting updated game state')
+    return NextResponse.json({ 
+      success: true, 
+      gameState: game,
+      message: `Action ${gameAction} completed successfully`
+    }, {
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type',
       }
     })
+    
   } catch (error) {
-    console.error('❌ Error in /api/action:', error)
+    console.error('❌ Action route error:', error)
     return NextResponse.json({ 
-      error: 'Action failed',
-      message: error.message 
+      error: 'Internal server error',
+      details: error.message
     }, { 
       status: 500,
       headers: {

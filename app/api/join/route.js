@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getGame, createNewGame, saveGame } from '@/lib/gameState'
+import { getGame, setGame, createNewGame } from '@/lib/gameState'
 
 // Handle OPTIONS requests for CORS preflight
 export async function OPTIONS() {
@@ -18,40 +18,100 @@ export async function POST(request) {
     const body = await request.json()
     const { gameId, playerID } = body
     
-    console.log(`🎮 Join request - Game: ${gameId}, Player: ${playerID}`)
+    console.log(`🎮 Player ${playerID} trying to join game ${gameId}`)
     
-    // Check if game exists, create if not
-    let game = await getGame(gameId)
+    // Validate input
+    if (!gameId || playerID === undefined) {
+      return NextResponse.json({ 
+        error: 'Missing required fields: gameId and playerID' 
+      }, { 
+        status: 400,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
+        }
+      })
+    }
+    
+    let game
+    try {
+      game = await getGame(gameId)
+    } catch (kvError) {
+      console.error('❌ KV getGame failed:', kvError)
+      return NextResponse.json({ 
+        error: 'Database error: Unable to retrieve game',
+        details: 'KV service temporarily unavailable'
+      }, { 
+        status: 503,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
+        }
+      })
+    }
     
     if (!game) {
-      console.log(`📦 Creating new game: ${gameId}`)
-      game = await createNewGame(gameId)
+      console.log('🆕 Creating new game')
+      try {
+        game = await createNewGame(gameId)
+      } catch (createError) {
+        console.error('❌ KV createGame failed:', createError)
+        return NextResponse.json({ 
+          error: 'Database error: Unable to create game',
+          details: 'KV service temporarily unavailable'
+        }, { 
+          status: 503,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type',
+          }
+        })
+      }
     }
     
     // Add player to game
-    game.players[playerID] = { 
-      joined: true, 
-      joinTime: Date.now(),
-      lastSeen: Date.now()
-    }
+    game.players[playerID] = { joined: true, joinTime: Date.now() }
     
     // Save updated game state
-    await saveGame(gameId, game)
+    try {
+      await setGame(gameId, game)
+    } catch (saveError) {
+      console.error('❌ KV setGame failed:', saveError)
+      return NextResponse.json({ 
+        error: 'Database error: Unable to save game',
+        details: 'KV service temporarily unavailable'
+      }, { 
+        status: 503,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
+        }
+      })
+    }
     
     console.log(`✅ Player ${playerID} joined game ${gameId}`)
     
-    return NextResponse.json({ success: true, gameState: game }, {
+    return NextResponse.json({ 
+      success: true, 
+      gameState: game,
+      message: `Player ${playerID} joined successfully`
+    }, {
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type',
       }
     })
+    
   } catch (error) {
-    console.error('❌ Error in /api/join:', error)
+    console.error('❌ Join route error:', error)
     return NextResponse.json({ 
-      error: 'Failed to join game',
-      message: error.message 
+      error: 'Internal server error',
+      details: error.message
     }, { 
       status: 500,
       headers: {
