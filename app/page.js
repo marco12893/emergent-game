@@ -272,6 +272,16 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
                 {G.playersReady[playerID] ? '✓ Ready!' : '🚀 Ready for Battle'}
               </button>
               
+              {/* End Turn Button for Setup Phase */}
+              {isMyTurn && !G.playersReady[playerID] && (
+                <button
+                  onClick={() => ctx.events.endTurn()}
+                  className="w-full py-2 rounded-lg font-semibold bg-blue-600 hover:bg-blue-500 transition-all text-sm"
+                >
+                  ⏭️ End Turn (Pass to Other Player)
+                </button>
+              )}
+              
               {/* Hotseat Mode Notice */}
               {G.playersReady[playerID] && !G.playersReady[playerID === '0' ? '1' : '0'] && (
                 <div className="bg-blue-500/20 border border-blue-400 rounded-lg p-3 text-xs">
