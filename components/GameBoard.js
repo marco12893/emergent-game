@@ -73,20 +73,12 @@ const GameBoard = ({ onHexClick, selectedHex, highlightedHexes = [], units = [] 
     }))
   }, [])
 
-  // Handle hex click - react-hexgrid passes (event, {data, state, props})
-  const handleHexClick = useCallback((e, source) => {
-    // source contains { data, state, props } where props has q, r, s
-    if (!source || !source.props) {
-      console.log('Click source:', source)
-      return
+  // Handle hex click - directly receive the hex data via closure
+  const handleHexClick = useCallback((hex) => {
+    if (onHexClick && hex) {
+      onHexClick(hex)
     }
-    const { q, r, s } = source.props
-    // Find the hex data from our hexData array
-    const clickedHex = hexData.find(h => h.q === q && h.r === r && h.s === s)
-    if (onHexClick && clickedHex) {
-      onHexClick(clickedHex)
-    }
-  }, [onHexClick, hexData])
+  }, [onHexClick])
 
   // Get hex fill color based on terrain and state
   const getHexFill = (hex) => {
