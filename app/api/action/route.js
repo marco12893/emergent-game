@@ -1,17 +1,15 @@
 import { NextResponse } from 'next/server'
-
-// Game state storage (shared across routes)
-const games = {}
+import { getGame } from '@/lib/gameState'
 
 export async function POST(request) {
   const body = await request.json()
   const { gameId, action: gameAction, payload } = body
   
-  if (!games[gameId]) {
+  const game = getGame(gameId)
+  
+  if (!game) {
     return NextResponse.json({ error: 'Game not found' }, { status: 404 })
   }
-  
-  const game = games[gameId]
   
   // Handle different game actions
   switch (gameAction) {

@@ -81,8 +81,8 @@ export default function HTTPMultiplayerPage() {
   
   // Dynamic server URL for production
   const serverUrl = process.env.NODE_ENV === 'production' 
-    ? process.env.NEXT_PUBLIC_GAME_SERVER_URL_PROD || 'https://emergent-game.vercel.app'
-    : process.env.NEXT_PUBLIC_GAME_SERVER_URL || 'http://localhost:3000'
+    ? 'https://hex-medieval-simulator-game-4g64dxpah.vercel.app'
+    : 'http://localhost:3000'
 
   // Poll for game state updates
   useEffect(() => {
