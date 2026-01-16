@@ -1,7 +1,7 @@
 'use client'
 
-import React, { useState, useMemo, useCallback } from 'react'
-import { HexGrid, Layout, Hexagon, Text, Pattern, Path } from 'react-hexgrid'
+import React, { useMemo, useCallback } from 'react'
+import { HexGrid, Layout, Hexagon } from 'react-hexgrid'
 
 // Terrain types with their properties
 const TERRAIN_TYPES = {
@@ -23,44 +23,30 @@ const generateHexMap = (width, height) => {
 }
 
 // Determine terrain type based on position
-const getTerrainType = (q, r, s) => {
-  // Mountains in center area (strategic barrier)
-  const mountainPositions = [
-    { q: 0, r: -2 }, { q: 0, r: -1 }, { q: 1, r: -2 },
-    { q: -1, r: 0 }, { q: 0, r: 0 },
-  ]
-  if (mountainPositions.some(pos => pos.q === q && pos.r === r)) {
-    return 'MOUNTAIN'
+const getTerrainType = (q, r, terrainMap) => {
+  if (terrainMap && terrainMap[`${q},${r}`]) {
+    return terrainMap[`${q},${r}`]
   }
-  
-  // Forest clusters for strategic cover
-  const forestPositions = [
-    // Left forest cluster
-    { q: -4, r: 0 }, { q: -4, r: 1 }, { q: -3, r: 0 }, { q: -5, r: 2 },
-    // Right forest cluster  
-    { q: 3, r: -1 }, { q: 4, r: -2 }, { q: 4, r: -1 }, { q: 3, r: 0 },
-    // Bottom forest
-    { q: -1, r: 3 }, { q: 0, r: 3 }, { q: 1, r: 2 },
-    // Top forest
-    { q: -1, r: -3 }, { q: 0, r: -4 }, { q: 1, r: -4 },
-  ]
-  
-  if (forestPositions.some(pos => pos.q === q && pos.r === r)) {
-    return 'FOREST'
-  }
-  
   return 'PLAIN'
 }
 
 // Determine spawn zone based on q coordinate
 const getSpawnZone = (q, r) => {
-  // For pointy-top hexes, columns are determined by q primarily
   if (q <= -5) return 0 // Player 0 (Left/Blue)
   if (q >= 4) return 1  // Player 1 (Right/Red)
   return null // No spawn zone
 }
 
-const GameBoard = ({ onHexClick, selectedHex, highlightedHexes = [], units = [] }) => {
+const GameBoard = ({ 
+  onHexClick, 
+  selectedHex, 
+  highlightedHexes = [], 
+  attackableHexes = [],
+  units = [],
+  terrainMap = {},
+  selectedUnitId = null,
+  currentPlayerID = '0'
+}) => {
   const MAP_WIDTH = 6
   const MAP_HEIGHT = 4
   
@@ -68,10 +54,10 @@ const GameBoard = ({ onHexClick, selectedHex, highlightedHexes = [], units = [] 
   const hexData = useMemo(() => {
     return generateHexMap(MAP_WIDTH, MAP_HEIGHT).map(hex => ({
       ...hex,
-      terrain: getTerrainType(hex.q, hex.r, hex.s),
+      terrain: getTerrainType(hex.q, hex.r, terrainMap),
       spawnZone: getSpawnZone(hex.q, hex.r),
     }))
-  }, [])
+  }, [terrainMap])
 
   // Handle hex click - directly receive the hex data via closure
   const handleHexClick = useCallback((hex) => {
@@ -83,29 +69,32 @@ const GameBoard = ({ onHexClick, selectedHex, highlightedHexes = [], units = [] 
   // Get hex fill color based on terrain and state
   const getHexFill = (hex) => {
     const terrain = TERRAIN_TYPES[hex.terrain]
-    return terrain.color
+    return terrain?.color || '#8B9556'
   }
 
   // Get hex stroke/border based on state
   const getHexStroke = (hex) => {
-    const key = `${hex.q},${hex.r},${hex.s}`
-    
-    // Selected hex
+    // Selected hex (bright yellow)
     if (selectedHex && selectedHex.q === hex.q && selectedHex.r === hex.r) {
-      return { stroke: '#FBBF24', strokeWidth: 0.15 } // Yellow for selected
+      return { stroke: '#FBBF24', strokeWidth: 0.25 }
     }
     
-    // Highlighted (reachable) hexes
+    // Attackable hexes (red glow for enemies in range)
+    if (attackableHexes.some(h => h.q === hex.q && h.r === hex.r)) {
+      return { stroke: '#EF4444', strokeWidth: 0.2 }
+    }
+    
+    // Highlighted (reachable) hexes (green)
     if (highlightedHexes.some(h => h.q === hex.q && h.r === hex.r)) {
-      return { stroke: '#34D399', strokeWidth: 0.12 } // Green for reachable
+      return { stroke: '#34D399', strokeWidth: 0.15 }
     }
     
     // Spawn zone indicators
     if (hex.spawnZone === 0) {
-      return { stroke: '#3B82F6', strokeWidth: 0.2 } // Blue spawn
+      return { stroke: '#3B82F6', strokeWidth: 0.2 }
     }
     if (hex.spawnZone === 1) {
-      return { stroke: '#EF4444', strokeWidth: 0.2 } // Red spawn
+      return { stroke: '#EF4444', strokeWidth: 0.2 }
     }
     
     return { stroke: '#1E293B', strokeWidth: 0.06 }
@@ -123,8 +112,9 @@ const GameBoard = ({ onHexClick, selectedHex, highlightedHexes = [], units = [] 
           {hexData.map((hex) => {
             const strokeStyle = getHexStroke(hex)
             const unit = getUnitOnHex(hex)
-            const isSelected = selectedHex && selectedHex.q === hex.q && selectedHex.r === hex.r
-            const isHighlighted = highlightedHexes.some(h => h.q === hex.q && h.r === hex.r)
+            const isUnitSelected = unit && unit.id === selectedUnitId
+            const isAttackable = attackableHexes.some(h => h.q === hex.q && h.r === hex.r)
+            const isReachable = highlightedHexes.some(h => h.q === hex.q && h.r === hex.r)
             
             return (
               <Hexagon
@@ -139,10 +129,11 @@ const GameBoard = ({ onHexClick, selectedHex, highlightedHexes = [], units = [] 
                   strokeWidth: strokeStyle.strokeWidth,
                   cursor: 'pointer',
                   transition: 'all 0.15s ease',
+                  filter: isReachable ? 'brightness(1.3)' : isAttackable ? 'brightness(1.2)' : 'none',
                 }}
               >
                 {/* Terrain indicator for special terrain */}
-                {hex.terrain === 'MOUNTAIN' && (
+                {hex.terrain === 'MOUNTAIN' && !unit && (
                   <text
                     x="0"
                     y="1"
@@ -153,7 +144,7 @@ const GameBoard = ({ onHexClick, selectedHex, highlightedHexes = [], units = [] 
                     ⛰
                   </text>
                 )}
-                {hex.terrain === 'FOREST' && (
+                {hex.terrain === 'FOREST' && !unit && (
                   <text
                     x="0"
                     y="1"
@@ -163,6 +154,48 @@ const GameBoard = ({ onHexClick, selectedHex, highlightedHexes = [], units = [] 
                   >
                     🌲
                   </text>
+                )}
+                
+                {/* Unit rendering */}
+                {unit && (
+                  <g style={{ pointerEvents: 'none' }}>
+                    {/* Unit background circle */}
+                    <circle
+                      cx="0"
+                      cy="0"
+                      r="3"
+                      fill={unit.ownerID === '0' ? '#2563EB' : '#DC2626'}
+                      stroke={isUnitSelected ? '#FBBF24' : unit.ownerID === '0' ? '#1D4ED8' : '#B91C1C'}
+                      strokeWidth={isUnitSelected ? 0.4 : 0.2}
+                      opacity="0.9"
+                    />
+                    
+                    {/* Unit emoji */}
+                    <text
+                      x="0"
+                      y="1"
+                      fontSize="3"
+                      textAnchor="middle"
+                      style={{ pointerEvents: 'none' }}
+                    >
+                      {unit.emoji}
+                    </text>
+                    
+                    {/* HP bar */}
+                    <g transform="translate(-2.5, 2.5)">
+                      {/* Background */}
+                      <rect x="0" y="0" width="5" height="0.6" fill="#374151" rx="0.2" />
+                      {/* HP fill */}
+                      <rect 
+                        x="0" 
+                        y="0" 
+                        width={5 * (unit.currentHP / unit.maxHP)} 
+                        height="0.6" 
+                        fill={unit.currentHP / unit.maxHP > 0.5 ? '#22C55E' : unit.currentHP / unit.maxHP > 0.25 ? '#EAB308' : '#EF4444'} 
+                        rx="0.2" 
+                      />
+                    </g>
+                  </g>
                 )}
               </Hexagon>
             )
