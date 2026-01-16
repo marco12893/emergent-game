@@ -80,9 +80,23 @@ export default function HTTPMultiplayerPage() {
   const [attackableHexes, setAttackableHexes] = useState([])
   
   // Dynamic server URL for production
-  const serverUrl = process.env.NODE_ENV === 'production' 
-    ? window.location.origin
-    : 'http://localhost:3000'
+  const getServerUrl = () => {
+    if (typeof window !== 'undefined') {
+      return process.env.NODE_ENV === 'production' 
+        ? window.location.origin
+        : 'http://localhost:3000'
+    }
+    return 'http://localhost:3000' // Fallback for SSR
+  }
+  
+  const [serverUrl, setServerUrl] = useState(getServerUrl())
+  
+  // Update server URL on client side
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setServerUrl(getServerUrl())
+    }
+  }, [])
 
   // Poll for game state updates
   useEffect(() => {
