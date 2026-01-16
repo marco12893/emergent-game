@@ -114,5 +114,11 @@ export async function POST(request) {
   }
   
   console.log('📡 Broadcasting updated game state')
-  return NextResponse.json({ success: true, gameState: game })
+  return NextResponse.json({ success: true, gameState: game }, {
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    }
+  })
 }

@@ -8,14 +8,33 @@ export async function GET(request) {
   
   // Health check
   if (gameId === 'health') {
-    return NextResponse.json({ status: 'OK', games: Object.keys(getGames()) })
+    return NextResponse.json({ status: 'OK', games: Object.keys(getGames()) }, {
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+      }
+    })
   }
   
   // Get game state
   const game = getGame(gameId)
   if (game) {
-    return NextResponse.json(game)
+    return NextResponse.json(game, {
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+      }
+    })
   }
   
-  return NextResponse.json({ error: 'Game not found' }, { status: 404 })
+  return NextResponse.json({ error: 'Game not found' }, { 
+    status: 404,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    }
+  })
 }

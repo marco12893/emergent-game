@@ -100,10 +100,11 @@ export default function HTTPMultiplayerPage() {
 
   // Poll for game state updates
   useEffect(() => {
-    if (!joined || !matchID) return
+    if (!joined || !matchID || !serverUrl) return
 
     const pollInterval = setInterval(async () => {
       try {
+        console.log('🔍 Polling game state from:', serverUrl)
         const response = await fetch(`${serverUrl}/api/game/${matchID}`)
         if (response.ok) {
           const state = await response.json()

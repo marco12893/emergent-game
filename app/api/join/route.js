@@ -2,6 +2,12 @@ import { NextResponse } from 'next/server'
 import { getGame, createNewGame } from '@/lib/gameState'
 
 export async function POST(request) {
+  // Add CORS headers
+  const response = NextResponse.next()
+  response.headers.set('Access-Control-Allow-Origin', '*')
+  response.headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS')
+  response.headers.set('Access-Control-Allow-Headers', 'Content-Type')
+  
   const body = await request.json()
   const { gameId, playerID } = body
   
@@ -14,5 +20,11 @@ export async function POST(request) {
   
   console.log(`🎮 Player ${playerID} joined game ${gameId}`)
   
-  return NextResponse.json({ success: true, gameState: game })
+  return NextResponse.json({ success: true, gameState: game }, {
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    }
+  })
 }
