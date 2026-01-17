@@ -274,12 +274,28 @@ export async function POST(request) {
             const defenseBonus = terrainData.defenseBonus || 0
             
             const baseDamage = attacker.attackPower
-            const actualDamage = Math.max(1, baseDamage - defenseBonus) // Minimum 1 damage
+            
+            // Calculate damage reduction based on HP percentage
+            const hpPercentage = attacker.currentHP / attacker.maxHP
+            let damageMultiplier = 1.0
+            
+            if (hpPercentage > 0.75) {
+              damageMultiplier = 1.0 // 100% damage
+            } else if (hpPercentage > 0.5) {
+              damageMultiplier = 0.85 // 85% damage
+            } else if (hpPercentage > 0.25) {
+              damageMultiplier = 0.70 // 70% damage
+            } else {
+              damageMultiplier = 0.50 // 50% damage
+            }
+            
+            const reducedDamage = Math.round(baseDamage * damageMultiplier)
+            const actualDamage = Math.max(1, reducedDamage - defenseBonus) // Minimum 1 damage
             
             target.currentHP -= actualDamage
             attacker.hasAttacked = true
             
-            game.log.push(`Player ${payload.playerID}'s ${attacker.name} hit ${target.name} for ${actualDamage} damage${defenseBonus > 0 ? ` (reduced by terrain defense +${defenseBonus})` : ''}!`)
+            game.log.push(`Player ${payload.playerID}'s ${attacker.name} hit ${target.name} for ${actualDamage} damage${damageMultiplier < 1.0 ? ` (reduced to ${Math.round(damageMultiplier * 100)}% due to wounds)` : ''}${defenseBonus > 0 ? ` (terrain defense +${defenseBonus})` : ''}!`)
             
             // Counter-attack logic (if target survives and is in range)
             if (target.currentHP > 0) {
@@ -296,10 +312,26 @@ export async function POST(request) {
                 const attackerTerrainData = terrainTypes[attackerTerrain]
                 const attackerDefenseBonus = attackerTerrainData.defenseBonus || 0
                 
-                const counterDamage = Math.max(1, target.attackPower - attackerDefenseBonus)
+                // Apply damage reduction to counter-attack based on target's HP
+                const targetHpPercentage = target.currentHP / target.maxHP
+                let targetDamageMultiplier = 1.0
+                
+                if (targetHpPercentage > 0.75) {
+                  targetDamageMultiplier = 1.0 // 100% damage
+                } else if (targetHpPercentage > 0.5) {
+                  targetDamageMultiplier = 0.85 // 85% damage
+                } else if (targetHpPercentage > 0.25) {
+                  targetDamageMultiplier = 0.70 // 70% damage
+                } else {
+                  targetDamageMultiplier = 0.50 // 50% damage
+                }
+                
+                const targetBaseDamage = target.attackPower
+                const targetReducedDamage = Math.round(targetBaseDamage * targetDamageMultiplier)
+                const counterDamage = Math.max(1, targetReducedDamage - attackerDefenseBonus)
                 attacker.currentHP -= counterDamage
                 
-                game.log.push(`${target.name} counter-attacked for ${counterDamage} damage${attackerDefenseBonus > 0 ? ` (reduced by terrain defense +${attackerDefenseBonus})` : ''}!`)
+                game.log.push(`${target.name} counter-attacked for ${counterDamage} damage${targetDamageMultiplier < 1.0 ? ` (reduced to ${Math.round(targetDamageMultiplier * 100)}% due to wounds)` : ''}${attackerDefenseBonus > 0 ? ` (terrain defense +${attackerDefenseBonus})` : ''}!`)
                 
                 if (attacker.currentHP <= 0) {
                   game.units = game.units.filter(u => u.id !== attacker.id)
