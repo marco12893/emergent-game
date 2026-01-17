@@ -281,6 +281,33 @@ export async function POST(request) {
             
             game.log.push(`Player ${payload.playerID}'s ${attacker.name} hit ${target.name} for ${actualDamage} damage${defenseBonus > 0 ? ` (reduced by terrain defense +${defenseBonus})` : ''}!`)
             
+            // Counter-attack logic (if target survives and is in range)
+            if (target.currentHP > 0) {
+              const distance = Math.max(
+                Math.abs(attacker.q - target.q),
+                Math.abs(attacker.r - target.r),
+                Math.abs(attacker.s - target.s)
+              )
+              
+              if (distance <= target.range) {
+                // Calculate attacker's terrain defense bonus for counter-attack
+                const attackerTerrainKey = `${attacker.q},${attacker.r}`
+                const attackerTerrain = game.terrainMap[attackerTerrainKey] || 'PLAIN'
+                const attackerTerrainData = terrainTypes[attackerTerrain]
+                const attackerDefenseBonus = attackerTerrainData.defenseBonus || 0
+                
+                const counterDamage = Math.max(1, target.attackPower - attackerDefenseBonus)
+                attacker.currentHP -= counterDamage
+                
+                game.log.push(`${target.name} counter-attacked for ${counterDamage} damage${attackerDefenseBonus > 0 ? ` (reduced by terrain defense +${attackerDefenseBonus})` : ''}!`)
+                
+                if (attacker.currentHP <= 0) {
+                  game.units = game.units.filter(u => u.id !== attacker.id)
+                  game.log.push(`${attacker.name} was defeated by counter-attack!`)
+                }
+              }
+            }
+            
             if (target.currentHP <= 0) {
               game.units = game.units.filter(u => u.id !== target.id)
               game.log.push(`${target.name} was defeated!`)

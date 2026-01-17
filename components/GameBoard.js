@@ -164,7 +164,10 @@ const GameBoard = ({
                       cx="0"
                       cy="0"
                       r="3"
-                      fill={unit.ownerID === '0' ? '#2563EB' : '#DC2626'}
+                      fill={unit.ownerID === '0' ? 
+                        (unit.hasAttacked ? '#1E40AF' : '#2563EB') : 
+                        (unit.hasAttacked ? '#991B1B' : '#DC2626')
+                      }
                       stroke={isUnitSelected ? '#FBBF24' : unit.ownerID === '0' ? '#1D4ED8' : '#B91C1C'}
                       strokeWidth={isUnitSelected ? 0.4 : 0.2}
                       opacity="0.9"
