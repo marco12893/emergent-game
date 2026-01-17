@@ -49,7 +49,7 @@ const GameBoard = ({
 }) => {
   const MAP_WIDTH = 6
   const MAP_HEIGHT = 4
-  const HEX_SIZE = 4.5 
+  const HEX_SIZE = 5.5 
 
   // Generate the hex map data
   const hexData = useMemo(() => {
@@ -67,25 +67,17 @@ const GameBoard = ({
     }
   }, [onHexClick])
 
-  // Get hex fill color (fallback)
+  // Get hex fill color (fallback) - removed to show only tiles
   const getHexFill = (hex) => {
-    const terrain = TERRAIN_TYPES[hex.terrain]
-    return terrain?.color || '#8B9556'
+    return 'transparent' // No background fill, only tiles
   }
 
   // Get tile image based on terrain type
   const getTileImage = (hex) => {
     switch(hex.terrain) {
       case 'PLAIN':
-        // 80% regular grass, 10% each for variations
-        const grassSeed = Math.abs(hex.q + hex.r * 17)
-        if (grassSeed % 10 === 0) {
-          return '/tiles/grass_3.png' // 10% chance
-        } else if (grassSeed % 10 === 1) {
-          return '/tiles/grass_4.png' // 10% chance
-        } else {
-          return '/tiles/grass.png' // 80% chance
-        }
+        // Only regular grass
+        return '/tiles/grass.png'
       case 'FOREST':
         // Only using forest_3 and forest_4 as requested
         const forestVariants = ['/tiles/forest_3.png', '/tiles/forest_4.png']
@@ -125,7 +117,7 @@ const GameBoard = ({
       <HexGrid width={900} height={650} viewBox="-70 -50 140 100">
         <defs>
           <clipPath id="hex-clip">
-            <polygon points="0,-4.5 3.9,-2.25 3.9,2.25 0,4.5 -3.9,2.25 -3.9,-2.25" />
+            <polygon points="0,-5.5 4.76,-2.75 4.76,2.75 0,5.5 -4.76,2.75 -4.76,-2.75" />
           </clipPath>
         </defs>
 
