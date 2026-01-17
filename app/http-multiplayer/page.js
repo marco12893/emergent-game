@@ -132,14 +132,13 @@ export default function HTTPMultiplayerPage() {
                   const hexExists = state.hexes.some(h => h.q === targetQ && h.r === targetR)
                   const isOccupied = state.units.some(u => u.q === targetQ && u.r === targetR)
                   
-                  if (hexExists && !isOccupied && selectedUnit.movePoints > 0) {
+                  if (hexExists && !isOccupied && !selectedUnit.hasMoved) {
                     // Check terrain costs
                     const terrain = state.terrainMap[key] || 'PLAIN'
                     const terrainTypes = {
                       PLAIN: { moveCost: 1, passable: true },
                       FOREST: { moveCost: 1, passable: true },
-                      MOUNTAIN: { moveCost: Infinity, passable: false },
-                      HILL: { moveCost: 1, passable: true }
+                      MOUNTAIN: { moveCost: Infinity, passable: false }
                     }
                     const terrainData = terrainTypes[terrain]
                     
@@ -307,16 +306,6 @@ export default function HTTPMultiplayerPage() {
       if (selectedUnit && selectedUnit.ownerID === playerID) {
         // Check if clicking on enemy to attack
         if (unitOnHex && unitOnHex.ownerID !== playerID) {
-          // Calculate attack range with hill bonus for archers
-          let attackRange = selectedUnit.range
-          if (selectedUnit.type === 'ARCHER') {
-            const terrainKey = `${selectedUnit.q},${selectedUnit.r}`
-            const terrain = gameState.terrainMap[terrainKey] || 'PLAIN'
-            if (terrain === 'HILL') {
-              attackRange += 1 // Hill bonus for archers
-            }
-          }
-          
           // Simple distance check
           const distance = Math.max(
             Math.abs(selectedUnit.q - unitOnHex.q),
@@ -324,7 +313,7 @@ export default function HTTPMultiplayerPage() {
             Math.abs(selectedUnit.s - unitOnHex.s)
           )
           
-          if (distance <= attackRange && !selectedUnit.hasAttacked) {
+          if (distance <= selectedUnit.range && !selectedUnit.hasAttacked) {
             sendAction('attackUnit', { 
               attackerId: selectedUnit.id, 
               targetId: unitOnHex.id, 

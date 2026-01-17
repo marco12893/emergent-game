@@ -6,9 +6,8 @@ import { HexGrid, Layout, Hexagon } from 'react-hexgrid'
 // Terrain types with their properties
 const TERRAIN_TYPES = {
   PLAIN: { name: 'Plain', color: '#8B9556', defenseBonus: 0 },
-  FOREST: { name: 'Forest', color: '#2D5A27', defenseBonus: 10 },
+  FOREST: { name: 'Forest', color: '#2D5A27', defenseBonus: 2 },
   MOUNTAIN: { name: 'Mountain', color: '#6B7280', impassable: true },
-  HILL: { name: 'Hill', color: '#A0522D', defenseBonus: 5 },
 }
 
 // Generate hex coordinates for a rectangular-ish hex map
@@ -154,17 +153,6 @@ const GameBoard = ({
                     style={{ pointerEvents: 'none' }}
                   >
                     🌲
-                  </text>
-                )}
-                {hex.terrain === 'HILL' && !unit && (
-                  <text
-                    x="0"
-                    y="1"
-                    fontSize="3.5"
-                    textAnchor="middle"
-                    style={{ pointerEvents: 'none' }}
-                  >
-                    ⛰️
                   </text>
                 )}
                 
