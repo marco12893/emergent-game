@@ -559,13 +559,22 @@ export default function HTTPMultiplayerPage() {
               
               <div className="space-y-2">
                 {gameState?.phase === 'setup' && (
-                  <button
-                    onClick={readyForBattle}
-                    disabled={!isMyTurn}
-                    className="w-full py-3 rounded-lg font-bold bg-amber-500 hover:bg-amber-400 disabled:bg-slate-600 transition-all"
-                  >
-                    🚀 Ready for Battle
-                  </button>
+                  <>
+                    <button
+                      onClick={readyForBattle}
+                      disabled={!isMyTurn}
+                      className="w-full py-3 rounded-lg font-bold bg-amber-500 hover:bg-amber-400 disabled:bg-slate-600 transition-all"
+                    >
+                      🚀 Ready for Battle
+                    </button>
+                    <button
+                      onClick={endTurn}
+                      disabled={!isMyTurn}
+                      className="w-full py-3 rounded-lg font-bold bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 transition-all"
+                    >
+                      ⏭️ End Turn
+                    </button>
+                  </>
                 )}
                 
                 {gameState?.phase === 'battle' && (
