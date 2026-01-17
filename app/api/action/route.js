@@ -261,11 +261,24 @@ export async function POST(request) {
           const target = game.units.find(u => u.id === payload.targetId)
           
           if (attacker && target && !attacker.hasAttacked) {
-            const damage = attacker.attackPower
-            target.currentHP -= damage
+            // Calculate terrain defense bonus for target
+            const targetTerrainKey = `${target.q},${target.r}`
+            const targetTerrain = game.terrainMap[targetTerrainKey] || 'PLAIN'
+            const terrainTypes = {
+              PLAIN: { defenseBonus: 0 },
+              FOREST: { defenseBonus: 2 },
+              MOUNTAIN: { defenseBonus: 0 }
+            }
+            const terrainData = terrainTypes[targetTerrain]
+            const defenseBonus = terrainData.defenseBonus || 0
+            
+            const baseDamage = attacker.attackPower
+            const actualDamage = Math.max(1, baseDamage - defenseBonus) // Minimum 1 damage
+            
+            target.currentHP -= actualDamage
             attacker.hasAttacked = true
             
-            game.log.push(`Player ${payload.playerID}'s ${attacker.name} hit ${target.name} for ${damage} damage!`)
+            game.log.push(`Player ${payload.playerID}'s ${attacker.name} hit ${target.name} for ${actualDamage} damage${defenseBonus > 0 ? ` (reduced by terrain defense +${defenseBonus})` : ''}!`)
             
             if (target.currentHP <= 0) {
               game.units = game.units.filter(u => u.id !== target.id)
