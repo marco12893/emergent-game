@@ -89,7 +89,8 @@ export async function POST(request) {
           const unitStats = {
             SWORDSMAN: { maxHP: 100, attackPower: 25, movePoints: 2, range: 1, emoji: '⚔️' },
             ARCHER: { maxHP: 60, attackPower: 30, movePoints: 1, range: 2, emoji: '🏹' },
-            KNIGHT: { maxHP: 150, attackPower: 30, movePoints: 3, range: 1, emoji: '🐴' }
+            KNIGHT: { maxHP: 150, attackPower: 30, movePoints: 3, range: 1, emoji: '🐴' },
+            MILITIA: { maxHP: 40, attackPower: 20, movePoints: 2, range: 1, emoji: '🗡️' }
           }
           
           const stats = unitStats[payload.unitType]

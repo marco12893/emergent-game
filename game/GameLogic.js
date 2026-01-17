@@ -35,6 +35,16 @@ export const UNIT_TYPES = {
     range: 1, // Melee only
     description: 'Fast, powerful cavalry unit with high HP.',
   },
+  MILITIA: {
+    type: 'MILITIA',
+    name: 'Militia',
+    emoji: '🗡️',
+    maxHP: 40,
+    attackPower: 20,
+    movePoints: 2,
+    range: 1, // Melee only
+    description: 'Light infantry unit with low HP but decent speed.',
+  },
 }
 
 // ============================================

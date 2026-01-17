@@ -178,7 +178,7 @@ const GameBoard = ({
                       textAnchor="middle"
                       style={{ pointerEvents: 'none' }}
                     >
-                      {unit.emoji || (unit.type === 'SWORDSMAN' ? '⚔️' : unit.type === 'ARCHER' ? '🏹' : unit.type === 'KNIGHT' ? '🐴' : '⚔️')}
+                      {unit.emoji || (unit.type === 'SWORDSMAN' ? '⚔️' : unit.type === 'ARCHER' ? '🏹' : unit.type === 'KNIGHT' ? '🐴' : unit.type === 'MILITIA' ? '🗡️' : '⚔️')}
                     </text>
                     
                     {/* HP bar */}
