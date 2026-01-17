@@ -21,7 +21,7 @@ export const UNIT_TYPES = {
     emoji: '🏹',
     maxHP: 60,
     attackPower: 20,
-    movePoints: 1,
+    movePoints: 2,
     range: 2, // Ranged attack
     description: 'Slow but can attack from distance without counter-attack.',
   },
