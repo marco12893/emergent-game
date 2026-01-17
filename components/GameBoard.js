@@ -156,6 +156,17 @@ const GameBoard = ({
                     🌲
                   </text>
                 )}
+                {hex.terrain === 'HILL' && !unit && (
+                  <text
+                    x="0"
+                    y="1"
+                    fontSize="3.5"
+                    textAnchor="middle"
+                    style={{ pointerEvents: 'none' }}
+                  >
+                    ⛰️
+                  </text>
+                )}
                 
                 {/* Unit rendering */}
                 {unit && (

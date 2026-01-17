@@ -51,10 +51,10 @@ export const UNIT_TYPES = {
 // TERRAIN DEFINITIONS
 // ============================================
 export const TERRAIN_TYPES = {
-  PLAIN: { name: 'Plain', defenseBonus: 0, moveCost: 1, passable: true },
-  FOREST: { name: 'Forest', defenseBonus: 10, moveCost: 1, passable: true },
-  MOUNTAIN: { name: 'Mountain', defenseBonus: 0, moveCost: Infinity, passable: false },
-  HILL: { name: 'Hill', defenseBonus: 5, moveCost: 1, passable: true, archerRangeBonus: 1 },
+  PLAIN: { name: 'Plain', defenseBonus: 0, moveCost: 1, passable: true, emoji: '🌾' },
+  FOREST: { name: 'Forest', defenseBonus: 10, moveCost: 1, passable: true, emoji: '🌲' },
+  MOUNTAIN: { name: 'Mountain', defenseBonus: 0, moveCost: Infinity, passable: false, emoji: '⛰️' },
+  HILL: { name: 'Hill', defenseBonus: 5, moveCost: 1, passable: true, archerRangeBonus: 1, emoji: '⛰️' },
 }
 
 // ============================================
@@ -436,12 +436,13 @@ export const MedievalBattleGame = {
           terrain = 'FOREST'
         }
         
-        // Hills
+        // Hills - positioned around mountains
         const hillPositions = [
-          { q: -3, r: 2 }, { q: -2, r: 2 }, { q: -3, r: 1 },
-          { q: 2, r: -2 }, { q: 3, r: -2 }, { q: 2, r: -1 },
-          { q: 0, r: 2 }, { q: 1, r: 1 }, { q: -1, r: 1 },
-          { q: 0, r: -2 }, { q: -1, r: -2 }, { q: 1, r: -2 },
+          // Hills around center mountains
+          { q: -1, r: -2 }, { q: 1, r: -2 }, { q: -2, r: -1 },
+          { q: 2, r: -1 }, { q: -1, r: 1 }, { q: 1, r: 1 },
+          { q: -2, r: 0 }, { q: 2, r: 0 }, { q: 0, r: -3 },
+          { q: 0, r: 2 }, { q: -1, r: -1 }, { q: 1, r: 0 },
         ]
         if (hillPositions.some(pos => pos.q === q && pos.r === r)) {
           terrain = 'HILL'
