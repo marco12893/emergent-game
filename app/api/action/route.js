@@ -88,7 +88,7 @@ export async function POST(request) {
           // Unit placement logic
           const unitStats = {
             SWORDSMAN: { maxHP: 100, attackPower: 25, movePoints: 2, range: 1, emoji: '⚔️' },
-            ARCHER: { maxHP: 60, attackPower: 30, movePoints: 1, range: 2, emoji: '🏹' },
+            ARCHER: { maxHP: 60, attackPower: 30, movePoints: 2, range: 2, emoji: '🏹' },
             KNIGHT: { maxHP: 150, attackPower: 30, movePoints: 3, range: 1, emoji: '🐴' },
             MILITIA: { maxHP: 40, attackPower: 20, movePoints: 2, range: 1, emoji: '🗡️' }
           }
@@ -193,7 +193,8 @@ export async function POST(request) {
             const terrainTypes = {
               PLAIN: { moveCost: 1, passable: true },
               FOREST: { moveCost: 1, passable: true },
-              MOUNTAIN: { moveCost: Infinity, passable: false }
+              MOUNTAIN: { moveCost: Infinity, passable: false },
+              HILL: { moveCost: 1, passable: true }
             }
             const terrainData = terrainTypes[terrain]
             
@@ -262,14 +263,48 @@ export async function POST(request) {
           const target = game.units.find(u => u.id === payload.targetId)
           
           if (attacker && target && !attacker.hasAttacked) {
+            // Define terrain types first
+            const terrainTypes = {
+              PLAIN: { defenseBonus: 0 },
+              FOREST: { defenseBonus: 10 },
+              MOUNTAIN: { defenseBonus: 0 },
+              HILL: { defenseBonus: 5, archerRangeBonus: 1 }
+            }
+            
+            // Check if attacker is archer on hill for range bonus
+            let attackRange = attacker.range
+            if (attacker.type === 'ARCHER') {
+              const attackerTerrainKey = `${attacker.q},${attacker.r}`
+              const attackerTerrain = game.terrainMap[attackerTerrainKey] || 'PLAIN'
+              const attackerTerrainData = terrainTypes[attackerTerrain]
+              if (attackerTerrainData.archerRangeBonus) {
+                attackRange += attackerTerrainData.archerRangeBonus
+              }
+            }
+            
+            // Validate attack range
+            const distance = Math.max(
+              Math.abs(attacker.q - target.q),
+              Math.abs(attacker.r - target.r),
+              Math.abs(attacker.s - target.s)
+            )
+            
+            if (distance > attackRange) {
+              return NextResponse.json({ 
+                error: 'Target out of range' 
+              }, { 
+                status: 400,
+                headers: {
+                  'Access-Control-Allow-Origin': '*',
+                  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                  'Access-Control-Allow-Headers': 'Content-Type',
+                }
+              })
+            }
+            
             // Calculate terrain defense bonus for target
             const targetTerrainKey = `${target.q},${target.r}`
             const targetTerrain = game.terrainMap[targetTerrainKey] || 'PLAIN'
-            const terrainTypes = {
-              PLAIN: { defenseBonus: 0 },
-              FOREST: { defenseBonus: 2 },
-              MOUNTAIN: { defenseBonus: 0 }
-            }
             const terrainData = terrainTypes[targetTerrain]
             const defenseBonus = terrainData.defenseBonus || 0
             

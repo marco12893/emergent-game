@@ -138,7 +138,8 @@ export default function HTTPMultiplayerPage() {
                     const terrainTypes = {
                       PLAIN: { moveCost: 1, passable: true },
                       FOREST: { moveCost: 1, passable: true },
-                      MOUNTAIN: { moveCost: Infinity, passable: false }
+                      MOUNTAIN: { moveCost: Infinity, passable: false },
+                      HILL: { moveCost: 1, passable: true }
                     }
                     const terrainData = terrainTypes[terrain]
                     
@@ -413,12 +414,7 @@ export default function HTTPMultiplayerPage() {
             </button>
           </div>
           
-          <div className="mt-6 text-xs text-slate-400">
-            <p>💡 HTTP-based multiplayer (no WebSocket issues)</p>
-            <p>🌐 Make sure the game server is running on localhost:8000</p>
-            <p>🔄 Updates every 1 second</p>
           </div>
-        </div>
       </div>
     )
   }

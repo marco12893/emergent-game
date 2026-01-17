@@ -23,7 +23,7 @@ export const UNIT_TYPES = {
     attackPower: 20,
     movePoints: 2,
     range: 2, // Ranged attack
-    description: 'Slow but can attack from distance without counter-attack.',
+    description: 'Can attack from distance without counter-attack.',
   },
   KNIGHT: {
     type: 'KNIGHT',
@@ -52,8 +52,9 @@ export const UNIT_TYPES = {
 // ============================================
 export const TERRAIN_TYPES = {
   PLAIN: { name: 'Plain', defenseBonus: 0, moveCost: 1, passable: true },
-  FOREST: { name: 'Forest', defenseBonus: 2, moveCost: 1, passable: true },
+  FOREST: { name: 'Forest', defenseBonus: 10, moveCost: 1, passable: true },
   MOUNTAIN: { name: 'Mountain', defenseBonus: 0, moveCost: Infinity, passable: false },
+  HILL: { name: 'Hill', defenseBonus: 5, moveCost: 1, passable: true, archerRangeBonus: 1 },
 }
 
 // ============================================
@@ -433,6 +434,17 @@ export const MedievalBattleGame = {
         ]
         if (forestPositions.some(pos => pos.q === q && pos.r === r)) {
           terrain = 'FOREST'
+        }
+        
+        // Hills
+        const hillPositions = [
+          { q: -3, r: 2 }, { q: -2, r: 2 }, { q: -3, r: 1 },
+          { q: 2, r: -2 }, { q: 3, r: -2 }, { q: 2, r: -1 },
+          { q: 0, r: 2 }, { q: 1, r: 1 }, { q: -1, r: 1 },
+          { q: 0, r: -2 }, { q: -1, r: -2 }, { q: 1, r: -2 },
+        ]
+        if (hillPositions.some(pos => pos.q === q && pos.r === r)) {
+          terrain = 'HILL'
         }
         
         terrainMap[`${q},${r}`] = terrain
