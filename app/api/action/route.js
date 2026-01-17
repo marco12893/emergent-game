@@ -327,11 +327,18 @@ export async function POST(request) {
                 }
                 
                 const targetBaseDamage = target.attackPower
-                const targetReducedDamage = Math.round(targetBaseDamage * targetDamageMultiplier)
+                
+                // Archer melee penalty: 50% less damage in melee combat
+                let meleePenaltyMultiplier = 1.0
+                if (target.type === 'ARCHER' && distance === 1) {
+                  meleePenaltyMultiplier = 0.5 // 50% damage reduction in melee
+                }
+                
+                const targetReducedDamage = Math.round(targetBaseDamage * targetDamageMultiplier * meleePenaltyMultiplier)
                 const counterDamage = Math.max(1, targetReducedDamage - attackerDefenseBonus)
                 attacker.currentHP -= counterDamage
                 
-                game.log.push(`${target.name} counter-attacked for ${counterDamage} damage${targetDamageMultiplier < 1.0 ? ` (reduced to ${Math.round(targetDamageMultiplier * 100)}% due to wounds)` : ''}${attackerDefenseBonus > 0 ? ` (terrain defense +${attackerDefenseBonus})` : ''}!`)
+                game.log.push(`${target.name} counter-attacked for ${counterDamage} damage${targetDamageMultiplier < 1.0 ? ` (reduced to ${Math.round(targetDamageMultiplier * 100)}% due to wounds)` : ''}${meleePenaltyMultiplier < 1.0 ? ` (melee penalty -50%)` : ''}${attackerDefenseBonus > 0 ? ` (terrain defense +${attackerDefenseBonus})` : ''}!`)
                 
                 if (attacker.currentHP <= 0) {
                   game.units = game.units.filter(u => u.id !== attacker.id)
