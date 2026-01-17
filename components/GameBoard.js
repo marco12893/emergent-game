@@ -169,7 +169,7 @@ const GameBoard = ({
                     <circle
                       cx="0"
                       cy="0"
-                      r="3"
+                      r="4"
                       fill={unit.ownerID === '0' ? 
                         (unit.hasAttacked ? '#1E40AF' : '#2563EB') : 
                         (unit.hasAttacked ? '#991B1B' : '#DC2626')
@@ -182,8 +182,8 @@ const GameBoard = ({
                     {/* Unit Emoji (Restored) */}
                     <text
                       x="0"
-                      y="1"
-                      fontSize="3"
+                      y="1.5"
+                      fontSize="4"
                       textAnchor="middle"
                       style={{ pointerEvents: 'none', textShadow: '0px 1px 2px rgba(0,0,0,0.5)' }}
                     >
@@ -191,13 +191,13 @@ const GameBoard = ({
                     </text>
                     
                     {/* HP bar */}
-                    <g transform="translate(-2.5, 2.5)">
-                      <rect x="0" y="0" width="5" height="0.6" fill="#374151" rx="0.2" />
+                    <g transform="translate(-3, 3)">
+                      <rect x="0" y="0" width="6" height="0.8" fill="#374151" rx="0.2" />
                       <rect 
                         x="0" 
                         y="0" 
-                        width={5 * (unit.currentHP / unit.maxHP)} 
-                        height="0.6" 
+                        width={6 * (unit.currentHP / unit.maxHP)} 
+                        height="0.8" 
                         fill={unit.currentHP / unit.maxHP > 0.5 ? '#22C55E' : unit.currentHP / unit.maxHP > 0.25 ? '#EAB308' : '#EF4444'} 
                         rx="0.2" 
                       />
