@@ -114,7 +114,7 @@ const GameBoard = ({
   return (
     <div className="w-full h-full flex items-center justify-center">
       {/* ZOOM FIX: Increased viewBox to zoom out the camera */}
-      <HexGrid width={900} height={650} viewBox="-70 -50 140 100">
+      <HexGrid width={900} height={650} viewBox="-70 -20 140 100">
         <defs>
           <clipPath id="hex-clip">
             <polygon points="0,-5.5 4.76,-2.75 4.76,2.75 0,5.5 -4.76,2.75 -4.76,-2.75" />
