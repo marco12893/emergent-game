@@ -90,7 +90,8 @@ export async function POST(request) {
             SWORDSMAN: { maxHP: 100, attackPower: 25, movePoints: 2, range: 1, emoji: '⚔️' },
             ARCHER: { maxHP: 60, attackPower: 30, movePoints: 2, range: 2, emoji: '🏹' },
             KNIGHT: { maxHP: 150, attackPower: 30, movePoints: 3, range: 1, emoji: '🐴' },
-            MILITIA: { maxHP: 40, attackPower: 20, movePoints: 2, range: 1, emoji: '🗡️' }
+            MILITIA: { maxHP: 40, attackPower: 20, movePoints: 2, range: 1, emoji: '🗡️' },
+            CATAPULT: { maxHP: 40, attackPower: 50, movePoints: 1, range: 3, emoji: '🏰' }
           }
           
           const stats = unitStats[payload.unitType]
@@ -123,7 +124,8 @@ export async function POST(request) {
             maxMovePoints: stats.movePoints,
             range: stats.range,
             hasMoved: false,
-            hasAttacked: false
+            hasAttacked: false,
+            hasMovedOrAttacked: false // For catapult move-or-attack restriction
           }
           
           game.units.push(newUnit)
@@ -187,6 +189,19 @@ export async function POST(request) {
           
           const movingUnit = game.units.find(u => u.id === payload.unitId)
           if (movingUnit && movingUnit.movePoints > 0) {
+            // Catapult move-or-attack restriction
+            if (movingUnit.type === 'CATAPULT' && movingUnit.hasMovedOrAttacked) {
+              return NextResponse.json({ 
+                error: 'Catapult cannot move after attacking this turn' 
+              }, { 
+                status: 400,
+                headers: {
+                  'Access-Control-Allow-Origin': '*',
+                  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                  'Access-Control-Allow-Headers': 'Content-Type',
+                }
+              })
+            }
             // Calculate terrain cost
             const terrainKey = `${payload.targetQ},${payload.targetR}`
             const terrain = game.terrainMap[terrainKey] || 'PLAIN'
@@ -216,6 +231,12 @@ export async function POST(request) {
               movingUnit.s = -payload.targetQ - payload.targetR
               movingUnit.movePoints -= terrainData.moveCost
               movingUnit.hasMoved = movingUnit.movePoints <= 0 // Mark as moved if no movement points left
+              
+              // Catapult move-or-attack restriction
+              if (movingUnit.type === 'CATAPULT') {
+                movingUnit.hasMovedOrAttacked = true
+              }
+              
               game.log.push(`Player ${payload.playerID}'s ${movingUnit.name} moved to (${payload.targetQ}, ${payload.targetR})`)
               game.lastUpdate = Date.now()
             } else {
@@ -262,6 +283,19 @@ export async function POST(request) {
           const target = game.units.find(u => u.id === payload.targetId)
           
           if (attacker && target && !attacker.hasAttacked) {
+            // Catapult move-or-attack restriction
+            if (attacker.type === 'CATAPULT' && attacker.hasMovedOrAttacked) {
+              return NextResponse.json({ 
+                error: 'Catapult cannot attack after moving this turn' 
+              }, { 
+                status: 400,
+                headers: {
+                  'Access-Control-Allow-Origin': '*',
+                  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                  'Access-Control-Allow-Headers': 'Content-Type',
+                }
+              })
+            }
             // Calculate terrain defense bonus for target
             const targetTerrainKey = `${target.q},${target.r}`
             const targetTerrain = game.terrainMap[targetTerrainKey] || 'PLAIN'
@@ -294,6 +328,11 @@ export async function POST(request) {
             
             target.currentHP -= actualDamage
             attacker.hasAttacked = true
+            
+            // Catapult move-or-attack restriction
+            if (attacker.type === 'CATAPULT') {
+              attacker.hasMovedOrAttacked = true
+            }
             
             game.log.push(`Player ${payload.playerID}'s ${attacker.name} hit ${target.name} for ${actualDamage} damage${damageMultiplier < 1.0 ? ` (reduced to ${Math.round(damageMultiplier * 100)}% due to wounds)` : ''}${defenseBonus > 0 ? ` (terrain defense +${defenseBonus})` : ''}!`)
             
@@ -328,21 +367,26 @@ export async function POST(request) {
                 
                 const targetBaseDamage = target.attackPower
                 
-                // Archer melee penalty: 50% less damage in melee combat
-                let meleePenaltyMultiplier = 1.0
-                if (target.type === 'ARCHER' && distance === 1) {
-                  meleePenaltyMultiplier = 0.5 // 50% damage reduction in melee
-                }
-                
-                const targetReducedDamage = Math.round(targetBaseDamage * targetDamageMultiplier * meleePenaltyMultiplier)
-                const counterDamage = Math.max(1, targetReducedDamage - attackerDefenseBonus)
-                attacker.currentHP -= counterDamage
-                
-                game.log.push(`${target.name} counter-attacked for ${counterDamage} damage${targetDamageMultiplier < 1.0 ? ` (reduced to ${Math.round(targetDamageMultiplier * 100)}% due to wounds)` : ''}${meleePenaltyMultiplier < 1.0 ? ` (melee penalty -50%)` : ''}${attackerDefenseBonus > 0 ? ` (terrain defense +${attackerDefenseBonus})` : ''}!`)
-                
-                if (attacker.currentHP <= 0) {
-                  game.units = game.units.filter(u => u.id !== attacker.id)
-                  game.log.push(`${attacker.name} was defeated by counter-attack!`)
+                // Catapults cannot counter-attack (siege weapons)
+                if (target.type === 'CATAPULT') {
+                  game.log.push(`${target.name} cannot counter-attack (siege weapon)!`)
+                } else {
+                  // Archer melee penalty: 50% less damage in melee combat
+                  let meleePenaltyMultiplier = 1.0
+                  if (target.type === 'ARCHER' && distance === 1) {
+                    meleePenaltyMultiplier = 0.5 // 50% damage reduction in melee
+                  }
+                  
+                  const targetReducedDamage = Math.round(targetBaseDamage * targetDamageMultiplier * meleePenaltyMultiplier)
+                  const counterDamage = Math.max(1, targetReducedDamage - attackerDefenseBonus)
+                  attacker.currentHP -= counterDamage
+                  
+                  game.log.push(`${target.name} counter-attacked for ${counterDamage} damage${targetDamageMultiplier < 1.0 ? ` (reduced to ${Math.round(targetDamageMultiplier * 100)}% due to wounds)` : ''}${meleePenaltyMultiplier < 1.0 ? ` (melee penalty -50%)` : ''}${attackerDefenseBonus > 0 ? ` (terrain defense +${attackerDefenseBonus})` : ''}!`)
+                  
+                  if (attacker.currentHP <= 0) {
+                    game.units = game.units.filter(u => u.id !== attacker.id)
+                    game.log.push(`${attacker.name} was defeated by counter-attack!`)
+                  }
                 }
               }
             }
@@ -386,6 +430,7 @@ export async function POST(request) {
             unit.hasMoved = false
             unit.hasAttacked = false
             unit.movePoints = unit.maxMovePoints // Reset movement points
+            unit.hasMovedOrAttacked = false // Reset catapult move-or-attack restriction
           })
           game.log.push(`Player ${payload.playerID} ended turn. Player ${game.currentPlayer}'s turn begins.`)
           game.lastUpdate = Date.now()

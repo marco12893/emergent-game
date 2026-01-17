@@ -45,6 +45,16 @@ export const UNIT_TYPES = {
     range: 1, // Melee only
     description: 'Light infantry unit with low HP but decent speed.',
   },
+  CATAPULT: {
+    type: 'CATAPULT',
+    name: 'Catapult',
+    emoji: '🏰',
+    maxHP: 40,
+    attackPower: 50,
+    movePoints: 1,
+    range: 3, // Long range siege weapon
+    description: 'Siege weapon with high damage but cannot move and attack in same turn.',
+  },
 }
 
 // ============================================
