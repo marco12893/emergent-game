@@ -108,6 +108,38 @@ export async function POST(request) {
             })
           }
           
+          // Check spawn zone restriction
+          const inSpawnZone = payload.playerID === '0' ? 
+            payload.q <= -5 : 
+            payload.q >= 4
+          if (!inSpawnZone) {
+            return NextResponse.json({ 
+              error: 'Units can only be placed in your spawn zone' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+          
+          // Check if hex is already occupied
+          const isOccupied = game.units.some(u => u.q === payload.q && u.r === payload.r && u.currentHP > 0)
+          if (isOccupied) {
+            return NextResponse.json({ 
+              error: 'Hex is already occupied by another unit' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+          
           const newUnit = {
             id: Date.now().toString(),
             type: payload.unitType,
@@ -215,6 +247,26 @@ export async function POST(request) {
             if (!terrainData.passable) {
               return NextResponse.json({ 
                 error: 'Cannot move to impassable terrain' 
+              }, { 
+                status: 400,
+                headers: {
+                  'Access-Control-Allow-Origin': '*',
+                  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                  'Access-Control-Allow-Headers': 'Content-Type',
+                }
+              })
+            }
+            
+            // Check if target hex is occupied by another unit
+            const targetOccupied = game.units.some(u => 
+              u.q === payload.targetQ && 
+              u.r === payload.targetR && 
+              u.currentHP > 0 && 
+              u.id !== payload.unitId // Exclude the moving unit itself
+            )
+            if (targetOccupied) {
+              return NextResponse.json({ 
+                error: 'Target hex is already occupied by another unit' 
               }, { 
                 status: 400,
                 headers: {
