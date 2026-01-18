@@ -145,7 +145,10 @@ const getNeighbors = (hex, allHexes) => {
 
 // Check if hex is occupied
 const isHexOccupied = (q, r, units) => {
-  return units.some(u => u.q === q && u.r === r && u.currentHP > 0)
+  const sanitizedQ = sanitizeCoordinate(q)
+  const sanitizedR = sanitizeCoordinate(r)
+  if (sanitizedQ === null || sanitizedR === null) return true // Invalid coordinates are treated as occupied
+  return units.some(u => u.q === sanitizedQ && u.r === sanitizedR && u.currentHP > 0)
 }
 
 // Calculate reachable hexes for a unit (BFS with move points)
@@ -154,7 +157,7 @@ const getReachableHexes = (unit, allHexes, units, terrainMap) => {
   const visited = new Set()
   const queue = [{ q: unit.q, r: unit.r, s: unit.s, remainingMove: unit.movePoints }]
   
-  visited.add(`${unit.q},${unit.r}`)
+  visited.add(`${sanitizeCoordinate(unit.q)},${sanitizeCoordinate(unit.r)}`)
   
   while (queue.length > 0) {
     const current = queue.shift()
@@ -162,8 +165,11 @@ const getReachableHexes = (unit, allHexes, units, terrainMap) => {
     const neighbors = getNeighbors(current, allHexes)
     
     for (const neighbor of neighbors) {
-      const key = `${neighbor.q},${neighbor.r}`
-      if (visited.has(key)) continue
+      const sanitizedNeighborQ = sanitizeCoordinate(neighbor.q)
+      const sanitizedNeighborR = sanitizeCoordinate(neighbor.r)
+      const key = `${sanitizedNeighborQ},${sanitizedNeighborR}`
+      
+      if (visited.has(key) || sanitizedNeighborQ === null || sanitizedNeighborR === null) continue
       
       // Check terrain
       const terrain = terrainMap[key] || 'PLAIN'
@@ -182,13 +188,13 @@ const getReachableHexes = (unit, allHexes, units, terrainMap) => {
       if (remainingAfterMove < 0) continue
       
       // Check if occupied by any unit
-      if (isHexOccupied(neighbor.q, neighbor.r, units)) continue
+      if (isHexOccupied(sanitizedNeighborQ, sanitizedNeighborR, units)) continue
       
       visited.add(key)
-      reachable.push({ q: neighbor.q, r: neighbor.r, s: neighbor.s })
+      reachable.push({ q: sanitizedNeighborQ, r: sanitizedNeighborR, s: -sanitizedNeighborQ - sanitizedNeighborR })
       
       if (remainingAfterMove > 0) {
-        queue.push({ ...neighbor, remainingMove: remainingAfterMove })
+        queue.push({ ...neighbor, q: sanitizedNeighborQ, r: sanitizedNeighborR, remainingMove: remainingAfterMove })
       }
     }
   }
@@ -291,7 +297,7 @@ export async function POST(request) {
             })
           }
           
-          const { unitType, q, r, playerID } = placeUnitValidation.sanitized
+          const { unitType, q, r, playerID: placePlayerID } = placeUnitValidation.sanitized
           
           // Unit placement logic
           const stats = UNIT_TYPES[unitType]
@@ -309,7 +315,7 @@ export async function POST(request) {
           }
           
           // Check if unit is naval and terrain is water
-          const terrainKey = `${q},${r}`
+          const terrainKey = `${sanitizeCoordinate(q)},${sanitizeCoordinate(r)}`
           const terrain = game.terrainMap[terrainKey] || 'PLAIN'
           const terrainData = TERRAIN_TYPES[terrain]
           
@@ -340,7 +346,7 @@ export async function POST(request) {
           }
           
           // Check spawn zone restriction
-          const inSpawnZone = playerID === '0' ? 
+          const inSpawnZone = placePlayerID === '0' ? 
             q <= -5 : 
             q >= 4
           if (!inSpawnZone) {
@@ -376,7 +382,7 @@ export async function POST(request) {
             type: unitType,
             name: stats.name,
             emoji: stats.emoji,
-            ownerID: playerID,
+            ownerID: placePlayerID,
             q: q,
             r: r,
             s: -q - r,
@@ -393,7 +399,7 @@ export async function POST(request) {
           }
           
           game.units.push(newUnit)
-          game.log.push(`Player ${playerID} placed ${newUnit.name} at (${q}, ${r})`)
+          game.log.push(`Player ${placePlayerID} placed ${newUnit.name} at (${q}, ${r})`)
           game.lastUpdate = Date.now()
           break
           
@@ -438,9 +444,18 @@ export async function POST(request) {
           break
           
         case 'moveUnit':
-          if (!payload?.unitId || payload?.targetQ === undefined || payload?.targetR === undefined) {
+          // Validate and sanitize payload
+          const moveUnitSchema = {
+            unitId: { required: true, sanitize: sanitizeUnitId },
+            targetQ: { required: true, sanitize: sanitizeCoordinate },
+            targetR: { required: true, sanitize: sanitizeCoordinate },
+            playerID: { required: true, sanitize: sanitizePlayerID }
+          }
+          
+          const moveUnitValidation = validatePayload(payload, moveUnitSchema)
+          if (moveUnitValidation.error) {
             return NextResponse.json({ 
-              error: 'Missing required fields for moveUnit: unitId, targetQ, targetR' 
+              error: 'Invalid payload for moveUnit: ' + moveUnitValidation.error 
             }, { 
               status: 400,
               headers: {
@@ -451,7 +466,9 @@ export async function POST(request) {
             })
           }
           
-          const movingUnit = game.units.find(u => u.id === payload.unitId)
+          const { unitId, targetQ, targetR, playerID: movePlayerID } = moveUnitValidation.sanitized
+          
+          const movingUnit = game.units.find(u => u.id === unitId)
           if (movingUnit && movingUnit.movePoints > 0) {
             // Catapult move-or-attack restriction
             if (movingUnit.type === 'CATAPULT' && movingUnit.hasMovedOrAttacked) {
@@ -469,7 +486,7 @@ export async function POST(request) {
             
             // Calculate reachable hexes with proper move points
             const reachable = getReachableHexes(movingUnit, game.hexes, game.units, game.terrainMap)
-            const isReachable = reachable.some(h => h.q === payload.targetQ && h.r === payload.targetR)
+            const isReachable = reachable.some(h => h.q === targetQ && h.r === targetR)
             
             if (!isReachable) {
               return NextResponse.json({ 
@@ -489,7 +506,7 @@ export async function POST(request) {
               // Simple BFS to find the actual path cost
               const visited = new Set()
               const queue = [{ q: startQ, r: startR, s: -startQ - startR, cost: 0 }]
-              visited.add(`${startQ},${startR}`)
+              visited.add(`${sanitizeCoordinate(startQ)},${sanitizeCoordinate(startR)}`)
               
               while (queue.length > 0) {
                 const current = queue.shift()
@@ -501,8 +518,11 @@ export async function POST(request) {
                 const neighbors = getNeighbors(current, allHexes)
                 
                 for (const neighbor of neighbors) {
-                  const key = `${neighbor.q},${neighbor.r}`
-                  if (visited.has(key)) continue
+                  const sanitizedNeighborQ = sanitizeCoordinate(neighbor.q)
+                  const sanitizedNeighborR = sanitizeCoordinate(neighbor.r)
+                  const key = `${sanitizedNeighborQ},${sanitizedNeighborR}`
+                  
+                  if (visited.has(key) || sanitizedNeighborQ === null || sanitizedNeighborR === null) continue
                   
                   // Check terrain
                   const terrain = terrainMap[key] || 'PLAIN'
@@ -516,22 +536,22 @@ export async function POST(request) {
                   if (!terrainData.passable) continue
                   
                   // Check if occupied by any unit (except the moving unit)
-                  if (isHexOccupied(neighbor.q, neighbor.r, units.filter(u => u.id !== movingUnit.id))) continue
+                  if (isHexOccupied(sanitizedNeighborQ, sanitizedNeighborR, units.filter(u => u.id !== movingUnit.id))) continue
                   
                   visited.add(key)
-                  queue.push({ ...neighbor, cost: current.cost + terrainData.moveCost })
+                  queue.push({ ...neighbor, q: sanitizedNeighborQ, r: sanitizedNeighborR, cost: current.cost + terrainData.moveCost })
                 }
               }
               
               return Infinity // Should not happen if reachable
             }
             
-            const actualCost = getMovementCost(movingUnit.q, movingUnit.r, payload.targetQ, payload.targetR, game.hexes, game.units, game.terrainMap)
+            const actualCost = getMovementCost(movingUnit.q, movingUnit.r, targetQ, targetR, game.hexes, game.units, game.terrainMap)
             
             // Move the unit
-            movingUnit.q = payload.targetQ
-            movingUnit.r = payload.targetR
-            movingUnit.s = -payload.targetQ - payload.targetR
+            movingUnit.q = sanitizeCoordinate(targetQ)
+            movingUnit.r = sanitizeCoordinate(targetR)
+            movingUnit.s = -sanitizeCoordinate(targetQ) - sanitizeCoordinate(targetR)
             movingUnit.movePoints -= actualCost
             movingUnit.hasMoved = movingUnit.movePoints <= 0 // Mark as moved if no movement points left
             
@@ -540,11 +560,11 @@ export async function POST(request) {
               movingUnit.hasMovedOrAttacked = true
             }
             
-            game.log.push(`Player ${payload.playerID}'s ${movingUnit.name} moved to (${payload.targetQ}, ${payload.targetR})`)
+            game.log.push(`Player ${movePlayerID}'s ${movingUnit.name} moved to (${sanitizeCoordinate(targetQ)}, ${sanitizeCoordinate(targetR)})`)
             game.lastUpdate = Date.now()
           } else {
             return NextResponse.json({ 
-              error: 'Unit cannot move (not found, already moved, or no movement points)' 
+              error: 'Unit not found or no movement points available' 
             }, { 
               status: 400,
               headers: {
@@ -588,7 +608,7 @@ export async function POST(request) {
               })
             }
             // Calculate terrain defense bonus for target
-            const targetTerrainKey = `${target.q},${target.r}`
+            const targetTerrainKey = `${sanitizeCoordinate(target.q)},${sanitizeCoordinate(target.r)}`
             const targetTerrain = game.terrainMap[targetTerrainKey] || 'PLAIN'
             const terrainData = TERRAIN_TYPES[targetTerrain]
             const defenseBonus = terrainData.defenseBonus || 0
@@ -632,7 +652,7 @@ export async function POST(request) {
               
               if (distance <= target.range) {
                 // Calculate attacker's terrain defense bonus for counter-attack
-                const attackerTerrainKey = `${attacker.q},${attacker.r}`
+                const attackerTerrainKey = `${sanitizeCoordinate(attacker.q)},${sanitizeCoordinate(attacker.r)}`
                 const attackerTerrain = game.terrainMap[attackerTerrainKey] || 'PLAIN'
                 const attackerTerrainData = TERRAIN_TYPES[attackerTerrain]
                 const attackerDefenseBonus = attackerTerrainData.defenseBonus || 0
@@ -729,7 +749,7 @@ export async function POST(request) {
               let p1Controls = 0
               
               game.objectiveHexes.forEach(objHex => {
-                const unitOnHex = aliveUnits.find(u => u.q === objHex.q && u.r === objHex.r)
+                const unitOnHex = aliveUnits.find(u => u.q === sanitizeCoordinate(objHex.q) && u.r === sanitizeCoordinate(objHex.r))
                 if (unitOnHex) {
                   if (unitOnHex.ownerID === '0') p0Controls++
                   if (unitOnHex.ownerID === '1') p1Controls++
@@ -799,9 +819,18 @@ export async function POST(request) {
           break
           
         case 'retreatUnit':
-          if (!payload?.unitId || payload?.targetQ === undefined || payload?.targetR === undefined) {
+          // Validate and sanitize payload
+          const retreatUnitSchema = {
+            unitId: { required: true, sanitize: sanitizeUnitId },
+            targetQ: { required: true, sanitize: sanitizeCoordinate },
+            targetR: { required: true, sanitize: sanitizeCoordinate },
+            playerID: { required: true, sanitize: sanitizePlayerID }
+          }
+          
+          const retreatUnitValidation = validatePayload(payload, retreatUnitSchema)
+          if (retreatUnitValidation.error) {
             return NextResponse.json({ 
-              error: 'Missing required fields for retreatUnit: unitId, targetQ, targetR' 
+              error: 'Invalid payload for retreatUnit: ' + retreatUnitValidation.error 
             }, { 
               status: 400,
               headers: {
@@ -812,9 +841,11 @@ export async function POST(request) {
             })
           }
           
-          const unit = game.units.find(u => u.id === payload.unitId)
+          const { unitId: retreatUnitId, targetQ: retreatTargetQ, targetR: retreatTargetR, playerID: retreatPlayerID } = retreatUnitValidation.sanitized
           
-          if (!unit || unit.ownerID !== payload.playerID) {
+          const unit = game.units.find(u => u.id === retreatUnitId)
+          
+          if (!unit || unit.ownerID !== retreatPlayerID) {
             return NextResponse.json({ 
               error: 'Invalid unit or ownership' 
             }, { 
@@ -841,7 +872,7 @@ export async function POST(request) {
           }
           
           // Check if target is an extraction hex
-          const isExtraction = game.extractionHexes.some(h => h.q === payload.targetQ && h.r === payload.targetR)
+          const isExtraction = game.extractionHexes.some(h => h.q === retreatTargetQ && h.r === retreatTargetR)
           if (!isExtraction) {
             return NextResponse.json({ 
               error: 'Target is not a valid extraction point' 
@@ -857,7 +888,7 @@ export async function POST(request) {
           
           // Check if unit can reach it
           const reachable = getReachableHexes(unit, game.hexes, game.units, game.terrainMap)
-          const canReach = reachable.some(h => h.q === payload.targetQ && h.r === payload.targetR)
+          const canReach = reachable.some(h => h.q === retreatTargetQ && h.r === retreatTargetR)
           
           if (!canReach) {
             return NextResponse.json({ 
@@ -873,10 +904,10 @@ export async function POST(request) {
           }
           
           // Remove unit (retreat successful)
-          const unitIndex = game.units.findIndex(u => u.id === payload.unitId)
+          const unitIndex = game.units.findIndex(u => u.id === retreatUnitId)
           game.units.splice(unitIndex, 1)
           
-          game.log.push(`Player ${payload.playerID}'s ${unit.name} successfully retreated!`)
+          game.log.push(`Player ${retreatPlayerID}'s ${unit.name} successfully retreated!`)
           game.lastUpdate = Date.now()
           break
           
@@ -929,7 +960,7 @@ export async function POST(request) {
         
         // Attacker (Player 0) wins if they capture all objective hexes
         const p0ControlsAll = game.objectiveHexes.every(objHex => {
-          const unitOnHex = aliveUnits.find(u => u.q === objHex.q && u.r === objHex.r)
+          const unitOnHex = aliveUnits.find(u => u.q === sanitizeCoordinate(objHex.q) && u.r === sanitizeCoordinate(objHex.r))
           return unitOnHex && unitOnHex.ownerID === '0'
         })
         
