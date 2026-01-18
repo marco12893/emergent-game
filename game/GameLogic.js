@@ -61,9 +61,11 @@ export const UNIT_TYPES = {
 // TERRAIN DEFINITIONS
 // ============================================
 export const TERRAIN_TYPES = {
-  PLAIN: { name: 'Plain', defenseBonus: 0, moveCost: 1, passable: true },
-  FOREST: { name: 'Forest', defenseBonus: 10, moveCost: 1, passable: true },
-  MOUNTAIN: { name: 'Mountain', defenseBonus: 0, moveCost: Infinity, passable: false },
+  PLAIN: { name: 'Plain', defenseBonus: 0, moveCost: 1, passable: true, waterOnly: false },
+  FOREST: { name: 'Forest', defenseBonus: 10, moveCost: 1, passable: true, waterOnly: false },
+  MOUNTAIN: { name: 'Mountain', defenseBonus: 0, moveCost: Infinity, passable: false, waterOnly: false },
+  WATER: { name: 'Water', defenseBonus: 0, moveCost: Infinity, passable: false, waterOnly: true },
+  HILLS: { name: 'Hills', defenseBonus: 15, moveCost: 2, passable: true, waterOnly: false },
 }
 
 // ============================================
