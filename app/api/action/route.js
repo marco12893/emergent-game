@@ -1,6 +1,94 @@
 import { NextResponse } from 'next/server'
 import { getGame, setGame } from '@/lib/gameState'
 
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
+
+// Calculate hex distance (cube coordinates)
+const hexDistance = (hex1, hex2) => {
+  return Math.max(
+    Math.abs(hex1.q - hex2.q),
+    Math.abs(hex1.r - hex2.r),
+    Math.abs(hex1.s - hex2.s)
+  )
+}
+
+// Get neighboring hexes (distance 1)
+const getNeighbors = (hex, allHexes) => {
+  const directions = [
+    { q: 1, r: 0, s: -1 },
+    { q: 1, r: -1, s: 0 },
+    { q: 0, r: -1, s: 1 },
+    { q: -1, r: 0, s: 1 },
+    { q: -1, r: 1, s: 0 },
+    { q: 0, r: 1, s: -1 },
+  ]
+  
+  return directions
+    .map(dir => ({
+      q: hex.q + dir.q,
+      r: hex.r + dir.r,
+      s: hex.s + dir.s,
+    }))
+    .filter(neighbor => 
+      allHexes.some(h => h.q === neighbor.q && h.r === neighbor.r)
+    )
+}
+
+// Check if hex is occupied
+const isHexOccupied = (q, r, units) => {
+  return units.some(u => u.q === q && u.r === r && u.currentHP > 0)
+}
+
+// Calculate reachable hexes for a unit (BFS with move points)
+const getReachableHexes = (unit, allHexes, units, terrainMap) => {
+  const reachable = []
+  const visited = new Set()
+  const queue = [{ q: unit.q, r: unit.r, s: unit.s, remainingMove: unit.movePoints }]
+  
+  visited.add(`${unit.q},${unit.r}`)
+  
+  while (queue.length > 0) {
+    const current = queue.shift()
+    
+    const neighbors = getNeighbors(current, allHexes)
+    
+    for (const neighbor of neighbors) {
+      const key = `${neighbor.q},${neighbor.r}`
+      if (visited.has(key)) continue
+      
+      // Check terrain
+      const terrain = terrainMap[key] || 'PLAIN'
+      const terrainTypes = {
+        PLAIN: { moveCost: 1, passable: true },
+        FOREST: { moveCost: 1, passable: true },
+        MOUNTAIN: { moveCost: Infinity, passable: false }
+      }
+      const terrainData = terrainTypes[terrain]
+      
+      if (!terrainData.passable) continue
+      
+      const moveCost = terrainData.moveCost
+      const remainingAfterMove = current.remainingMove - moveCost
+      
+      if (remainingAfterMove < 0) continue
+      
+      // Check if occupied by any unit
+      if (isHexOccupied(neighbor.q, neighbor.r, units)) continue
+      
+      visited.add(key)
+      reachable.push({ q: neighbor.q, r: neighbor.r, s: neighbor.s })
+      
+      if (remainingAfterMove > 0) {
+        queue.push({ ...neighbor, remainingMove: remainingAfterMove })
+      }
+    }
+  }
+  
+  return reachable
+}
+
 // Handle OPTIONS requests for CORS preflight
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -234,19 +322,14 @@ export async function POST(request) {
                 }
               })
             }
-            // Calculate terrain cost
-            const terrainKey = `${payload.targetQ},${payload.targetR}`
-            const terrain = game.terrainMap[terrainKey] || 'PLAIN'
-            const terrainTypes = {
-              PLAIN: { moveCost: 1, passable: true },
-              FOREST: { moveCost: 1, passable: true },
-              MOUNTAIN: { moveCost: Infinity, passable: false }
-            }
-            const terrainData = terrainTypes[terrain]
             
-            if (!terrainData.passable) {
+            // Calculate reachable hexes with proper move points
+            const reachable = getReachableHexes(movingUnit, game.hexes, game.units, game.terrainMap)
+            const isReachable = reachable.some(h => h.q === payload.targetQ && h.r === payload.targetR)
+            
+            if (!isReachable) {
               return NextResponse.json({ 
-                error: 'Cannot move to impassable terrain' 
+                error: 'Target hex is not reachable with current movement points' 
               }, { 
                 status: 400,
                 headers: {
@@ -257,52 +340,64 @@ export async function POST(request) {
               })
             }
             
-            // Check if target hex is occupied by another unit
-            const targetOccupied = game.units.some(u => 
-              u.q === payload.targetQ && 
-              u.r === payload.targetR && 
-              u.currentHP > 0 && 
-              u.id !== payload.unitId // Exclude the moving unit itself
-            )
-            if (targetOccupied) {
-              return NextResponse.json({ 
-                error: 'Target hex is already occupied by another unit' 
-              }, { 
-                status: 400,
-                headers: {
-                  'Access-Control-Allow-Origin': '*',
-                  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                  'Access-Control-Allow-Headers': 'Content-Type',
-                }
-              })
-            }
-            
-            if (movingUnit.movePoints >= terrainData.moveCost) {
-              movingUnit.q = payload.targetQ
-              movingUnit.r = payload.targetR
-              movingUnit.s = -payload.targetQ - payload.targetR
-              movingUnit.movePoints -= terrainData.moveCost
-              movingUnit.hasMoved = movingUnit.movePoints <= 0 // Mark as moved if no movement points left
+            // Calculate actual movement cost for the path taken
+            const getMovementCost = (startQ, startR, targetQ, targetR, allHexes, units, terrainMap) => {
+              // Simple BFS to find the actual path cost
+              const visited = new Set()
+              const queue = [{ q: startQ, r: startR, s: -startQ - startR, cost: 0 }]
+              visited.add(`${startQ},${startR}`)
               
-              // Catapult move-or-attack restriction
-              if (movingUnit.type === 'CATAPULT') {
-                movingUnit.hasMovedOrAttacked = true
+              while (queue.length > 0) {
+                const current = queue.shift()
+                
+                if (current.q === targetQ && current.r === targetR) {
+                  return current.cost
+                }
+                
+                const neighbors = getNeighbors(current, allHexes)
+                
+                for (const neighbor of neighbors) {
+                  const key = `${neighbor.q},${neighbor.r}`
+                  if (visited.has(key)) continue
+                  
+                  // Check terrain
+                  const terrain = terrainMap[key] || 'PLAIN'
+                  const terrainTypes = {
+                    PLAIN: { moveCost: 1, passable: true },
+                    FOREST: { moveCost: 1, passable: true },
+                    MOUNTAIN: { moveCost: Infinity, passable: false }
+                  }
+                  const terrainData = terrainTypes[terrain]
+                  
+                  if (!terrainData.passable) continue
+                  
+                  // Check if occupied by any unit (except the moving unit)
+                  if (isHexOccupied(neighbor.q, neighbor.r, units.filter(u => u.id !== movingUnit.id))) continue
+                  
+                  visited.add(key)
+                  queue.push({ ...neighbor, cost: current.cost + terrainData.moveCost })
+                }
               }
               
-              game.log.push(`Player ${payload.playerID}'s ${movingUnit.name} moved to (${payload.targetQ}, ${payload.targetR})`)
-              game.lastUpdate = Date.now()
-            } else {
-              return NextResponse.json({ 
-                error: 'Not enough movement points' 
-              }, { 
-                status: 400,
-                headers: {
-                  'Access-Control-Allow-Origin': '*',
-                  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                  'Access-Control-Allow-Headers': 'Content-Type',
-                }
-              })
+              return Infinity // Should not happen if reachable
             }
+            
+            const actualCost = getMovementCost(movingUnit.q, movingUnit.r, payload.targetQ, payload.targetR, game.hexes, game.units, game.terrainMap)
+            
+            // Move the unit
+            movingUnit.q = payload.targetQ
+            movingUnit.r = payload.targetR
+            movingUnit.s = -payload.targetQ - payload.targetR
+            movingUnit.movePoints -= actualCost
+            movingUnit.hasMoved = movingUnit.movePoints <= 0 // Mark as moved if no movement points left
+            
+            // Catapult move-or-attack restriction
+            if (movingUnit.type === 'CATAPULT') {
+              movingUnit.hasMovedOrAttacked = true
+            }
+            
+            game.log.push(`Player ${payload.playerID}'s ${movingUnit.name} moved to (${payload.targetQ}, ${payload.targetR})`)
+            game.lastUpdate = Date.now()
           } else {
             return NextResponse.json({ 
               error: 'Unit cannot move (not found, already moved, or no movement points)' 

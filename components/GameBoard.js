@@ -56,6 +56,10 @@ const GameBoard = ({
   const [zoom, setZoom] = useState(1)
   const [isDragging, setIsDragging] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
+  const [dragThreshold, setDragThreshold] = useState(5) // 5px threshold
+  const [hasDragged, setHasDragged] = useState(false)
+  const [mouseDownPos, setMouseDownPos] = useState({ x: 0, y: 0 })
+  const dragTimeoutRef = useRef(null)
   const containerRef = useRef(null)
 
   // Handle mouse wheel zoom
@@ -72,7 +76,9 @@ const GameBoard = ({
     e.preventDefault()
     e.stopPropagation()
     setIsDragging(true)
+    setHasDragged(false)
     setDragStart({ x: e.clientX - cameraOffset.x, y: e.clientY - cameraOffset.y })
+    setMouseDownPos({ x: e.clientX, y: e.clientY })
     
     // Disable text selection globally during drag
     document.body.style.userSelect = 'none'
@@ -84,11 +90,20 @@ const GameBoard = ({
     if (!isDragging) return
     e.preventDefault()
     e.stopPropagation()
-    setCameraOffset({
-      x: e.clientX - dragStart.x,
-      y: e.clientY - dragStart.y
-    })
-  }, [isDragging, dragStart])
+    
+    const deltaX = e.clientX - dragStart.x - cameraOffset.x
+    const deltaY = e.clientY - dragStart.y - cameraOffset.y
+    
+    // Check if we've moved beyond the threshold
+    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY)
+    if (distance > dragThreshold) {
+      setHasDragged(true)
+      setCameraOffset({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y
+      })
+    }
+  }, [isDragging, dragStart, dragThreshold])
 
   // Handle mouse up
   const handleMouseUp = useCallback((e) => {
@@ -98,10 +113,36 @@ const GameBoard = ({
     }
     setIsDragging(false)
     
+    // Check if mouse moved significantly from down position
+    const mouseUpDistance = Math.sqrt(
+      Math.pow(e.clientX - mouseDownPos.x, 2) + 
+      Math.pow(e.clientY - mouseDownPos.y, 2)
+    )
+    
+    // If we dragged, prevent clicks for a short time
+    if (mouseUpDistance >= dragThreshold) {
+      // Clear any existing timeout
+      if (dragTimeoutRef.current) {
+        clearTimeout(dragTimeoutRef.current)
+      }
+      
+      // Set hasDragged to true immediately
+      setHasDragged(true)
+      
+      // Reset hasDragged after a short delay to prevent accidental clicks
+      dragTimeoutRef.current = setTimeout(() => {
+        setHasDragged(false)
+        dragTimeoutRef.current = null
+      }, 200) // 200ms delay
+    } else {
+      // This was a click, not a drag
+      setHasDragged(false)
+    }
+    
     // Re-enable text selection
     document.body.style.userSelect = ''
     document.body.style.webkitUserSelect = ''
-  }, [isDragging])
+  }, [isDragging, mouseDownPos, dragThreshold])
 
   // Cleanup text selection on unmount
   useEffect(() => {
@@ -109,6 +150,11 @@ const GameBoard = ({
       // Re-enable text selection when component unmounts
       document.body.style.userSelect = ''
       document.body.style.webkitUserSelect = ''
+      
+      // Clear any pending timeout
+      if (dragTimeoutRef.current) {
+        clearTimeout(dragTimeoutRef.current)
+      }
     }
   }, [])
 
@@ -168,10 +214,14 @@ const GameBoard = ({
 
   // Handle hex click
   const handleHexClick = useCallback((hex) => {
+    // Prevent hex clicks if we were dragging
+    if (hasDragged) {
+      return
+    }
     if (onHexClick && hex) {
       onHexClick(hex)
     }
-  }, [onHexClick])
+  }, [onHexClick, hasDragged])
 
   // Get hex fill color (fallback) - removed to show only tiles
   const getHexFill = (hex) => {

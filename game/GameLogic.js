@@ -324,13 +324,53 @@ const battlePhase = {
         return INVALID_MOVE
       }
       
+      // Calculate actual movement cost for the path taken
+      const getMovementCost = (startQ, startR, targetQ, targetR, allHexes, units, terrainMap) => {
+        // Simple BFS to find the actual path cost
+        const visited = new Set()
+        const queue = [{ q: startQ, r: startR, s: -startQ - startR, cost: 0 }]
+        visited.add(`${startQ},${startR}`)
+        
+        while (queue.length > 0) {
+          const current = queue.shift()
+          
+          if (current.q === targetQ && current.r === targetR) {
+            return current.cost
+          }
+          
+          const neighbors = getNeighbors(current, allHexes)
+          
+          for (const neighbor of neighbors) {
+            const key = `${neighbor.q},${neighbor.r}`
+            if (visited.has(key)) continue
+            
+            // Check terrain
+            const terrain = terrainMap[key] || 'PLAIN'
+            const terrainData = TERRAIN_TYPES[terrain]
+            
+            if (!terrainData.passable) continue
+            
+            // Check if occupied by any unit (except the moving unit)
+            if (isHexOccupied(neighbor.q, neighbor.r, units.filter(u => u.id !== unit.id))) continue
+            
+            visited.add(key)
+            queue.push({ ...neighbor, cost: current.cost + terrainData.moveCost })
+          }
+        }
+        
+        return Infinity // Should not happen if reachable
+      }
+      
+      const actualCost = getMovementCost(unit.q, unit.r, targetQ, targetR, G.hexes, G.units, G.terrainMap)
+      
       // Move the unit
       const oldQ = unit.q
       const oldR = unit.r
       unit.q = targetQ
       unit.r = targetR
       unit.s = -targetQ - targetR
-      unit.hasMoved = true
+      unit.movePoints -= actualCost
+      unit.hasMoved = unit.movePoints <= 0 // Mark as moved if no movement points left
       
       G.log.push(`Player ${playerID}'s ${unit.name} moved from (${oldQ}, ${oldR}) to (${targetQ}, ${targetR})`)
     },
