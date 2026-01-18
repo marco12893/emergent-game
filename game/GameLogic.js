@@ -482,6 +482,46 @@ const battlePhase = {
       
       events.endTurn()
     },
+    
+    toggleRetreatMode: ({ G, ctx }) => {
+      // Only allow retreat after turn 10
+      if (G.turn >= 10) {
+        G.retreatModeActive = !G.retreatModeActive
+        G.log.push(G.retreatModeActive ? '🚨 Retreat mode ACTIVATED!' : 'Retreat mode deactivated.')
+      }
+    },
+    
+    retreatUnit: ({ G, ctx, playerID }, unitId, targetQ, targetR) => {
+      const unit = G.units.find(u => u.id === unitId)
+      
+      if (!unit || unit.ownerID !== playerID) {
+        return INVALID_MOVE
+      }
+      
+      if (!G.retreatModeActive) {
+        return INVALID_MOVE
+      }
+      
+      // Check if target is an extraction hex
+      const isExtraction = G.extractionHexes.some(h => h.q === targetQ && h.r === targetR)
+      if (!isExtraction) {
+        return INVALID_MOVE
+      }
+      
+      // Check if unit can reach it
+      const reachable = getReachableHexes(unit, G.hexes, G.units, G.terrainMap)
+      const canReach = reachable.some(h => h.q === targetQ && h.r === targetR)
+      
+      if (!canReach) {
+        return INVALID_MOVE
+      }
+      
+      // Remove unit (retreat successful)
+      const unitIndex = G.units.findIndex(u => u.id === unitId)
+      G.units.splice(unitIndex, 1)
+      
+      G.log.push(`Player ${playerID}'s ${unit.name} successfully retreated!`)
+    },
   },
   
   turn: {
