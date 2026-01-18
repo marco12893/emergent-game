@@ -477,6 +477,16 @@ export async function POST(request) {
             })
           }
           
+          // Increment turn when switching from player 1 to player 0 (new round)
+          if (game.currentPlayer === '1' && payload.playerID === '1') {
+            if (game.turn === undefined) {
+              game.turn = 1
+            } else {
+              game.turn += 1
+            }
+            game.log.push(`=== Turn ${game.turn} ===`)
+          }
+          
           game.currentPlayer = game.currentPlayer === '0' ? '1' : '0'
           game.units.forEach(unit => {
             unit.hasMoved = false
@@ -507,7 +517,12 @@ export async function POST(request) {
           
           if (game.playersReady['0'] && game.playersReady['1']) {
             game.phase = 'battle'
-            game.log.push('⚔️ BATTLE PHASE BEGINS!')
+            game.currentPlayer = '0' // Reset to player 0 for fair turn order
+            game.log.push('⚔️ BATTLE PHASE BEGINS! Player 0 gets the first turn.')
+          } else {
+            // Auto end turn after ready for battle in setup phase
+            game.currentPlayer = game.currentPlayer === '0' ? '1' : '0'
+            game.log.push(`Player ${payload.playerID} is ready. Turn passes to Player ${game.currentPlayer}.`)
           }
           game.lastUpdate = Date.now()
           break
@@ -537,6 +552,66 @@ export async function POST(request) {
           'Access-Control-Allow-Headers': 'Content-Type',
         }
       })
+    }
+    
+    // Check victory conditions after each action
+    if (game.phase === 'battle') {
+      const aliveUnits = game.units.filter(u => u.currentHP > 0)
+      const p0Alive = aliveUnits.filter(u => u.ownerID === '0').length
+      const p1Alive = aliveUnits.filter(u => u.ownerID === '1').length
+      
+      let victoryInfo = null
+      
+      if (p0Alive === 0 && p1Alive > 0) {
+        victoryInfo = {
+          winner: '1',
+          turn: game.turn || 1,
+          victoryType: 'elimination',
+          message: `Player 1 wins by eliminating all enemy units in ${game.turn || 1} turns!`
+        }
+      } else if (p1Alive === 0 && p0Alive > 0) {
+        victoryInfo = {
+          winner: '0',
+          turn: game.turn || 1,
+          victoryType: 'elimination',
+          message: `Player 0 wins by eliminating all enemy units in ${game.turn || 1} turns!`
+        }
+      } else if (p0Alive === 0 && p1Alive === 0) {
+        victoryInfo = {
+          draw: true,
+          turn: game.turn || 1,
+          victoryType: 'mutual_destruction',
+          message: `Draw! Both players eliminated in ${game.turn || 1} turns!`
+        }
+      } else if ((game.turn || 1) >= 50) {
+        if (p0Alive > p1Alive) {
+          victoryInfo = {
+            winner: '0',
+            turn: game.turn,
+            victoryType: 'turn_limit',
+            message: `Player 0 wins by having more units after ${game.turn} turns!`
+          }
+        } else if (p1Alive > p0Alive) {
+          victoryInfo = {
+            winner: '1',
+            turn: game.turn,
+            victoryType: 'turn_limit',
+            message: `Player 1 wins by having more units after ${game.turn} turns!`
+          }
+        } else {
+          victoryInfo = {
+            draw: true,
+            turn: game.turn,
+            victoryType: 'turn_limit_draw',
+            message: `Draw! Equal units after ${game.turn} turns!`
+          }
+        }
+      }
+      
+      if (victoryInfo) {
+        game.gameOver = victoryInfo
+        game.log.push(`🎮 GAME OVER: ${victoryInfo.message}`)
+      }
     }
     
     // Save updated game state

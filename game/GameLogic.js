@@ -263,9 +263,14 @@ const setupPhase = {
       G.units.splice(unitIndex, 1)
     },
     
-    readyForBattle: ({ G, ctx, playerID }) => {
+    readyForBattle: ({ G, ctx, playerID, events }) => {
       G.playersReady[playerID] = true
       G.log.push(`Player ${playerID} is ready for battle!`)
+      
+      // Auto end turn after ready for battle in setup phase
+      if (ctx.phase === 'setup') {
+        events.endTurn()
+      }
     },
     
     endTurn: ({ G, ctx, events, playerID }) => {
@@ -399,6 +404,12 @@ const battlePhase = {
   turn: {
     minMoves: 0,
     maxMoves: 100, // Allow multiple actions per turn
+    onBegin: ({ G, ctx }) => {
+      // Ensure player 0 always starts the battle phase
+      if (ctx.turn === 0) {
+        G.log.push('⚔️ BATTLE PHASE BEGINS! Player 0 gets the first turn.')
+      }
+    },
   },
 }
 
@@ -455,18 +466,37 @@ export const MedievalBattleGame = {
       units: [],
       selectedUnitId: null,
       playersReady: { '0': false, '1': false },
+      turn: 1,
+      phase: 'setup',
       log: ['Game started! Place your units in your spawn zone.'],
     }
   },
   
   phases: {
     setup: setupPhase,
-    battle: battlePhase,
+    battle: {
+      ...battlePhase,
+      onPhaseBegin: ({ G, ctx }) => {
+        // Reset currentPlayer to 0 when entering battle phase
+        G.log.push('⚔️ BATTLE PHASE BEGINS! Player 0 gets the first turn.')
+      },
+    },
   },
   
   turn: {
     minMoves: 0,
-    maxMoves: 100,
+    maxMoves: 100, // Allow multiple actions per turn
+    onBegin: ({ G, ctx }) => {
+      // Increment turn at the start of each round (when player 0's turn begins)
+      if (ctx.currentPlayer === '0' && ctx.phase === 'battle') {
+        if (G.turn === undefined) {
+          G.turn = 1
+        } else {
+          G.turn += 1
+        }
+        G.log.push(`=== Turn ${G.turn} ===`)
+      }
+    },
   },
   
   endIf: ({ G, ctx }) => {
@@ -480,13 +510,54 @@ export const MedievalBattleGame = {
     const p1Alive = aliveUnits.filter(u => u.ownerID === '1').length
     
     if (p0Alive === 0 && p1Alive > 0) {
-      return { winner: '1' }
+      return { 
+        winner: '1', 
+        turn: G.turn,
+        victoryType: 'elimination',
+        message: `Player 1 wins by eliminating all enemy units in ${G.turn} turns!`
+      }
     }
     if (p1Alive === 0 && p0Alive > 0) {
-      return { winner: '0' }
+      return { 
+        winner: '0', 
+        turn: G.turn,
+        victoryType: 'elimination',
+        message: `Player 0 wins by eliminating all enemy units in ${G.turn} turns!`
+      }
     }
     if (p0Alive === 0 && p1Alive === 0) {
-      return { draw: true }
+      return { 
+        draw: true, 
+        turn: G.turn,
+        victoryType: 'mutual_destruction',
+        message: `Draw! Both players eliminated in ${G.turn} turns!`
+      }
+    }
+    
+    // Optional: Turn limit victory (e.g., after 50 turns, player with more units wins)
+    if (G.turn >= 50) {
+      if (p0Alive > p1Alive) {
+        return { 
+          winner: '0', 
+          turn: G.turn,
+          victoryType: 'turn_limit',
+          message: `Player 0 wins by having more units after ${G.turn} turns!`
+        }
+      } else if (p1Alive > p0Alive) {
+        return { 
+          winner: '1', 
+          turn: G.turn,
+          victoryType: 'turn_limit',
+          message: `Player 1 wins by having more units after ${G.turn} turns!`
+        }
+      } else {
+        return { 
+          draw: true, 
+          turn: G.turn,
+          victoryType: 'turn_limit_draw',
+          message: `Draw! Equal units after ${G.turn} turns!`
+        }
+      }
     }
   },
   

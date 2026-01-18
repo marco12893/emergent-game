@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { UNIT_TYPES } from '@/game/GameLogic'
 import GameBoard from '@/components/GameBoard'
+import VictoryScreen from '@/components/VictoryScreen'
 
 // Unit Info Panel Component
 const UnitInfoPanel = ({ unit, isSelected }) => {
@@ -78,6 +79,7 @@ export default function HTTPMultiplayerPage() {
   const [loading, setLoading] = useState(false)
   const [highlightedHexes, setHighlightedHexes] = useState([])
   const [attackableHexes, setAttackableHexes] = useState([])
+  const [showVictoryScreen, setShowVictoryScreen] = useState(true) // Default to true, can be closed
   
   // Dynamic server URL for production
   const getServerUrl = () => {
@@ -453,6 +455,11 @@ export default function HTTPMultiplayerPage() {
             <div className="text-sm text-slate-400">
               🔄 Auto-updating
             </div>
+            {gameState?.phase === 'battle' && (
+              <div className="px-3 py-1 bg-purple-600 rounded text-sm font-semibold">
+                🔄 Turn {gameState.turn || 1}
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -559,22 +566,13 @@ export default function HTTPMultiplayerPage() {
               
               <div className="space-y-2">
                 {gameState?.phase === 'setup' && (
-                  <>
-                    <button
-                      onClick={readyForBattle}
-                      disabled={!isMyTurn}
-                      className="w-full py-3 rounded-lg font-bold bg-amber-500 hover:bg-amber-400 disabled:bg-slate-600 transition-all"
-                    >
-                      🚀 Ready for Battle
-                    </button>
-                    <button
-                      onClick={endTurn}
-                      disabled={!isMyTurn}
-                      className="w-full py-3 rounded-lg font-bold bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 transition-all"
-                    >
-                      ⏭️ End Turn
-                    </button>
-                  </>
+                  <button
+                    onClick={readyForBattle}
+                    disabled={!isMyTurn}
+                    className="w-full py-3 rounded-lg font-bold bg-amber-500 hover:bg-amber-400 disabled:bg-slate-600 transition-all"
+                  >
+                    🚀 Ready for Battle
+                  </button>
                 )}
                 
                 {gameState?.phase === 'battle' && (
@@ -603,6 +601,18 @@ export default function HTTPMultiplayerPage() {
           </div>
         </div>
       </div>
+      
+      {/* Victory Screen */}
+      {showVictoryScreen && gameState?.gameOver && (
+        <VictoryScreen
+          gameOver={gameState.gameOver}
+          winner={gameState.gameOver?.winner}
+          victoryData={gameState.gameOver}
+          onClose={() => setShowVictoryScreen(false)}
+          playerID={playerID}
+          units={gameState.units}
+        />
+      )}
     </div>
   )
 }

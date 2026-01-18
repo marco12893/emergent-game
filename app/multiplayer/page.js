@@ -5,6 +5,7 @@ import { Client } from 'boardgame.io/react'
 import { SocketIO } from 'boardgame.io/multiplayer'
 import { MedievalBattleGame, UNIT_TYPES, getReachableHexes, getAttackableHexes, hexDistance } from '@/game/GameLogic'
 import GameBoard from '@/components/GameBoard'
+import VictoryScreen from '@/components/VictoryScreen'
 
 // Unit Info Panel Component
 const UnitInfoPanel = ({ unit, isSelected }) => {
@@ -72,6 +73,7 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
   const [highlightedHexes, setHighlightedHexes] = useState([])
   const [attackableHexes, setAttackableHexes] = useState([])
   const [selectedUnitType, setSelectedUnitType] = useState('SWORDSMAN')
+  const [showVictoryScreen, setShowVictoryScreen] = useState(true) // Default to true, can be closed
   
   const currentPlayer = ctx.currentPlayer
   const phase = ctx.phase
@@ -178,6 +180,11 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
             <div className="text-sm text-slate-400">
               Phase: {phase?.toUpperCase() || 'SETUP'}
             </div>
+            {phase === 'battle' && (
+              <div className="px-3 py-1 bg-purple-600 rounded text-sm font-semibold">
+                🔄 Turn {G.turn || 1}
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -302,31 +309,19 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
               <h3 className="text-lg font-semibold text-amber-400 mb-3">🎮 Game Controls</h3>
               
               {phase === 'setup' && (
-                <>
-                  <button
-                    onClick={() => moves.readyForBattle()}
-                    disabled={!isMyTurn || myUnits.length === 0}
-                    className={`w-full py-3 rounded-lg font-bold transition-all ${
-                      G.playersReady[playerID]
-                        ? 'bg-green-600 cursor-not-allowed'
-                        : myUnits.length === 0
-                        ? 'bg-slate-600 cursor-not-allowed'
-                        : 'bg-amber-500 hover:bg-amber-400'
-                    }`}
-                  >
-                    {G.playersReady[playerID] ? '✓ Ready!' : '🚀 Ready for Battle'}
-                  </button>
-                  
-                  {/* End Turn Button for Setup Phase */}
-                  {isMyTurn && (
-                    <button
-                      onClick={() => moves.endTurn()}
-                      className="w-full py-2 rounded-lg font-semibold bg-blue-600 hover:bg-blue-500 transition-all text-sm mt-2"
-                    >
-                      ⏭️ End Turn (Pass to Other Player)
-                    </button>
-                  )}
-                </>
+                <button
+                  onClick={() => moves.readyForBattle()}
+                  disabled={!isMyTurn || myUnits.length === 0}
+                  className={`w-full py-3 rounded-lg font-bold transition-all ${
+                    G.playersReady[playerID]
+                      ? 'bg-green-600 cursor-not-allowed'
+                      : myUnits.length === 0
+                      ? 'bg-slate-600 cursor-not-allowed'
+                      : 'bg-amber-500 hover:bg-amber-400'
+                  }`}
+                >
+                  {G.playersReady[playerID] ? '✓ Ready!' : '🚀 Ready for Battle'}
+                </button>
               )}
               
               {phase === 'battle' && (
@@ -354,6 +349,18 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
           </div>
         </div>
       </div>
+      
+      {/* Victory Screen */}
+      {showVictoryScreen && ctx.gameover && (
+        <VictoryScreen
+          gameOver={ctx.gameover}
+          winner={ctx.gameover?.winner}
+          victoryData={ctx.gameover}
+          onClose={() => setShowVictoryScreen(false)}
+          playerID={playerID}
+          units={G.units}
+        />
+      )}
     </div>
   )
 }
