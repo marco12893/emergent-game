@@ -210,6 +210,11 @@ export const getReachableHexes = (unit, allHexes, units, terrainMap) => {
       const terrain = terrainMap[key] || 'PLAIN'
       const terrainData = TERRAIN_TYPES[terrain]
       
+      // Naval units can only move on water, ground units cannot move on water
+      const isNaval = unit.isNaval || false
+      if (isNaval && !terrainData.waterOnly) continue
+      if (!isNaval && terrainData.waterOnly) continue
+      
       if (!terrainData.passable) continue
       
       const moveCost = terrainData.moveCost
