@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getGames, getGame } from '@/lib/gameState'
+import { sanitizeGameId } from '@/lib/inputSanitization'
 
 // Handle OPTIONS requests for CORS preflight
 export async function OPTIONS() {
@@ -17,10 +18,13 @@ export async function GET(request, { params }) {
   try {
     const { id } = params // Extract game ID from dynamic route params
     
-    console.log('🔍 Game route called for gameId:', id)
+    // Sanitize game ID
+    const sanitizedGameId = sanitizeGameId(id)
+    
+    console.log('🔍 Game route called for gameId:', sanitizedGameId)
     
     // Health check
-    if (id === 'health') {
+    if (sanitizedGameId === 'health') {
       const games = await getGames()
       return NextResponse.json({ 
         status: 'OK', 
@@ -37,9 +41,9 @@ export async function GET(request, { params }) {
     }
     
     // Validate gameId
-    if (!id || id === '') {
+    if (!sanitizedGameId || sanitizedGameId === '') {
       return NextResponse.json({ 
-        error: 'Missing gameId parameter' 
+        error: 'Missing or invalid gameId parameter' 
       }, { 
         status: 400,
         headers: {
@@ -53,14 +57,14 @@ export async function GET(request, { params }) {
     // Get game state
     let game
     try {
-      game = await getGame(id)
+      game = await getGame(sanitizedGameId)
       console.log('🎮 Found game:', game ? 'YES' : 'NO')
     } catch (kvError) {
       console.error('❌ KV getGame failed:', kvError)
       return NextResponse.json({ 
         error: 'Database error: Unable to retrieve game',
         details: 'KV service temporarily unavailable',
-        gameId: id
+        gameId: sanitizedGameId
       }, { 
         status: 503,
         headers: {

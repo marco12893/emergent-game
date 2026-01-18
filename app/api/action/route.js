@@ -1,5 +1,14 @@
 import { NextResponse } from 'next/server'
 import { getGame, setGame } from '@/lib/gameState'
+import { 
+  sanitizeGameId, 
+  sanitizePlayerID, 
+  sanitizeUnitId, 
+  sanitizeUnitType, 
+  sanitizeCoordinate, 
+  sanitizeAction,
+  validatePayload 
+} from '@/lib/inputSanitization'
 
 // ============================================
 // UNIT & TERRAIN DEFINITIONS
@@ -204,12 +213,13 @@ export async function POST(request) {
     const body = await request.json()
     const { gameId, action: gameAction, payload } = body
     
-    console.log(`🎮 Action: ${gameAction} for game ${gameId}`)
+    // Sanitize and validate inputs
+    const sanitizedGameId = sanitizeGameId(gameId)
+    const sanitizedAction = sanitizeAction(gameAction)
     
-    // Validate input
-    if (!gameId || !gameAction) {
+    if (!sanitizedGameId || !sanitizedAction) {
       return NextResponse.json({ 
-        error: 'Missing required fields: gameId and action' 
+        error: 'Invalid or missing required fields: gameId and action' 
       }, { 
         status: 400,
         headers: {
@@ -220,9 +230,11 @@ export async function POST(request) {
       })
     }
     
+    console.log(`🎮 Action: ${sanitizedAction} for game ${sanitizedGameId}`)
+    
     let game
     try {
-      game = await getGame(gameId)
+      game = await getGame(sanitizedGameId)
     } catch (kvError) {
       console.error('❌ KV getGame failed:', kvError)
       return NextResponse.json({ 
@@ -239,10 +251,10 @@ export async function POST(request) {
     }
     
     if (!game) {
-      console.log('❌ Game not found:', gameId)
+      console.log('❌ Game not found:', sanitizedGameId)
       return NextResponse.json({ 
         error: 'Game not found',
-        gameId: gameId
+        gameId: sanitizedGameId
       }, { 
         status: 404,
         headers: {
@@ -257,10 +269,18 @@ export async function POST(request) {
     try {
       switch (gameAction) {
         case 'placeUnit':
-          // Validate payload
-          if (!payload?.unitType || payload?.q === undefined || payload?.r === undefined || payload?.playerID === undefined) {
+          // Validate and sanitize payload
+          const placeUnitSchema = {
+            unitType: { required: true, sanitize: sanitizeUnitType },
+            q: { required: true, sanitize: sanitizeCoordinate },
+            r: { required: true, sanitize: sanitizeCoordinate },
+            playerID: { required: true, sanitize: sanitizePlayerID }
+          }
+          
+          const placeUnitValidation = validatePayload(payload, placeUnitSchema)
+          if (placeUnitValidation.error) {
             return NextResponse.json({ 
-              error: 'Missing required fields for placeUnit: unitType, q, r, playerID' 
+              error: 'Invalid payload for placeUnit: ' + placeUnitValidation.error 
             }, { 
               status: 400,
               headers: {
@@ -271,11 +291,13 @@ export async function POST(request) {
             })
           }
           
+          const { unitType, q, r, playerID } = placeUnitValidation.sanitized
+          
           // Unit placement logic
-          const stats = UNIT_TYPES[payload.unitType]
+          const stats = UNIT_TYPES[unitType]
           if (!stats) {
             return NextResponse.json({ 
-              error: 'Invalid unit type: ' + payload.unitType 
+              error: 'Invalid unit type: ' + unitType 
             }, { 
               status: 400,
               headers: {
@@ -287,7 +309,7 @@ export async function POST(request) {
           }
           
           // Check if unit is naval and terrain is water
-          const terrainKey = `${payload.q},${payload.r}`
+          const terrainKey = `${q},${r}`
           const terrain = game.terrainMap[terrainKey] || 'PLAIN'
           const terrainData = TERRAIN_TYPES[terrain]
           
@@ -318,9 +340,9 @@ export async function POST(request) {
           }
           
           // Check spawn zone restriction
-          const inSpawnZone = payload.playerID === '0' ? 
-            payload.q <= -5 : 
-            payload.q >= 4
+          const inSpawnZone = playerID === '0' ? 
+            q <= -5 : 
+            q >= 4
           if (!inSpawnZone) {
             return NextResponse.json({ 
               error: 'Units can only be placed in your spawn zone' 
@@ -335,7 +357,7 @@ export async function POST(request) {
           }
           
           // Check if hex is already occupied
-          const isOccupied = game.units.some(u => u.q === payload.q && u.r === payload.r && u.currentHP > 0)
+          const isOccupied = game.units.some(u => u.q === q && u.r === r && u.currentHP > 0)
           if (isOccupied) {
             return NextResponse.json({ 
               error: 'Hex is already occupied by another unit' 
@@ -351,13 +373,13 @@ export async function POST(request) {
           
           const newUnit = {
             id: Date.now().toString(),
-            type: payload.unitType,
+            type: unitType,
             name: stats.name,
             emoji: stats.emoji,
-            ownerID: payload.playerID,
-            q: payload.q,
-            r: payload.r,
-            s: -payload.q - payload.r,
+            ownerID: playerID,
+            q: q,
+            r: r,
+            s: -q - r,
             currentHP: stats.maxHP,
             maxHP: stats.maxHP,
             attackPower: stats.attackPower,
@@ -371,7 +393,7 @@ export async function POST(request) {
           }
           
           game.units.push(newUnit)
-          game.log.push(`Player ${payload.playerID} placed ${newUnit.name} at (${payload.q}, ${payload.r})`)
+          game.log.push(`Player ${playerID} placed ${newUnit.name} at (${q}, ${r})`)
           game.lastUpdate = Date.now()
           break
           

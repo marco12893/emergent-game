@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getGame, setGame, createNewGame } from '@/lib/gameState'
+import { sanitizeGameId, sanitizePlayerID } from '@/lib/inputSanitization'
 
 // Handle OPTIONS requests for CORS preflight
 export async function OPTIONS() {
@@ -18,12 +19,13 @@ export async function POST(request) {
     const body = await request.json()
     const { gameId, playerID } = body
     
-    console.log(`🎮 Player ${playerID} trying to join game ${gameId}`)
+    // Sanitize and validate inputs
+    const sanitizedGameId = sanitizeGameId(gameId)
+    const sanitizedPlayerID = sanitizePlayerID(playerID)
     
-    // Validate input
-    if (!gameId || playerID === undefined) {
+    if (!sanitizedGameId || sanitizedPlayerID === null) {
       return NextResponse.json({ 
-        error: 'Missing required fields: gameId and playerID' 
+        error: 'Invalid or missing required fields: gameId and playerID' 
       }, { 
         status: 400,
         headers: {
@@ -34,9 +36,11 @@ export async function POST(request) {
       })
     }
     
+    console.log(`🎮 Player ${sanitizedPlayerID} trying to join game ${sanitizedGameId}`)
+    
     let game
     try {
-      game = await getGame(gameId)
+      game = await getGame(sanitizedGameId)
     } catch (kvError) {
       console.error('❌ KV getGame failed:', kvError)
       return NextResponse.json({ 
@@ -73,11 +77,11 @@ export async function POST(request) {
     }
     
     // Add player to game
-    game.players[playerID] = { joined: true, joinTime: Date.now() }
+    game.players[sanitizedPlayerID] = { joined: true, joinTime: Date.now() }
     
     // Save updated game state
     try {
-      await setGame(gameId, game)
+      await setGame(sanitizedGameId, game)
     } catch (saveError) {
       console.error('❌ KV setGame failed:', saveError)
       return NextResponse.json({ 
