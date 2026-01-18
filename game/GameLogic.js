@@ -502,12 +502,16 @@ const battlePhase = {
 export const MedievalBattleGame = {
   name: 'medieval-battle',
   
-  setup: ({ ctx }) => {
-    // Generate hex map data
+  setup: ({ ctx, setupData }) => {
+    // Get game mode from setup data or default to ELIMINATION
+    const gameMode = setupData?.gameMode || 'ELIMINATION'
+    const modeConfig = GAME_MODES[gameMode]
+    
+    // Generate hex map data based on game mode
     const hexes = []
     const terrainMap = {}
-    const MAP_WIDTH = 6
-    const MAP_HEIGHT = 4
+    const MAP_WIDTH = modeConfig.mapSize.width
+    const MAP_HEIGHT = modeConfig.mapSize.height
     
     // Generate hexes
     for (let r = -MAP_HEIGHT; r <= MAP_HEIGHT; r++) {
@@ -516,32 +520,68 @@ export const MedievalBattleGame = {
         const s = -q - r
         hexes.push({ q, r, s })
         
-        // Assign terrain
+        // Assign terrain based on game mode
         let terrain = 'PLAIN'
         
-        // Mountains in center
-        const mountainPositions = [
-          { q: 0, r: -2 }, { q: 0, r: -1 }, { q: 1, r: -2 },
-          { q: -1, r: 0 }, { q: 0, r: 0 },
-        ]
-        if (mountainPositions.some(pos => pos.q === q && pos.r === r)) {
-          terrain = 'MOUNTAIN'
-        }
-        
-        // Forests
-        const forestPositions = [
-          { q: -4, r: 0 }, { q: -4, r: 1 }, { q: -3, r: 0 }, { q: -5, r: 2 },
-          { q: 3, r: -1 }, { q: 4, r: -2 }, { q: 4, r: -1 }, { q: 3, r: 0 },
-          { q: -1, r: 3 }, { q: 0, r: 3 }, { q: 1, r: 2 },
-          { q: -1, r: -3 }, { q: 0, r: -4 }, { q: 1, r: -4 },
-        ]
-        if (forestPositions.some(pos => pos.q === q && pos.r === r)) {
-          terrain = 'FOREST'
+        if (gameMode === 'ATTACK_DEFEND') {
+          // Attack & Defend map with Paris in center
+          // Water around the edges
+          if (Math.abs(q) >= MAP_WIDTH - 1 || Math.abs(r) >= MAP_HEIGHT - 1) {
+            terrain = 'WATER'
+          }
+          // Paris objective area (forests and hills for defense)
+          else if (modeConfig.objectiveHexes.some(pos => pos.q === q && pos.r === r)) {
+            terrain = 'HILLS'
+          }
+          // Mountains as obstacles
+          else if ((q === 2 && r === -1) || (q === -2 && r === 1) || (q === 0 && r === -3)) {
+            terrain = 'MOUNTAIN'
+          }
+          // Forests
+          else if ((q === -3 && r === 0) || (q === 3 && r === -2) || (q === -1 && r === 3) || (q === 1, r === -4)) {
+            terrain = 'FOREST'
+          }
+        } else {
+          // ELIMINATION mode - original terrain
+          // Mountains in center
+          const mountainPositions = [
+            { q: 0, r: -2 }, { q: 0, r: -1 }, { q: 1, r: -2 },
+            { q: -1, r: 0 }, { q: 0, r: 0 },
+          ]
+          if (mountainPositions.some(pos => pos.q === q && pos.r === r)) {
+            terrain = 'MOUNTAIN'
+          }
+          
+          // Forests
+          const forestPositions = [
+            { q: -4, r: 0 }, { q: -4, r: 1 }, { q: -3, r: 0 }, { q: -5, r: 2 },
+            { q: 3, r: -1 }, { q: 4, r: -2 }, { q: 4, r: -1 }, { q: 3, r: 0 },
+            { q: -1, r: 3 }, { q: 0, r: 3 }, { q: 1, r: 2 },
+            { q: -1, r: -3 }, { q: 0, r: -4 }, { q: 1, r: -4 },
+          ]
+          if (forestPositions.some(pos => pos.q === q && pos.r === r)) {
+            terrain = 'FOREST'
+          }
+          
+          // Water at edges
+          if (Math.abs(q) >= MAP_WIDTH || Math.abs(r) >= MAP_HEIGHT) {
+            terrain = 'WATER'
+          }
         }
         
         terrainMap[`${q},${r}`] = terrain
       }
     }
+    
+    // Define extraction hexes (edges of map for retreat)
+    const extractionHexes = []
+    hexes.forEach(hex => {
+      if (Math.abs(hex.q) >= MAP_WIDTH - 1 || Math.abs(hex.r) >= MAP_HEIGHT - 1) {
+        if (terrainMap[`${hex.q},${hex.r}`] !== 'WATER' && terrainMap[`${hex.q},${hex.r}`] !== 'MOUNTAIN') {
+          extractionHexes.push({ q: hex.q, r: hex.r })
+        }
+      }
+    })
     
     return {
       hexes,
@@ -552,6 +592,12 @@ export const MedievalBattleGame = {
       turn: 1,
       phase: 'setup',
       log: ['Game started! Place your units in your spawn zone.'],
+      gameMode: gameMode,
+      retreatModeActive: false,
+      extractionHexes: extractionHexes,
+      objectiveHexes: modeConfig.objectiveHexes || [],
+      turnLimit: modeConfig.turnLimit || null,
+      objectiveControl: { '0': 0, '1': 0 }, // Track turns controlling objective
     }
   },
   
