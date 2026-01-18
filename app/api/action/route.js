@@ -2,6 +2,104 @@ import { NextResponse } from 'next/server'
 import { getGame, setGame } from '@/lib/gameState'
 
 // ============================================
+// UNIT & TERRAIN DEFINITIONS
+// ============================================
+
+const UNIT_TYPES = {
+  SWORDSMAN: {
+    type: 'SWORDSMAN',
+    name: 'Swordsman',
+    emoji: '⚔️',
+    maxHP: 100,
+    attackPower: 25,
+    movePoints: 2,
+    range: 1,
+    description: 'Balanced infantry unit.',
+  },
+  ARCHER: {
+    type: 'ARCHER',
+    name: 'Archer',
+    emoji: '🏹',
+    maxHP: 60,
+    attackPower: 30,
+    movePoints: 2,
+    range: 2,
+    description: 'Ranged unit with extended range.',
+  },
+  KNIGHT: {
+    type: 'KNIGHT',
+    name: 'Knight',
+    emoji: '🐴',
+    maxHP: 150,
+    attackPower: 30,
+    movePoints: 3,
+    range: 1,
+    description: 'Heavy cavalry with high HP and movement.',
+  },
+  MILITIA: {
+    type: 'MILITIA',
+    name: 'Militia',
+    emoji: '🗡️',
+    maxHP: 40,
+    attackPower: 20,
+    movePoints: 2,
+    range: 1,
+    description: 'Light infantry unit.',
+  },
+  CATAPULT: {
+    type: 'CATAPULT',
+    name: 'Catapult',
+    emoji: '🏰',
+    maxHP: 40,
+    attackPower: 50,
+    movePoints: 1,
+    range: 3,
+    description: 'Siege weapon with high damage but cannot move and attack in same turn.',
+  },
+  WARSHIP: {
+    type: 'WARSHIP',
+    name: 'Warship',
+    emoji: '⛵',
+    maxHP: 120,
+    attackPower: 30,
+    movePoints: 3,
+    range: 2,
+    isNaval: true,
+    description: 'Naval unit that can only move on water.',
+  },
+}
+
+const GAME_MODES = {
+  ELIMINATION: {
+    id: 'ELIMINATION',
+    name: 'Total Elimination',
+    description: 'Eliminate all enemy units to win',
+    mapSize: { width: 6, height: 4 },
+  },
+  ATTACK_DEFEND: {
+    id: 'ATTACK_DEFEND',
+    name: 'Attack & Defend',
+    description: 'Defender must hold Paris for 20 turns. Attacker must capture it.',
+    mapSize: { width: 8, height: 6 },
+    objectiveHexes: [
+      { q: 0, r: 0 }, // Paris center
+      { q: 1, r: 0 },
+      { q: 0, r: 1 },
+      { q: -1, r: 1 },
+    ],
+    turnLimit: 20,
+  },
+}
+
+const TERRAIN_TYPES = {
+  PLAIN: { name: 'Plain', defenseBonus: 0, moveCost: 1, passable: true, waterOnly: false },
+  FOREST: { name: 'Forest', defenseBonus: 10, moveCost: 1, passable: true, waterOnly: false },
+  MOUNTAIN: { name: 'Mountain', defenseBonus: 0, moveCost: Infinity, passable: false, waterOnly: false },
+  WATER: { name: 'Water', defenseBonus: 0, moveCost: Infinity, passable: false, waterOnly: true },
+  HILLS: { name: 'Hills', defenseBonus: 15, moveCost: 2, passable: true, waterOnly: false },
+}
+
+// ============================================
 // HELPER FUNCTIONS
 // ============================================
 
@@ -60,12 +158,12 @@ const getReachableHexes = (unit, allHexes, units, terrainMap) => {
       
       // Check terrain
       const terrain = terrainMap[key] || 'PLAIN'
-      const terrainTypes = {
-        PLAIN: { moveCost: 1, passable: true },
-        FOREST: { moveCost: 1, passable: true },
-        MOUNTAIN: { moveCost: Infinity, passable: false }
-      }
-      const terrainData = terrainTypes[terrain]
+      const terrainData = TERRAIN_TYPES[terrain]
+      
+      // Naval units can only move on water, ground units cannot move on water
+      const isNaval = unit.isNaval || false
+      if (isNaval && !terrainData.waterOnly) continue
+      if (!isNaval && terrainData.waterOnly) continue
       
       if (!terrainData.passable) continue
       
@@ -174,18 +272,41 @@ export async function POST(request) {
           }
           
           // Unit placement logic
-          const unitStats = {
-            SWORDSMAN: { maxHP: 100, attackPower: 25, movePoints: 2, range: 1, emoji: '⚔️' },
-            ARCHER: { maxHP: 60, attackPower: 30, movePoints: 2, range: 2, emoji: '🏹' },
-            KNIGHT: { maxHP: 150, attackPower: 30, movePoints: 3, range: 1, emoji: '🐴' },
-            MILITIA: { maxHP: 40, attackPower: 20, movePoints: 2, range: 1, emoji: '🗡️' },
-            CATAPULT: { maxHP: 40, attackPower: 50, movePoints: 1, range: 3, emoji: '🏰' }
-          }
-          
-          const stats = unitStats[payload.unitType]
+          const stats = UNIT_TYPES[payload.unitType]
           if (!stats) {
             return NextResponse.json({ 
               error: 'Invalid unit type: ' + payload.unitType 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+          
+          // Check if unit is naval and terrain is water
+          const terrainKey = `${payload.q},${payload.r}`
+          const terrain = game.terrainMap[terrainKey] || 'PLAIN'
+          const terrainData = TERRAIN_TYPES[terrain]
+          
+          if (stats.isNaval && !terrainData.waterOnly) {
+            return NextResponse.json({ 
+              error: 'Naval units can only be placed on water tiles' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+          
+          if (!stats.isNaval && terrainData.waterOnly) {
+            return NextResponse.json({ 
+              error: 'Ground units cannot be placed on water tiles' 
             }, { 
               status: 400,
               headers: {
@@ -231,7 +352,7 @@ export async function POST(request) {
           const newUnit = {
             id: Date.now().toString(),
             type: payload.unitType,
-            name: payload.unitType.charAt(0) + payload.unitType.slice(1).toLowerCase(),
+            name: stats.name,
             emoji: stats.emoji,
             ownerID: payload.playerID,
             q: payload.q,
@@ -243,6 +364,7 @@ export async function POST(request) {
             movePoints: stats.movePoints,
             maxMovePoints: stats.movePoints,
             range: stats.range,
+            isNaval: stats.isNaval || false,
             hasMoved: false,
             hasAttacked: false,
             hasMovedOrAttacked: false // For catapult move-or-attack restriction
@@ -362,12 +484,12 @@ export async function POST(request) {
                   
                   // Check terrain
                   const terrain = terrainMap[key] || 'PLAIN'
-                  const terrainTypes = {
-                    PLAIN: { moveCost: 1, passable: true },
-                    FOREST: { moveCost: 1, passable: true },
-                    MOUNTAIN: { moveCost: Infinity, passable: false }
-                  }
-                  const terrainData = terrainTypes[terrain]
+                  const terrainData = TERRAIN_TYPES[terrain]
+                  
+                  // Naval units can only move on water, ground units cannot move on water
+                  const isNaval = movingUnit.isNaval || false
+                  if (isNaval && !terrainData.waterOnly) continue
+                  if (!isNaval && terrainData.waterOnly) continue
                   
                   if (!terrainData.passable) continue
                   
@@ -446,12 +568,7 @@ export async function POST(request) {
             // Calculate terrain defense bonus for target
             const targetTerrainKey = `${target.q},${target.r}`
             const targetTerrain = game.terrainMap[targetTerrainKey] || 'PLAIN'
-            const terrainTypes = {
-              PLAIN: { defenseBonus: 0 },
-              FOREST: { defenseBonus: 10 },
-              MOUNTAIN: { defenseBonus: 0 }
-            }
-            const terrainData = terrainTypes[targetTerrain]
+            const terrainData = TERRAIN_TYPES[targetTerrain]
             const defenseBonus = terrainData.defenseBonus || 0
             
             const baseDamage = attacker.attackPower
@@ -495,7 +612,7 @@ export async function POST(request) {
                 // Calculate attacker's terrain defense bonus for counter-attack
                 const attackerTerrainKey = `${attacker.q},${attacker.r}`
                 const attackerTerrain = game.terrainMap[attackerTerrainKey] || 'PLAIN'
-                const attackerTerrainData = terrainTypes[attackerTerrain]
+                const attackerTerrainData = TERRAIN_TYPES[attackerTerrain]
                 const attackerDefenseBonus = attackerTerrainData.defenseBonus || 0
                 
                 // Apply damage reduction to counter-attack based on target's HP
@@ -580,6 +697,34 @@ export async function POST(request) {
               game.turn += 1
             }
             game.log.push(`=== Turn ${game.turn} ===`)
+            
+            // Check objective control for Attack & Defend mode
+            if (game.gameMode === 'ATTACK_DEFEND') {
+              const aliveUnits = game.units.filter(u => u.currentHP > 0)
+              
+              // Check who controls the objective hexes
+              let p0Controls = 0
+              let p1Controls = 0
+              
+              game.objectiveHexes.forEach(objHex => {
+                const unitOnHex = aliveUnits.find(u => u.q === objHex.q && u.r === objHex.r)
+                if (unitOnHex) {
+                  if (unitOnHex.ownerID === '0') p0Controls++
+                  if (unitOnHex.ownerID === '1') p1Controls++
+                }
+              })
+              
+              // If one player controls all objective hexes, increment their control counter
+              if (p0Controls === game.objectiveHexes.length) {
+                game.objectiveControl['0']++
+                game.log.push(`Player 0 holds Paris! (${game.objectiveControl['0']} turns)`)
+              } else if (p1Controls === game.objectiveHexes.length) {
+                game.objectiveControl['1']++
+                game.log.push(`Player 1 holds Paris! (${game.objectiveControl['1']} turns)`)
+              } else {
+                game.log.push('Paris is contested!')
+              }
+            }
           }
           
           game.currentPlayer = game.currentPlayer === '0' ? '1' : '0'
@@ -622,6 +767,97 @@ export async function POST(request) {
           game.lastUpdate = Date.now()
           break
           
+        case 'toggleRetreatMode':
+          // Only allow retreat after turn 10
+          if (game.turn >= 10) {
+            game.retreatModeActive = !game.retreatModeActive
+            game.log.push(game.retreatModeActive ? '🚨 Retreat mode ACTIVATED!' : 'Retreat mode deactivated.')
+          }
+          game.lastUpdate = Date.now()
+          break
+          
+        case 'retreatUnit':
+          if (!payload?.unitId || payload?.targetQ === undefined || payload?.targetR === undefined) {
+            return NextResponse.json({ 
+              error: 'Missing required fields for retreatUnit: unitId, targetQ, targetR' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+          
+          const unit = game.units.find(u => u.id === payload.unitId)
+          
+          if (!unit || unit.ownerID !== payload.playerID) {
+            return NextResponse.json({ 
+              error: 'Invalid unit or ownership' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+          
+          if (!game.retreatModeActive) {
+            return NextResponse.json({ 
+              error: 'Retreat mode is not active' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+          
+          // Check if target is an extraction hex
+          const isExtraction = game.extractionHexes.some(h => h.q === payload.targetQ && h.r === payload.targetR)
+          if (!isExtraction) {
+            return NextResponse.json({ 
+              error: 'Target is not a valid extraction point' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+          
+          // Check if unit can reach it
+          const reachable = getReachableHexes(unit, game.hexes, game.units, game.terrainMap)
+          const canReach = reachable.some(h => h.q === payload.targetQ && h.r === payload.targetR)
+          
+          if (!canReach) {
+            return NextResponse.json({ 
+              error: 'Unit cannot reach extraction point' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+          
+          // Remove unit (retreat successful)
+          const unitIndex = game.units.findIndex(u => u.id === payload.unitId)
+          game.units.splice(unitIndex, 1)
+          
+          game.log.push(`Player ${payload.playerID}'s ${unit.name} successfully retreated!`)
+          game.lastUpdate = Date.now()
+          break
+          
         default:
           return NextResponse.json({ 
             error: 'Unknown action: ' + gameAction 
@@ -657,48 +893,95 @@ export async function POST(request) {
       
       let victoryInfo = null
       
-      if (p0Alive === 0 && p1Alive > 0) {
-        victoryInfo = {
-          winner: '1',
-          turn: game.turn || 1,
-          victoryType: 'elimination',
-          message: `Player 1 wins by eliminating all enemy units in ${game.turn || 1} turns!`
-        }
-      } else if (p1Alive === 0 && p0Alive > 0) {
-        victoryInfo = {
-          winner: '0',
-          turn: game.turn || 1,
-          victoryType: 'elimination',
-          message: `Player 0 wins by eliminating all enemy units in ${game.turn || 1} turns!`
-        }
-      } else if (p0Alive === 0 && p1Alive === 0) {
-        victoryInfo = {
-          draw: true,
-          turn: game.turn || 1,
-          victoryType: 'mutual_destruction',
-          message: `Draw! Both players eliminated in ${game.turn || 1} turns!`
-        }
-      } else if ((game.turn || 1) >= 50) {
-        if (p0Alive > p1Alive) {
-          victoryInfo = {
-            winner: '0',
-            turn: game.turn,
-            victoryType: 'turn_limit',
-            message: `Player 0 wins by having more units after ${game.turn} turns!`
-          }
-        } else if (p1Alive > p0Alive) {
+      // Attack & Defend mode victory conditions
+      if (game.gameMode === 'ATTACK_DEFEND') {
+        // Defender (Player 1) wins if they hold objective for required turns
+        if (game.objectiveControl['1'] >= game.turnLimit) {
           victoryInfo = {
             winner: '1',
-            turn: game.turn,
-            victoryType: 'turn_limit',
-            message: `Player 1 wins by having more units after ${game.turn} turns!`
+            turn: game.turn || 1,
+            victoryType: 'objective_defense',
+            message: `Player 1 (Defender) wins by holding Paris for ${game.turnLimit} turns!`
           }
-        } else {
+        }
+        
+        // Attacker (Player 0) wins if they capture all objective hexes
+        const p0ControlsAll = game.objectiveHexes.every(objHex => {
+          const unitOnHex = aliveUnits.find(u => u.q === objHex.q && u.r === objHex.r)
+          return unitOnHex && unitOnHex.ownerID === '0'
+        })
+        
+        if (p0ControlsAll && game.objectiveControl['0'] >= 3) {
+          victoryInfo = {
+            winner: '0',
+            turn: game.turn || 1,
+            victoryType: 'objective_capture',
+            message: `Player 0 (Attacker) wins by capturing Paris!`
+          }
+        }
+        
+        // Elimination still works as alternate victory
+        if (p1Alive === 0) {
+          victoryInfo = {
+            winner: '0',
+            turn: game.turn || 1,
+            victoryType: 'elimination',
+            message: `Player 0 wins by eliminating all defenders!`
+          }
+        }
+        if (p0Alive === 0) {
+          victoryInfo = {
+            winner: '1',
+            turn: game.turn || 1,
+            victoryType: 'elimination',
+            message: `Player 1 wins by eliminating all attackers!`
+          }
+        }
+      } else {
+        // Standard ELIMINATION mode
+        if (p0Alive === 0 && p1Alive > 0) {
+          victoryInfo = {
+            winner: '1',
+            turn: game.turn || 1,
+            victoryType: 'elimination',
+            message: `Player 1 wins by eliminating all enemy units in ${game.turn || 1} turns!`
+          }
+        } else if (p1Alive === 0 && p0Alive > 0) {
+          victoryInfo = {
+            winner: '0',
+            turn: game.turn || 1,
+            victoryType: 'elimination',
+            message: `Player 0 wins by eliminating all enemy units in ${game.turn || 1} turns!`
+          }
+        } else if (p0Alive === 0 && p1Alive === 0) {
           victoryInfo = {
             draw: true,
-            turn: game.turn,
-            victoryType: 'turn_limit_draw',
-            message: `Draw! Equal units after ${game.turn} turns!`
+            turn: game.turn || 1,
+            victoryType: 'mutual_destruction',
+            message: `Draw! Both players eliminated in ${game.turn || 1} turns!`
+          }
+        } else if ((game.turn || 1) >= 50) {
+          if (p0Alive > p1Alive) {
+            victoryInfo = {
+              winner: '0',
+              turn: game.turn,
+              victoryType: 'turn_limit',
+              message: `Player 0 wins by having more units after ${game.turn} turns!`
+            }
+          } else if (p1Alive > p0Alive) {
+            victoryInfo = {
+              winner: '1',
+              turn: game.turn,
+              victoryType: 'turn_limit',
+              message: `Player 1 wins by having more units after ${game.turn} turns!`
+            }
+          } else {
+            victoryInfo = {
+              draw: true,
+              turn: game.turn,
+              victoryType: 'turn_limit_draw',
+              message: `Draw! Equal units after ${game.turn} turns!`
+            }
           }
         }
       }

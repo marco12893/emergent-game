@@ -493,7 +493,7 @@ export default function HTTPMultiplayerPage() {
                   <p>💡 Click your units to select them</p>
                   <p>🟢 Green hexes = movement options (based on movement points)</p>
                   <p>🔴 Red hexes = attack targets</p>
-                  <p>⚔️ Swordsman: 2 move, 25 ATK | Archer: 1 move, 30 ATK | Knight: 3 move, 30 ATK</p>
+                  <p>⚔️ Swordsman: 2 move, 25 ATK | Archer: 2 move, 30 ATK | Knight: 3 move, 30 ATK | Militia: 2 move, 20 ATK | Catapult: 1 move, 50 ATK | Warship: 3 move, 30 ATK (naval)</p>
                 </div>
               )}
               
