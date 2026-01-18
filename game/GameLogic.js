@@ -664,6 +664,34 @@ export const MedievalBattleGame = {
           G.turn += 1
         }
         G.log.push(`=== Turn ${G.turn} ===`)
+        
+        // Check objective control for Attack & Defend mode
+        if (G.gameMode === 'ATTACK_DEFEND') {
+          const aliveUnits = G.units.filter(u => u.currentHP > 0)
+          
+          // Check who controls the objective hexes
+          let p0Controls = 0
+          let p1Controls = 0
+          
+          G.objectiveHexes.forEach(objHex => {
+            const unitOnHex = aliveUnits.find(u => u.q === objHex.q && u.r === objHex.r)
+            if (unitOnHex) {
+              if (unitOnHex.ownerID === '0') p0Controls++
+              if (unitOnHex.ownerID === '1') p1Controls++
+            }
+          })
+          
+          // If one player controls all objective hexes, increment their control counter
+          if (p0Controls === G.objectiveHexes.length) {
+            G.objectiveControl['0']++
+            G.log.push(`Player 0 holds Paris! (${G.objectiveControl['0']} turns)`)
+          } else if (p1Controls === G.objectiveHexes.length) {
+            G.objectiveControl['1']++
+            G.log.push(`Player 1 holds Paris! (${G.objectiveControl['1']} turns)`)
+          } else {
+            G.log.push('Paris is contested!')
+          }
+        }
       }
     },
   },
@@ -678,53 +706,100 @@ export const MedievalBattleGame = {
     const p0Alive = aliveUnits.filter(u => u.ownerID === '0').length
     const p1Alive = aliveUnits.filter(u => u.ownerID === '1').length
     
-    if (p0Alive === 0 && p1Alive > 0) {
-      return { 
-        winner: '1', 
-        turn: G.turn,
-        victoryType: 'elimination',
-        message: `Player 1 wins by eliminating all enemy units in ${G.turn} turns!`
-      }
-    }
-    if (p1Alive === 0 && p0Alive > 0) {
-      return { 
-        winner: '0', 
-        turn: G.turn,
-        victoryType: 'elimination',
-        message: `Player 0 wins by eliminating all enemy units in ${G.turn} turns!`
-      }
-    }
-    if (p0Alive === 0 && p1Alive === 0) {
-      return { 
-        draw: true, 
-        turn: G.turn,
-        victoryType: 'mutual_destruction',
-        message: `Draw! Both players eliminated in ${G.turn} turns!`
-      }
-    }
-    
-    // Optional: Turn limit victory (e.g., after 50 turns, player with more units wins)
-    if (G.turn >= 50) {
-      if (p0Alive > p1Alive) {
-        return { 
-          winner: '0', 
+    // Attack & Defend mode victory conditions
+    if (G.gameMode === 'ATTACK_DEFEND') {
+      // Defender (Player 1) wins if they hold objective for required turns
+      if (G.objectiveControl['1'] >= G.turnLimit) {
+        return {
+          winner: '1',
           turn: G.turn,
-          victoryType: 'turn_limit',
-          message: `Player 0 wins by having more units after ${G.turn} turns!`
+          victoryType: 'objective_defense',
+          message: `Player 1 (Defender) wins by holding Paris for ${G.turnLimit} turns!`
         }
-      } else if (p1Alive > p0Alive) {
+      }
+      
+      // Attacker (Player 0) wins if they capture all objective hexes
+      const p0ControlsAll = G.objectiveHexes.every(objHex => {
+        const unitOnHex = aliveUnits.find(u => u.q === objHex.q && u.r === objHex.r)
+        return unitOnHex && unitOnHex.ownerID === '0'
+      })
+      
+      if (p0ControlsAll && G.objectiveControl['0'] >= 3) {
+        return {
+          winner: '0',
+          turn: G.turn,
+          victoryType: 'objective_capture',
+          message: `Player 0 (Attacker) wins by capturing Paris!`
+        }
+      }
+      
+      // Elimination still works as alternate victory
+      if (p1Alive === 0) {
+        return {
+          winner: '0',
+          turn: G.turn,
+          victoryType: 'elimination',
+          message: `Player 0 wins by eliminating all defenders!`
+        }
+      }
+      if (p0Alive === 0) {
+        return {
+          winner: '1',
+          turn: G.turn,
+          victoryType: 'elimination',
+          message: `Player 1 wins by eliminating all attackers!`
+        }
+      }
+    } else {
+      // Standard ELIMINATION mode
+      if (p0Alive === 0 && p1Alive > 0) {
         return { 
           winner: '1', 
           turn: G.turn,
-          victoryType: 'turn_limit',
-          message: `Player 1 wins by having more units after ${G.turn} turns!`
+          victoryType: 'elimination',
+          message: `Player 1 wins by eliminating all enemy units in ${G.turn} turns!`
         }
-      } else {
+      }
+      if (p1Alive === 0 && p0Alive > 0) {
+        return { 
+          winner: '0', 
+          turn: G.turn,
+          victoryType: 'elimination',
+          message: `Player 0 wins by eliminating all enemy units in ${G.turn} turns!`
+        }
+      }
+      if (p0Alive === 0 && p1Alive === 0) {
         return { 
           draw: true, 
           turn: G.turn,
-          victoryType: 'turn_limit_draw',
-          message: `Draw! Equal units after ${G.turn} turns!`
+          victoryType: 'mutual_destruction',
+          message: `Draw! Both players eliminated in ${G.turn} turns!`
+        }
+      }
+      
+      // Optional: Turn limit victory (e.g., after 50 turns, player with more units wins)
+      if (G.turn >= 50) {
+        if (p0Alive > p1Alive) {
+          return { 
+            winner: '0', 
+            turn: G.turn,
+            victoryType: 'turn_limit',
+            message: `Player 0 wins by having more units after ${G.turn} turns!`
+          }
+        } else if (p1Alive > p0Alive) {
+          return { 
+            winner: '1', 
+            turn: G.turn,
+            victoryType: 'turn_limit',
+            message: `Player 1 wins by having more units after ${G.turn} turns!`
+          }
+        } else {
+          return { 
+            draw: true, 
+            turn: G.turn,
+            victoryType: 'turn_limit_draw',
+            message: `Draw! Equal units after ${G.turn} turns!`
+          }
         }
       }
     }
