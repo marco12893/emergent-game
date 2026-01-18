@@ -230,18 +230,31 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
                   {Object.values(UNIT_TYPES).map(unit => (
                     <button
                       key={unit.type}
-                      onClick={() => setSelectedUnitType(unit.type)}
+                      onClick={() => unit.type !== 'WARSHIP' && setSelectedUnitType(unit.type)}
+                      disabled={unit.type === 'WARSHIP'}
                       className={`w-full p-2 rounded border text-left transition-all ${
-                        selectedUnitType === unit.type 
-                          ? 'border-amber-400 bg-amber-400/20' 
-                          : 'border-slate-600 hover:border-slate-500'
+                        unit.type === 'WARSHIP'
+                          ? 'border-slate-700 bg-slate-800/50 opacity-50 cursor-not-allowed'
+                          : selectedUnitType === unit.type 
+                            ? 'border-amber-400 bg-amber-400/20' 
+                            : 'border-slate-600 hover:border-slate-500'
                       }`}
                     >
                       <div className="flex items-center gap-2">
                         <span className="text-xl">{unit.emoji}</span>
                         <div>
-                          <div className="font-semibold">{unit.name}</div>
-                          <div className="text-xs text-slate-400">{unit.description}</div>
+                          <div className="font-semibold">
+                            {unit.name}
+                            {unit.type === 'WARSHIP' && (
+                              <span className="ml-2 text-xs text-red-400 font-normal">(Unavailable)</span>
+                            )}
+                          </div>
+                          <div className="text-xs text-slate-400">
+                            {unit.type === 'WARSHIP' 
+                              ? 'Naval units require water terrain - coming soon!' 
+                              : unit.description
+                            }
+                          </div>
                         </div>
                       </div>
                     </button>
