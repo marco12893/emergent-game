@@ -55,6 +55,42 @@ export const UNIT_TYPES = {
     range: 3, // Long range siege weapon
     description: 'Siege weapon with high damage but cannot move and attack in same turn.',
   },
+  WARSHIP: {
+    type: 'WARSHIP',
+    name: 'Warship',
+    emoji: '⛵',
+    maxHP: 120,
+    attackPower: 30,
+    movePoints: 3,
+    range: 2,
+    isNaval: true,
+    description: 'Naval unit that can only move on water.',
+  },
+}
+
+// ============================================
+// GAME MODE DEFINITIONS
+// ============================================
+export const GAME_MODES = {
+  ELIMINATION: {
+    id: 'ELIMINATION',
+    name: 'Total Elimination',
+    description: 'Eliminate all enemy units to win',
+    mapSize: { width: 6, height: 4 },
+  },
+  ATTACK_DEFEND: {
+    id: 'ATTACK_DEFEND',
+    name: 'Attack & Defend',
+    description: 'Defender must hold Paris for 20 turns. Attacker must capture it.',
+    mapSize: { width: 8, height: 6 },
+    objectiveHexes: [
+      { q: 0, r: 0 }, // Paris center
+      { q: 1, r: 0 },
+      { q: 0, r: 1 },
+      { q: -1, r: 1 },
+    ],
+    turnLimit: 20,
+  },
 }
 
 // ============================================
