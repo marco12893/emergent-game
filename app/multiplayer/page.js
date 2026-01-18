@@ -185,6 +185,9 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
                 🔄 Turn {G.turn || 1}
               </div>
             )}
+            <div className="px-3 py-1 bg-slate-600 rounded text-sm font-semibold">
+              🎮 Game: {matchID || 'default'}
+            </div>
           </div>
         </div>
       </header>
