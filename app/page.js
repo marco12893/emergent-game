@@ -653,28 +653,28 @@ export default function HTTPMultiplayerPage() {
       {/* Deploy Unit Display - Bottom during setup phase only */}
       {gameState?.phase === 'setup' && (
         <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-20">
-          <div className="bg-slate-800/90 border border-slate-600 rounded-lg px-6 py-3 shadow-xl backdrop-blur-sm">
-            <div className="text-center mb-2">
-              <span className="text-amber-400 font-semibold">Deploy Units:</span>
+          <div className="bg-slate-800/90 border border-slate-600 rounded-lg px-2 sm:px-6 py-2 sm:py-3 shadow-xl backdrop-blur-sm">
+            <div className="text-center mb-1 sm:mb-2">
+              <span className="text-amber-400 font-semibold text-xs sm:text-sm">Deploy Units:</span>
             </div>
-            <div className="flex gap-3">
+            <div className="flex gap-1 sm:gap-3">
               {Object.values(UNIT_TYPES).filter(unit => unit.type !== 'WARSHIP').map(unit => (
                 <button
                   key={unit.type}
                   onClick={() => setSelectedUnitType(unit.type)}
-                  className={`relative px-4 py-2 rounded border text-sm transition-all transform hover:scale-105 ${
+                  className={`relative px-1 py-1 sm:px-4 sm:py-2 rounded border text-xs sm:text-sm transition-all transform hover:scale-105 ${
                     selectedUnitType === unit.type 
                       ? 'border-amber-400 bg-amber-400/20 text-amber-400' 
                       : 'border-slate-600 hover:border-slate-500 text-white'
                   }`}
                 >
-                  <div className="flex flex-col items-center gap-2">
+                  <div className="flex flex-col items-center gap-1">
                     <img 
                       src={`/units/${unit.image}_${playerID === '0' ? 'blue' : 'red'}.png`}
-                      className="w-24 h-24"
+                      className="w-8 h-8 sm:w-16 sm:h-16 lg:w-24 lg:h-24"
                       alt={unit.name}
                     />
-                    <span className="font-semibold text-xs">{unit.name}</span>
+                    <span className="font-semibold text-xs hidden sm:block">{unit.name}</span>
                   </div>
                   {/* Info button */}
                   <div
@@ -682,7 +682,7 @@ export default function HTTPMultiplayerPage() {
                       e.stopPropagation()
                       setShowUnitInfoPopup(unit)
                     }}
-                    className="absolute -top-2 -right-2 w-6 h-6 bg-blue-500 hover:bg-blue-400 text-white rounded-full text-xs font-bold flex items-center justify-center transition-all cursor-pointer"
+                    className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 bg-blue-500 hover:bg-blue-400 text-white rounded-full text-xs font-bold flex items-center justify-center transition-all cursor-pointer"
                   >
                     i
                   </div>

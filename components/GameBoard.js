@@ -305,7 +305,7 @@ const GameBoard = ({
       className="w-screen h-screen flex items-center justify-center overflow-hidden relative select-none"
       style={{ 
         cursor: isDragging ? 'grabbing' : 'grab',
-        touchAction: 'none', // Prevent touch scrolling on mobile
+        touchAction: 'manipulation', // Allow taps but disable double-tap zoom and other gestures
         userSelect: 'none',
         WebkitUserSelect: 'none',
         MozUserSelect: 'none',
