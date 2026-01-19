@@ -270,7 +270,7 @@ const GameBoard = ({
   return (
     <div 
       ref={containerRef}
-      className="w-full h-full flex items-center justify-center overflow-hidden relative select-none"
+      className="w-screen h-screen flex items-center justify-center overflow-hidden relative select-none"
       style={{ 
         cursor: isDragging ? 'grabbing' : 'grab',
         touchAction: 'none', // Prevent touch scrolling on mobile
@@ -287,22 +287,6 @@ const GameBoard = ({
       onTouchMove={handleTouchMove}
       onTouchEnd={handleMouseUp}
     >
-      {/* Camera controls info */}
-      <div className="absolute top-2 left-2 bg-black/50 text-white text-xs px-2 py-1 rounded z-10">
-        Zoom: {Math.round(zoom * 100)}% | Drag to pan | Scroll to zoom
-      </div>
-      
-      {/* Reset camera button */}
-      <button
-        onClick={() => {
-          setCameraOffset({ x: 0, y: 0 })
-          setZoom(1)
-        }}
-        className="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded z-10 hover:bg-black/70"
-      >
-        Reset View
-      </button>
-
       <div 
         className="w-full h-full flex items-center justify-center"
         style={{
@@ -311,7 +295,7 @@ const GameBoard = ({
           transition: isDragging ? 'none' : 'transform 0.1s ease-out'
         }}
       >
-        <HexGrid width={900} height={650} viewBox="-70 -20 140 100">
+        <HexGrid width="100%" height="100%" viewBox="-80 -40 160 120">
           <defs>
             <clipPath id="hex-clip">
               <polygon points="0,-5.5 4.76,-2.75 4.76,2.75 0,5.5 -4.76,2.75 -4.76,-2.75" />
@@ -410,6 +394,5 @@ const GameBoard = ({
     </div>
   )
 }
-
 export default GameBoard
 export { TERRAIN_TYPES, generateHexMap, getTerrainType, getSpawnZone }

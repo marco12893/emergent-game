@@ -80,6 +80,8 @@ export default function HTTPMultiplayerPage() {
   const [highlightedHexes, setHighlightedHexes] = useState([])
   const [attackableHexes, setAttackableHexes] = useState([])
   const [showVictoryScreen, setShowVictoryScreen] = useState(true) // Default to true, can be closed
+  const [selectedUnitForInfo, setSelectedUnitForInfo] = useState(null) // New state for unit info display
+  const [showUnitInfoPopup, setShowUnitInfoPopup] = useState(null) // New state for unit info popup
   
   // Dynamic server URL for production
   const getServerUrl = () => {
@@ -272,9 +274,22 @@ export default function HTTPMultiplayerPage() {
   const handleHexClick = (hex) => {
     if (!joined || !gameState) return
 
-    // Check if it's the current player's turn
+    // Check for unit info display (always allowed, even when not player's turn)
+    const unitOnHex = gameState.units.find(u => u.q === hex.q && u.r === hex.r && u.currentHP > 0)
+    if (unitOnHex) {
+      // Toggle unit info selection
+      if (selectedUnitForInfo && selectedUnitForInfo.id === unitOnHex.id) {
+        setSelectedUnitForInfo(null) // Deselect if same unit
+      } else {
+        setSelectedUnitForInfo(unitOnHex) // Show info for any unit
+      }
+    } else {
+      setSelectedUnitForInfo(null) // Clear selection when clicking empty hex
+    }
+
+    // Check if it's the current player's turn for game actions
     if (gameState.currentPlayer !== playerID) {
-      setError('Not your turn!')
+      setError('Not your turn! (You can still view unit info)')
       setTimeout(() => setError(''), 2000)
       return
     }
@@ -284,9 +299,9 @@ export default function HTTPMultiplayerPage() {
     // Setup Phase: Place or Remove units
     if (phase === 'setup') {
       // Check if clicking on own unit to remove it
-      const unitOnHex = gameState.units.find(u => u.q === hex.q && u.r === hex.r && u.ownerID === playerID)
-      if (unitOnHex) {
-        sendAction('removeUnit', { unitId: unitOnHex.id, playerID })
+      const myUnitOnHex = gameState.units.find(u => u.q === hex.q && u.r === hex.r && u.ownerID === playerID)
+      if (myUnitOnHex) {
+        sendAction('removeUnit', { unitId: myUnitOnHex.id, playerID })
         return
       }
 
@@ -308,15 +323,13 @@ export default function HTTPMultiplayerPage() {
     
     // Battle Phase: Select, Move, or Attack
     if (phase === 'battle') {
-      const unitOnHex = gameState.units.find(u => u.q === hex.q && u.r === hex.r && u.currentHP > 0)
-      
-      // Check if clicking on own unit to select it
+      // Check if clicking on own unit to select it for action
       if (unitOnHex && unitOnHex.ownerID === playerID) {
         sendAction('selectUnit', { unitId: unitOnHex.id, playerID })
         return
       }
       
-      // If we have a selected unit
+      // If we have a selected unit for action
       const selectedUnit = gameState.selectedUnitId ? 
         gameState.units.find(u => u.id === gameState.selectedUnitId) : null
         
@@ -432,182 +445,251 @@ export default function HTTPMultiplayerPage() {
   const isMyTurn = gameState?.currentPlayer === playerID
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 text-white">
-      {/* Header */}
-      <header className="bg-slate-800/80 border-b border-slate-700 p-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-amber-400">
-            ⚔️ Medieval Battle - HTTP Multiplayer
-          </h1>
-          <div className="flex items-center gap-4">
-            <div className={`px-3 py-1 rounded ${playerID === '0' ? 'bg-blue-600' : 'bg-red-600'}`}>
-              Player {playerID}
+    <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 text-white relative">
+      {/* Fullscreen Game Board */}
+      <div className="absolute inset-0">
+        <GameBoard
+          onHexClick={handleHexClick}
+          selectedHex={null}
+          highlightedHexes={highlightedHexes}
+          attackableHexes={attackableHexes}
+          units={gameState?.units || []}
+          terrainMap={gameState?.terrainMap || {}}
+          selectedUnitId={gameState?.selectedUnitId || null}
+          currentPlayerID={playerID}
+        />
+      </div>
+      
+      {/* Centered Top Info Box */}
+      <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-20">
+        <div className="bg-slate-800/90 border border-slate-600 rounded-lg px-6 py-3 shadow-xl backdrop-blur-sm">
+          <div className="flex items-center gap-6 text-sm">
+            <div className="flex items-center gap-2">
+              <span className="text-amber-400 font-semibold">Turn:</span>
+              <span className="text-white font-bold">{gameState?.turn || 1}</span>
             </div>
-            <div className="text-sm text-slate-400">
-              🔄 Auto-updating
+            <div className="flex items-center gap-2">
+              <span className="text-amber-400 font-semibold">Player:</span>
+              <span className={`px-2 py-1 rounded text-xs font-bold ${playerID === '0' ? 'bg-blue-600' : 'bg-red-600'}`}>
+                {playerID}
+              </span>
             </div>
-            {gameState?.phase === 'battle' && (
-              <div className="px-3 py-1 bg-purple-600 rounded text-sm font-semibold">
-                🔄 Turn {gameState.turn || 1}
-              </div>
-            )}
-            <div className="px-3 py-1 bg-slate-600 rounded text-sm font-semibold">
-              🎮 Game: {matchID || 'default'}
+            <div className="flex items-center gap-2">
+              <span className="text-amber-400 font-semibold">Game:</span>
+              <span className="text-white font-bold">{matchID || 'default'}</span>
             </div>
           </div>
         </div>
-      </header>
-
-      {/* Turn Banner */}
-      <div className={`py-2 text-center font-bold text-lg ${
-        isMyTurn ? 'bg-green-600/80' : 'bg-slate-700/80'
-      }`}>
-        {isMyTurn ? "🎯 YOUR TURN!" : `⏳ Waiting for Player ${gameState?.currentPlayer}...`}
-        <div className="text-xs mt-1">
-          You are Player {playerID} | Current: {gameState?.currentPlayer}
-        </div>
       </div>
-
+      
+      {/* Unit Info Box - Right Side */}
+      {selectedUnitForInfo && (
+        <div className="fixed right-4 top-1/2 transform -translate-y-1/2 z-20">
+          <div className={`p-4 rounded-lg border-2 shadow-xl backdrop-blur-sm ${
+            selectedUnitForInfo.ownerID === playerID 
+              ? 'border-amber-400 bg-amber-400/10' 
+              : 'border-slate-600 bg-slate-800/90'
+          }`}>
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-3xl">{selectedUnitForInfo.emoji || '⚔️'}</span>
+              <div>
+                <div className="font-bold text-white text-lg">{selectedUnitForInfo.name || 'Unit'}</div>
+                <div className={`text-sm ${selectedUnitForInfo.ownerID === '0' ? 'text-blue-400' : 'text-red-400'}`}>
+                  Player {selectedUnitForInfo.ownerID}
+                </div>
+              </div>
+            </div>
+            
+            {/* HP Bar */}
+            <div className="mb-3">
+              <div className="flex justify-between text-sm text-slate-300 mb-1">
+                <span>HP</span>
+                <span>{selectedUnitForInfo.currentHP}/{selectedUnitForInfo.maxHP}</span>
+              </div>
+              <div className="w-full bg-slate-700 rounded-full h-3">
+                <div 
+                  className={`h-3 rounded-full transition-all ${
+                    selectedUnitForInfo.currentHP / selectedUnitForInfo.maxHP > 0.5 
+                      ? 'bg-green-500' 
+                      : selectedUnitForInfo.currentHP / selectedUnitForInfo.maxHP > 0.25 
+                        ? 'bg-yellow-500' 
+                        : 'bg-red-500'
+                  }`}
+                  style={{ width: `${(selectedUnitForInfo.currentHP / selectedUnitForInfo.maxHP) * 100}%` }}
+                />
+              </div>
+            </div>
+            
+            {/* Stats Grid */}
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div className="bg-slate-700/50 p-2 rounded text-center">
+                <div className="text-red-400 font-bold">⚔️ {selectedUnitForInfo.attackPower}</div>
+                <div className="text-slate-400 text-xs">ATK</div>
+              </div>
+              <div className="bg-slate-700/50 p-2 rounded text-center">
+                <div className="text-blue-400 font-bold">👟 {selectedUnitForInfo.movePoints}</div>
+                <div className="text-slate-400 text-xs">MOV</div>
+              </div>
+              <div className="bg-slate-700/50 p-2 rounded text-center">
+                <div className="text-purple-400 font-bold">🎯 {selectedUnitForInfo.range}</div>
+                <div className="text-slate-400 text-xs">RNG</div>
+              </div>
+              <div className="bg-slate-700/50 p-2 rounded text-center">
+                <div className="text-green-400 font-bold">🛡️ {selectedUnitForInfo.maxMovePoints}</div>
+                <div className="text-slate-400 text-xs">MAX</div>
+              </div>
+            </div>
+            
+            {/* Action Status */}
+            {(selectedUnitForInfo.hasMoved || selectedUnitForInfo.hasAttacked) && (
+              <div className="text-xs text-slate-400 mt-2">
+                {selectedUnitForInfo.hasMoved && <span className="mr-2">✓ Moved</span>}
+                {selectedUnitForInfo.hasAttacked && <span>✓ Attacked</span>}
+              </div>
+            )}
+            
+            {/* Close button */}
+            <button
+              onClick={() => setSelectedUnitForInfo(null)}
+              className="mt-3 w-full py-1 bg-slate-600 hover:bg-slate-500 text-white text-sm rounded transition-all"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+      
+      {/* Unit Info Popup */}
+      {showUnitInfoPopup && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-slate-800 border border-slate-600 rounded-lg p-6 max-w-md w-full mx-4 shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <span className="text-4xl">{showUnitInfoPopup.emoji}</span>
+                <div>
+                  <h3 className="text-xl font-bold text-white">{showUnitInfoPopup.name}</h3>
+                  <div className="text-sm text-slate-400">{showUnitInfoPopup.type}</div>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowUnitInfoPopup(null)}
+                className="text-slate-400 hover:text-white text-2xl font-bold transition-colors"
+              >
+                ×
+              </button>
+            </div>
+            
+            {/* Description */}
+            <div className="mb-4">
+              <p className="text-slate-300 text-sm">{showUnitInfoPopup.description}</p>
+            </div>
+            
+            {/* Stats Grid */}
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="bg-slate-700/50 p-3 rounded text-center">
+                <div className="text-red-400 font-bold text-lg">⚔️ {showUnitInfoPopup.attackPower}</div>
+                <div className="text-slate-400 text-xs">Attack Power</div>
+              </div>
+              <div className="bg-slate-700/50 p-3 rounded text-center">
+                <div className="text-green-400 font-bold text-lg">❤️ {showUnitInfoPopup.maxHP}</div>
+                <div className="text-slate-400 text-xs">Health Points</div>
+              </div>
+              <div className="bg-slate-700/50 p-3 rounded text-center">
+                <div className="text-blue-400 font-bold text-lg">👟 {showUnitInfoPopup.movePoints}</div>
+                <div className="text-slate-400 text-xs">Movement Points</div>
+              </div>
+              <div className="bg-slate-700/50 p-3 rounded text-center">
+                <div className="text-purple-400 font-bold text-lg">🎯 {showUnitInfoPopup.range}</div>
+                <div className="text-slate-400 text-xs">Attack Range</div>
+              </div>
+            </div>
+            
+            {/* Additional Info */}
+            <div className="text-xs text-slate-400">
+              <div className="mb-1">• Max Movement: {showUnitInfoPopup.movePoints} tiles per turn</div>
+              <div className="mb-1">• Range: {showUnitInfoPopup.range === 1 ? 'Melee only' : `${showUnitInfoPopup.range} tiles`}</div>
+              <div>• Type: {showUnitInfoPopup.type} unit</div>
+            </div>
+            
+            {/* Close Button */}
+            <button
+              onClick={() => setShowUnitInfoPopup(null)}
+              className="mt-4 w-full py-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded transition-all"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+      
+      {/* Deploy Unit Display - Bottom during setup phase only */}
+      {gameState?.phase === 'setup' && (
+        <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-20">
+          <div className="bg-slate-800/90 border border-slate-600 rounded-lg px-6 py-3 shadow-xl backdrop-blur-sm">
+            <div className="text-center mb-2">
+              <span className="text-amber-400 font-semibold">Deploy Units:</span>
+            </div>
+            <div className="flex gap-3">
+              {Object.values(UNIT_TYPES).filter(unit => unit.type !== 'WARSHIP').map(unit => (
+                <button
+                  key={unit.type}
+                  onClick={() => setSelectedUnitType(unit.type)}
+                  className={`relative px-4 py-2 rounded border text-sm transition-all transform hover:scale-105 ${
+                    selectedUnitType === unit.type 
+                      ? 'border-amber-400 bg-amber-400/20 text-amber-400' 
+                      : 'border-slate-600 hover:border-slate-500 text-white'
+                  }`}
+                >
+                  <div className="flex flex-col items-center gap-1">
+                    <span className="text-2xl">{unit.emoji}</span>
+                    <span className="font-semibold text-xs">{unit.name}</span>
+                  </div>
+                  {/* Info button */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setShowUnitInfoPopup(unit)
+                    }}
+                    className="absolute -top-1 -right-1 w-5 h-5 bg-blue-500 hover:bg-blue-400 text-white rounded-full text-xs font-bold flex items-center justify-center transition-all"
+                  >
+                    i
+                  </button>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Fixed Position End Turn/Ready for Battle Button */}
+      <div className="fixed bottom-4 right-4 z-30">
+        {gameState?.phase === 'setup' && (
+          <button
+            onClick={readyForBattle}
+            disabled={!isMyTurn}
+            className="px-6 py-3 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-600 text-white font-bold rounded-lg shadow-lg transition-all transform hover:scale-105"
+          >
+            🚀 Ready for Battle
+          </button>
+        )}
+        
+        {gameState?.phase === 'battle' && (
+          <button
+            onClick={endTurn}
+            disabled={!isMyTurn}
+            className="px-6 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 text-white font-bold rounded-lg shadow-lg transition-all transform hover:scale-105"
+          >
+            ⏭️ End Turn
+          </button>
+        )}
+      </div>
+      
       {/* Error Message */}
       {error && (
-        <div className="mx-4 mt-2 p-2 bg-red-600/20 border border-red-600 rounded text-red-400 text-sm">
+        <div className="absolute top-20 left-1/2 transform -translate-x-1/2 p-3 bg-red-600/90 border border-red-600 rounded text-red-400 text-sm z-20">
           {error}
         </div>
       )}
-
-      {/* Main Game Area */}
-      <div className="max-w-7xl mx-auto p-4">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-          
-          {/* Left Panel - Unit Selection & Info */}
-          <div className="lg:col-span-1 space-y-4">
-            
-            {/* Unit Selection */}
-            <div className="bg-slate-800/80 rounded-lg border border-slate-700 p-4">
-              <h2 className="text-lg font-semibold text-amber-400 mb-3">
-                {gameState?.phase === 'setup' ? '🎖️ Place Units' : '⚔️ Battle Phase'}
-              </h2>
-              
-              {gameState?.phase === 'battle' && (
-                <div className="mb-3 p-2 bg-blue-600/20 border border-blue-600 rounded text-blue-400 text-xs">
-                  <p>💡 Click your units to select them</p>
-                  <p>🟢 Green hexes = movement options (based on movement points)</p>
-                  <p>🔴 Red hexes = attack targets</p>
-                  <p>⚔️ Swordsman: 2 move, 25 ATK | Archer: 2 move, 30 ATK | Knight: 3 move, 30 ATK | Militia: 2 move, 20 ATK | Catapult: 1 move, 50 ATK | Warship: 3 move, 30 ATK (naval)</p>
-                </div>
-              )}
-              
-              {gameState?.phase === 'setup' && (
-                <div className="space-y-2">
-                  {Object.values(UNIT_TYPES).map(unit => (
-                    <button
-                      key={unit.type}
-                      onClick={() => unit.type !== 'WARSHIP' && setSelectedUnitType(unit.type)}
-                      disabled={unit.type === 'WARSHIP'}
-                      className={`w-full p-2 rounded border text-left transition-all ${
-                        unit.type === 'WARSHIP'
-                          ? 'border-slate-700 bg-slate-800/50 opacity-50 cursor-not-allowed'
-                          : selectedUnitType === unit.type 
-                            ? 'border-amber-400 bg-amber-400/20' 
-                            : 'border-slate-600 hover:border-slate-500'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-xl">{unit.emoji}</span>
-                        <div>
-                          <div className="font-semibold">
-                            {unit.name}
-                            {unit.type === 'WARSHIP' && (
-                              <span className="ml-2 text-xs text-red-400 font-normal">(Unavailable)</span>
-                            )}
-                          </div>
-                          <div className="text-xs text-slate-400">
-                            {unit.type === 'WARSHIP' 
-                              ? 'Naval units require water terrain - coming soon!' 
-                              : unit.description
-                            }
-                          </div>
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            
-            {/* My Units */}
-            {myUnits.length > 0 && (
-              <div className="bg-slate-800/80 rounded-lg border border-slate-700 p-4">
-                <h3 className="text-lg font-semibold text-amber-400 mb-3">👥 Your Units</h3>
-                <div className="space-y-2">
-                  {myUnits.map(unit => (
-                    <UnitInfoPanel key={unit.id} unit={unit} isSelected={false} />
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-          
-          {/* Center - Game Board */}
-          <div className="lg:col-span-2">
-            <div className="bg-slate-800/80 rounded-lg border border-slate-700 p-4">
-              <GameBoard
-                onHexClick={handleHexClick}
-                selectedHex={null}
-                highlightedHexes={highlightedHexes}
-                attackableHexes={attackableHexes}
-                units={gameState?.units || []}
-                terrainMap={gameState?.terrainMap || {}}
-                selectedUnitId={gameState?.selectedUnitId || null}
-                currentPlayerID={playerID}
-              />
-            </div>
-          </div>
-          
-          {/* Right Panel - Controls & Log */}
-          <div className="lg:col-span-1 space-y-4">
-            
-            {/* Game Controls */}
-            <div className="bg-slate-800/80 rounded-lg border border-slate-700 p-4">
-              <h3 className="text-lg font-semibold text-amber-400 mb-3">🎮 Game Controls</h3>
-              
-              <div className="space-y-2">
-                {gameState?.phase === 'setup' && (
-                  <button
-                    onClick={readyForBattle}
-                    disabled={!isMyTurn}
-                    className="w-full py-3 rounded-lg font-bold bg-amber-500 hover:bg-amber-400 disabled:bg-slate-600 transition-all"
-                  >
-                    🚀 Ready for Battle
-                  </button>
-                )}
-                
-                {gameState?.phase === 'battle' && (
-                  <button
-                    onClick={endTurn}
-                    disabled={!isMyTurn}
-                    className="w-full py-3 rounded-lg font-bold bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 transition-all"
-                  >
-                    ⏭️ End Turn
-                  </button>
-                )}
-              </div>
-            </div>
-            
-            {/* Game Log */}
-            <div className="bg-slate-800/80 rounded-lg border border-slate-700 p-4">
-              <h3 className="text-lg font-semibold text-amber-400 mb-3">📜 Battle Log</h3>
-              <div className="h-48 overflow-y-auto space-y-1">
-                {gameState?.log?.slice().reverse().map((entry, index) => (
-                  <div key={index} className="text-xs text-slate-300 border-l-2 border-amber-400 pl-2">
-                    {entry}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
       
       {/* Victory Screen */}
       {showVictoryScreen && gameState?.gameOver && (
