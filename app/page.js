@@ -488,23 +488,54 @@ export default function HTTPMultiplayerPage() {
         />
       </div>
       
-      {/* Centered Top Info Box */}
+      {/* Centered Top Status Bar */}
       <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-20">
-        <div className="bg-slate-800/90 border border-slate-600 rounded-lg px-6 py-3 shadow-xl backdrop-blur-sm">
-          <div className="flex items-center gap-6 text-sm">
+        <div className="bg-slate-800/90 border border-slate-600 rounded-lg px-4 sm:px-6 py-2 sm:py-3 shadow-xl backdrop-blur-sm">
+          <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-6 text-xs sm:text-sm">
+            {/* Current Turn Indicator */}
+            <div className="flex items-center gap-2">
+              {isMyTurn ? (
+                <span className="text-green-400 font-bold animate-pulse">YOUR TURN</span>
+              ) : (
+                <>
+                  <span className="text-amber-400 font-semibold">Current Turn:</span>
+                  <span className={`px-2 py-1 rounded text-xs font-bold ${
+                    gameState?.currentPlayer === '0' ? 'bg-blue-600' : 'bg-red-600'
+                  }`}>
+                    Player {gameState?.currentPlayer || '?'}
+                  </span>
+                </>
+              )}
+            </div>
+            
+            {/* Turn Number */}
             <div className="flex items-center gap-2">
               <span className="text-amber-400 font-semibold">Turn:</span>
               <span className="text-white font-bold">{gameState?.turn || 1}</span>
             </div>
+            
+            {/* Game Phase */}
             <div className="flex items-center gap-2">
-              <span className="text-amber-400 font-semibold">Player:</span>
-              <span className={`px-2 py-1 rounded text-xs font-bold ${playerID === '0' ? 'bg-blue-600' : 'bg-red-600'}`}>
-                {playerID}
+              <span className="text-amber-400 font-semibold">Phase:</span>
+              <span className={`px-2 py-1 rounded text-xs font-bold ${
+                gameState?.phase === 'setup' ? 'bg-purple-600' : 'bg-orange-600'
+              }`}>
+                {gameState?.phase?.toUpperCase() || 'SETUP'}
               </span>
             </div>
+            
+            {/* Your Player ID */}
+            <div className="flex items-center gap-2">
+              <span className="text-amber-400 font-semibold">You:</span>
+              <span className={`px-2 py-1 rounded text-xs font-bold ${playerID === '0' ? 'bg-blue-600' : 'bg-red-600'}`}>
+                Player {playerID}
+              </span>
+            </div>
+            
+            {/* Game ID */}
             <div className="flex items-center gap-2">
               <span className="text-amber-400 font-semibold">Game:</span>
-              <span className="text-white font-bold">{matchID || 'default'}</span>
+              <span className="text-white font-bold text-xs">{matchID || 'default'}</span>
             </div>
           </div>
         </div>
