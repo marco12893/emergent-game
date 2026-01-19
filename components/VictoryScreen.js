@@ -68,7 +68,11 @@ const VictoryScreen = ({
           {playerUnits.map(unit => (
             <div key={unit.id} className="flex items-center justify-between text-xs">
               <div className="flex items-center gap-2">
-                <span>{unit.emoji || '⚔️'}</span>
+                <img 
+                  src={`/units/${unit.image}_${unit.ownerID === '0' ? 'blue' : 'red'}.png`}
+                  className="w-4 h-4"
+                  alt={unit.name}
+                />
                 <span className="text-slate-300">{unit.name}</span>
               </div>
               <div className="flex items-center gap-2">

@@ -18,7 +18,7 @@ const UNIT_TYPES = {
   SWORDSMAN: {
     type: 'SWORDSMAN',
     name: 'Swordsman',
-    emoji: '⚔️',
+    image: 'swordsman',
     maxHP: 100,
     attackPower: 25,
     movePoints: 2,
@@ -28,7 +28,7 @@ const UNIT_TYPES = {
   ARCHER: {
     type: 'ARCHER',
     name: 'Archer',
-    emoji: '🏹',
+    image: 'archer',
     maxHP: 60,
     attackPower: 30,
     movePoints: 2,
@@ -38,7 +38,7 @@ const UNIT_TYPES = {
   KNIGHT: {
     type: 'KNIGHT',
     name: 'Knight',
-    emoji: '🐴',
+    image: 'knight',
     maxHP: 150,
     attackPower: 30,
     movePoints: 3,
@@ -48,7 +48,7 @@ const UNIT_TYPES = {
   MILITIA: {
     type: 'MILITIA',
     name: 'Militia',
-    emoji: '🗡️',
+    image: 'militia',
     maxHP: 40,
     attackPower: 20,
     movePoints: 2,
@@ -58,7 +58,7 @@ const UNIT_TYPES = {
   CATAPULT: {
     type: 'CATAPULT',
     name: 'Catapult',
-    emoji: '🏰',
+    image: 'catapult',
     maxHP: 40,
     attackPower: 50,
     movePoints: 1,
@@ -68,7 +68,7 @@ const UNIT_TYPES = {
   WARSHIP: {
     type: 'WARSHIP',
     name: 'Warship',
-    emoji: '⛵',
+    image: 'warship',
     maxHP: 120,
     attackPower: 30,
     movePoints: 3,
@@ -217,11 +217,14 @@ export async function OPTIONS() {
 export async function POST(request) {
   try {
     const body = await request.json()
+    console.log('Received request body:', body)
     const { gameId, action: gameAction, payload } = body
     
     // Sanitize and validate inputs
     const sanitizedGameId = sanitizeGameId(gameId)
     const sanitizedAction = sanitizeAction(gameAction)
+    
+    console.log('Sanitized gameId:', sanitizedGameId, 'Sanitized action:', sanitizedAction)
     
     if (!sanitizedGameId || !sanitizedAction) {
       return NextResponse.json({ 
@@ -381,7 +384,7 @@ export async function POST(request) {
             id: Date.now().toString(),
             type: unitType,
             name: stats.name,
-            emoji: stats.emoji,
+            image: stats.image,
             ownerID: placePlayerID,
             q: q,
             r: r,
@@ -404,9 +407,16 @@ export async function POST(request) {
           break
           
         case 'removeUnit':
-          if (!payload?.unitId) {
+          // Validate and sanitize payload
+          const removeUnitSchema = {
+            unitId: { required: true, sanitize: sanitizeUnitId },
+            playerID: { required: true, sanitize: sanitizePlayerID }
+          }
+          
+          const removeUnitValidation = validatePayload(payload, removeUnitSchema)
+          if (removeUnitValidation.error) {
             return NextResponse.json({ 
-              error: 'Missing required field for removeUnit: unitId' 
+              error: 'Invalid payload for removeUnit: ' + removeUnitValidation.error 
             }, { 
               status: 400,
               headers: {
@@ -417,8 +427,38 @@ export async function POST(request) {
             })
           }
           
-          game.units = game.units.filter(u => u.id !== payload.unitId)
-          game.log.push(`Player ${payload.playerID} removed a unit`)
+          const { unitId: removeUnitId, playerID: removePlayerID } = removeUnitValidation.sanitized
+          
+          // Find and remove the unit (only allow removing own units)
+          const unitToRemove = game.units.find(u => u.id === removeUnitId)
+          if (!unitToRemove) {
+            return NextResponse.json({ 
+              error: 'Unit not found: ' + removeUnitId 
+            }, { 
+              status: 404,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+          
+          if (unitToRemove.ownerID !== removePlayerID) {
+            return NextResponse.json({ 
+              error: 'Cannot remove unit owned by another player' 
+            }, { 
+              status: 403,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+          
+          game.units = game.units.filter(u => u.id !== removeUnitId)
+          game.log.push(`Player ${removePlayerID} removed ${unitToRemove.name} at (${unitToRemove.q}, ${unitToRemove.r})`)
           game.lastUpdate = Date.now()
           break
           

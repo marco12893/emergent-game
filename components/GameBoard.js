@@ -57,6 +57,7 @@ const GameBoard = ({
   const [isDragging, setIsDragging] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   const [dragThreshold, setDragThreshold] = useState(5) // 5px threshold
+  const [lastTouchDistance, setLastTouchDistance] = useState(null) // For pinch zoom
   const [hasDragged, setHasDragged] = useState(false)
   const [mouseDownPos, setMouseDownPos] = useState({ x: 0, y: 0 })
   const dragTimeoutRef = useRef(null)
@@ -161,20 +162,52 @@ const GameBoard = ({
   // Handle touch events for mobile
   const handleTouchStart = useCallback((e) => {
     if (e.touches.length === 1) {
+      // Single touch - start panning
       const touch = e.touches[0]
       setIsDragging(true)
       setDragStart({ x: touch.clientX - cameraOffset.x, y: touch.clientY - cameraOffset.y })
+      setLastTouchDistance(null) // Reset pinch distance
+    } else if (e.touches.length === 2) {
+      // Two touches - start pinch zoom
+      setIsDragging(false) // Don't pan while pinching
+      const touch1 = e.touches[0]
+      const touch2 = e.touches[1]
+      const distance = Math.sqrt(
+        Math.pow(touch2.clientX - touch1.clientX, 2) + 
+        Math.pow(touch2.clientY - touch1.clientY, 2)
+      )
+      setLastTouchDistance(distance)
     }
   }, [cameraOffset])
 
   const handleTouchMove = useCallback((e) => {
-    if (!isDragging || e.touches.length !== 1) return
-    const touch = e.touches[0]
-    setCameraOffset({
-      x: touch.clientX - dragStart.x,
-      y: touch.clientY - dragStart.y
-    })
-  }, [isDragging, dragStart])
+    if (e.touches.length === 1 && isDragging) {
+      // Single touch - continue panning
+      const touch = e.touches[0]
+      setCameraOffset({
+        x: touch.clientX - dragStart.x,
+        y: touch.clientY - dragStart.y
+      })
+    } else if (e.touches.length === 2 && lastTouchDistance !== null) {
+      // Two touches - pinch zoom
+      e.preventDefault() // Prevent default pinch behavior
+      
+      const touch1 = e.touches[0]
+      const touch2 = e.touches[1]
+      const currentDistance = Math.sqrt(
+        Math.pow(touch2.clientX - touch1.clientX, 2) + 
+        Math.pow(touch2.clientY - touch1.clientY, 2)
+      )
+      
+      // Calculate zoom factor based on distance change
+      const scale = currentDistance / lastTouchDistance
+      if (scale > 0.8 && scale < 1.2) { // Limit zoom speed
+        setZoom(prevZoom => Math.max(0.5, Math.min(3, prevZoom * scale)))
+      }
+      
+      setLastTouchDistance(currentDistance)
+    }
+  }, [isDragging, dragStart, lastTouchDistance])
 
   // Add event listeners
   useEffect(() => {
@@ -232,15 +265,14 @@ const GameBoard = ({
   const getTileImage = (hex) => {
     switch(hex.terrain) {
       case 'PLAIN':
-        // Only regular grass
-        return '/tiles/grass.png'
+        return '/tiles/Grass_5.png'
       case 'FOREST':
-        // Only using forest_3 and forest_4 as requested
-        const forestVariants = ['/tiles/forest_3.png', '/tiles/forest_4.png']
+        // Use Forest texture (combining forest_3 and forest_4 variants)
+        const forestVariants = ['/tiles/Forest.png']
         const seed = Math.abs(hex.q + hex.r * 7)
         return forestVariants[seed % forestVariants.length]
       case 'MOUNTAIN':
-        return '/tiles/mountain.png'
+        return '/tiles/Mountain_3.png'
       default:
         return null
     }
@@ -346,39 +378,40 @@ const GameBoard = ({
                   {/* 2. UNIT (Layer 1 - On Top) */}
                   {unit && (
                     <g style={{ pointerEvents: 'none' }}>
-                      {/* Background Circle */}
-                      <circle
-                        cx="0"
-                        cy="0"
-                        r="4"
-                        fill={unit.ownerID === '0' ? 
-                          (unit.hasAttacked ? '#1E40AF' : '#2563EB') : 
-                          (unit.hasAttacked ? '#991B1B' : '#DC2626')
-                        }
-                        stroke={isUnitSelected ? '#FBBF24' : unit.ownerID === '0' ? '#1D4ED8' : '#B91C1C'}
-                        strokeWidth={isUnitSelected ? 0.4 : 0.2}
-                        opacity="0.9"
+                      {/* Unit Image */}
+                      <image
+                        href={`/units/${unit.image || 'swordsman'}_${unit.ownerID === '0' ? 'blue' : 'red'}.png`}
+                        x="-5"
+                        y="-7"
+                        width="10"
+                        height="14"
+                        style={{ 
+                          pointerEvents: 'none',
+                          filter: isUnitSelected ? 'drop-shadow(0 0 3px #FBBF24)' : 'drop-shadow(0px 2px 4px rgba(0,0,0,0.5))'
+                        }}
                       />
                       
-                      {/* Unit Emoji (Restored) */}
-                      <text
-                        x="0"
-                        y="1.5"
-                        fontSize="4"
-                        textAnchor="middle"
-                        style={{ pointerEvents: 'none', textShadow: '0px 1px 2px rgba(0,0,0,0.5)' }}
-                      >
-                        {unit.emoji || (unit.type === 'SWORDSMAN' ? '⚔️' : unit.type === 'ARCHER' ? '🏹' : unit.type === 'KNIGHT' ? '🐴' : unit.type === 'MILITIA' ? '🗡️' : unit.type === 'CATAPULT' ? '🏰' : '⚔️')}
-                      </text>
+                      {/* Selection indicator */}
+                      {isUnitSelected && (
+                        <circle
+                          cx="0"
+                          cy="0"
+                          r="6"
+                          fill="none"
+                          stroke="#FBBF24"
+                          strokeWidth="0.4"
+                          opacity="0.8"
+                        />
+                      )}
                       
                       {/* HP bar */}
-                      <g transform="translate(-3, 3)">
-                        <rect x="0" y="0" width="6" height="0.8" fill="#374151" rx="0.2" />
+                      <g transform="translate(-5, 5)">
+                        <rect x="0" y="0" width="10" height="1" fill="#374151" rx="0.2" />
                         <rect 
                           x="0" 
                           y="0" 
-                          width={6 * (unit.currentHP / unit.maxHP)} 
-                          height="0.8" 
+                          width={10 * (unit.currentHP / unit.maxHP)} 
+                          height="1" 
                           fill={unit.currentHP / unit.maxHP > 0.5 ? '#22C55E' : unit.currentHP / unit.maxHP > 0.25 ? '#EAB308' : '#EF4444'} 
                           rx="0.2" 
                         />

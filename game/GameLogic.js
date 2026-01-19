@@ -8,7 +8,7 @@ export const UNIT_TYPES = {
   SWORDSMAN: {
     type: 'SWORDSMAN',
     name: 'Swordsman',
-    emoji: '⚔️',
+    image: 'swordsman',
     maxHP: 100,
     attackPower: 25,
     movePoints: 2,
@@ -18,7 +18,7 @@ export const UNIT_TYPES = {
   ARCHER: {
     type: 'ARCHER',
     name: 'Archer',
-    emoji: '🏹',
+    image: 'archer',
     maxHP: 60,
     attackPower: 20,
     movePoints: 2,
@@ -28,7 +28,7 @@ export const UNIT_TYPES = {
   KNIGHT: {
     type: 'KNIGHT',
     name: 'Knight',
-    emoji: '🐴',
+    image: 'knight',
     maxHP: 150,
     attackPower: 35,
     movePoints: 3,
@@ -38,7 +38,7 @@ export const UNIT_TYPES = {
   MILITIA: {
     type: 'MILITIA',
     name: 'Militia',
-    emoji: '🗡️',
+    image: 'militia',
     maxHP: 40,
     attackPower: 20,
     movePoints: 2,
@@ -48,7 +48,7 @@ export const UNIT_TYPES = {
   CATAPULT: {
     type: 'CATAPULT',
     name: 'Catapult',
-    emoji: '🏰',
+    image: 'catapult',
     maxHP: 40,
     attackPower: 50,
     movePoints: 1,
@@ -115,7 +115,7 @@ export const createUnit = (unitType, ownerID, q, r) => {
     id: uuidv4(),
     type: template.type,
     name: template.name,
-    emoji: template.emoji,
+    image: template.image,
     currentHP: template.maxHP,
     maxHP: template.maxHP,
     attackPower: template.attackPower,

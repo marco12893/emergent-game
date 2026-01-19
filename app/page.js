@@ -17,7 +17,11 @@ const UnitInfoPanel = ({ unit, isSelected }) => {
       isSelected ? 'border-amber-400 bg-amber-400/10' : 'border-slate-600 bg-slate-800/50'
     }`}>
       <div className="flex items-center gap-3 mb-2">
-        <span className="text-2xl">{unit.emoji || '⚔️'}</span>
+        <img 
+          src={`/units/${unit.image || 'swordsman'}_${unit.ownerID === '0' ? 'blue' : 'red'}.png`}
+          className="w-8 h-8"
+          alt={unit.name || 'Unit'}
+        />
         <div>
           <div className="font-semibold text-white">{unit.name || 'Unit'}</div>
           <div className="text-xs text-slate-400">Player {unit.ownerID}</div>
@@ -251,44 +255,48 @@ export default function HTTPMultiplayerPage() {
     if (!joined) return
 
     try {
+      const requestBody = { gameId: matchID, action, payload }
+      console.log('Sending request body:', requestBody)
+      
       const response = await fetch(`${serverUrl}/api/action`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ gameId: matchID, action, payload }),
+        body: JSON.stringify(requestBody),
       })
 
       if (response.ok) {
         const data = await response.json()
         setGameState(data.gameState)
       } else {
-        throw new Error('Failed to send action')
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to send action')
       }
     } catch (err) {
       console.error('Action error:', err)
-      setError('Failed to send action to server')
+      setError(err.message || 'Failed to send action to server')
     }
   }
 
   const handleHexClick = (hex) => {
     if (!joined || !gameState) return
 
-    // Check for unit info display (always allowed, even when not player's turn)
-    const unitOnHex = gameState.units.find(u => u.q === hex.q && u.r === hex.r && u.currentHP > 0)
-    if (unitOnHex) {
-      // Toggle unit info selection
-      if (selectedUnitForInfo && selectedUnitForInfo.id === unitOnHex.id) {
-        setSelectedUnitForInfo(null) // Deselect if same unit
-      } else {
-        setSelectedUnitForInfo(unitOnHex) // Show info for any unit
-      }
-    } else {
-      setSelectedUnitForInfo(null) // Clear selection when clicking empty hex
-    }
-
     // Check if it's the current player's turn for game actions
     if (gameState.currentPlayer !== playerID) {
+      // Only allow unit info display when not player's turn
+      const unitOnHex = gameState.units.find(u => u.q === hex.q && u.r === hex.r && u.currentHP > 0)
+      if (unitOnHex) {
+        // Toggle unit info selection
+        if (selectedUnitForInfo && selectedUnitForInfo.id === unitOnHex.id) {
+          setSelectedUnitForInfo(null) // Deselect if same unit
+        } else {
+          setSelectedUnitForInfo(unitOnHex) // Show info for any unit
+        }
+      } else {
+        setSelectedUnitForInfo(null) // Clear selection when clicking empty hex
+      }
+      
       setError('Not your turn! (You can still view unit info)')
       setTimeout(() => setError(''), 2000)
       return
@@ -324,8 +332,15 @@ export default function HTTPMultiplayerPage() {
     // Battle Phase: Select, Move, or Attack
     if (phase === 'battle') {
       // Check if clicking on own unit to select it for action
+      const unitOnHex = gameState.units.find(u => u.q === hex.q && u.r === hex.r && u.currentHP > 0)
       if (unitOnHex && unitOnHex.ownerID === playerID) {
         sendAction('selectUnit', { unitId: unitOnHex.id, playerID })
+        // Also show unit info for own units
+        if (selectedUnitForInfo && selectedUnitForInfo.id === unitOnHex.id) {
+          setSelectedUnitForInfo(null) // Deselect if same unit
+        } else {
+          setSelectedUnitForInfo(unitOnHex) // Show info for own unit
+        }
         return
       }
       
@@ -371,6 +386,19 @@ export default function HTTPMultiplayerPage() {
         // Deselect if clicking elsewhere
         sendAction('deselectUnit', { playerID })
       }
+    }
+    
+    // Unit info display for any remaining clicks (when it's your turn but no action was taken)
+    const unitOnHex = gameState.units.find(u => u.q === hex.q && u.r === hex.r && u.currentHP > 0)
+    if (unitOnHex) {
+      // Toggle unit info selection
+      if (selectedUnitForInfo && selectedUnitForInfo.id === unitOnHex.id) {
+        setSelectedUnitForInfo(null) // Deselect if same unit
+      } else {
+        setSelectedUnitForInfo(unitOnHex) // Show info for any unit
+      }
+    } else {
+      setSelectedUnitForInfo(null) // Clear selection when clicking empty hex
     }
   }
 
@@ -640,20 +668,24 @@ export default function HTTPMultiplayerPage() {
                       : 'border-slate-600 hover:border-slate-500 text-white'
                   }`}
                 >
-                  <div className="flex flex-col items-center gap-1">
-                    <span className="text-2xl">{unit.emoji}</span>
+                  <div className="flex flex-col items-center gap-2">
+                    <img 
+                      src={`/units/${unit.image}_${playerID === '0' ? 'blue' : 'red'}.png`}
+                      className="w-24 h-24"
+                      alt={unit.name}
+                    />
                     <span className="font-semibold text-xs">{unit.name}</span>
                   </div>
                   {/* Info button */}
-                  <button
+                  <div
                     onClick={(e) => {
                       e.stopPropagation()
                       setShowUnitInfoPopup(unit)
                     }}
-                    className="absolute -top-1 -right-1 w-5 h-5 bg-blue-500 hover:bg-blue-400 text-white rounded-full text-xs font-bold flex items-center justify-center transition-all"
+                    className="absolute -top-2 -right-2 w-6 h-6 bg-blue-500 hover:bg-blue-400 text-white rounded-full text-xs font-bold flex items-center justify-center transition-all cursor-pointer"
                   >
                     i
-                  </button>
+                  </div>
                 </button>
               ))}
             </div>
