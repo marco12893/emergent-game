@@ -202,8 +202,6 @@ export default function HTTPMultiplayerPage() {
     setError('')
 
     try {
-      console.log('Connecting to game:', { matchID, playerID })
-      
       const response = await fetch(`${serverUrl}/api/join`, {
         method: 'POST',
         headers: {
@@ -214,7 +212,6 @@ export default function HTTPMultiplayerPage() {
 
       if (response.ok) {
         const data = await response.json()
-        console.log('Connected successfully:', data)
         setGameState(data.gameState)
         setJoined(true)
       } else {

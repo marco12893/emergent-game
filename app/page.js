@@ -153,7 +153,6 @@ export default function HTTPMultiplayerPage() {
 
     const pollInterval = setInterval(async () => {
       try {
-        console.log('🔍 Polling game state from:', serverUrl)
         const response = await fetch(`${serverUrl}/api/game/${matchID}`)
         if (response.ok) {
           const state = await response.json()
@@ -266,8 +265,6 @@ export default function HTTPMultiplayerPage() {
     setError('')
 
     try {
-      console.log('Connecting to game:', { matchID, playerID })
-      
       const response = await fetch(`${serverUrl}/api/join`, {
         method: 'POST',
         headers: {
@@ -278,7 +275,6 @@ export default function HTTPMultiplayerPage() {
 
       if (response.ok) {
         const data = await response.json()
-        console.log('Connected successfully:', data)
         setGameState(data.gameState)
         setJoined(true)
       } else {
@@ -297,7 +293,6 @@ export default function HTTPMultiplayerPage() {
 
     try {
       const requestBody = { gameId: matchID, action, payload }
-      console.log('Sending request body:', requestBody)
       
       const response = await fetch(`${serverUrl}/api/action`, {
         method: 'POST',

@@ -170,7 +170,6 @@ const GameBoard = ({
 
   // Handle touch events for mobile
   const handleTouchStart = useCallback((e) => {
-    console.log('Touch start:', e.touches.length)
     setIsTouch(true) // Mark this as a touch interaction
     
     if (e.touches.length === 1) {
@@ -212,7 +211,6 @@ const GameBoard = ({
       // If moved beyond threshold or enough time passed, consider it dragging
       if (moveDistance > dragThreshold || timeDiff > 150) {
         if (!isDragging) {
-          console.log('Starting drag - distance:', moveDistance, 'time:', timeDiff)
           setIsDragging(true)
           setHasDragged(true)
         }
@@ -281,21 +279,16 @@ const GameBoard = ({
 
   // Handle hex click
   const handleHexClick = useCallback((hex) => {
-    console.log('Hex clicked:', hex, 'hasDragged:', hasDragged)
     // Prevent hex clicks if we were dragging
     if (hasDragged) {
-      console.log('Hex click prevented due to dragging')
       return
     }
     if (onHexClick && hex) {
-      console.log('Calling onHexClick with hex:', hex)
       onHexClick(hex)
     }
   }, [onHexClick, hasDragged])
 
   const handleTouchEnd = useCallback((e) => {
-    console.log('Touch end, hasDragged:', hasDragged, 'isDragging:', isDragging)
-    
     // If we didn't drag and it was a quick touch, treat it as a tap
     if (!hasDragged && !isDragging) {
       const touchEndTime = Date.now()
@@ -303,7 +296,6 @@ const GameBoard = ({
       
       // Only treat as tap if it was quick (less than 500ms)
       if (touchDuration < 500 && touchStartTime > 0) {
-        console.log('Detected tap, duration:', touchDuration)
         
         // Find the element under the touch and trigger click
         if (e.changedTouches.length > 0) {
@@ -316,8 +308,6 @@ const GameBoard = ({
             const q = parseInt(hexElement.getAttribute('data-hex-q'))
             const r = parseInt(hexElement.getAttribute('data-hex-r'))
             const hex = { q, r, s: -q - r }
-            
-            console.log('Tap on hex:', hex)
             
             // Find the hex data and trigger click
             const hexDataFound = hexData.find(h => h.q === q && h.r === r)

@@ -65,38 +65,30 @@ export default function SimpleMultiplayerPage() {
       return
     }
 
-    console.log('Attempting to connect to server...')
-    console.log('Player ID:', playerID, 'Match ID:', matchID)
-
     const newSocket = io('http://localhost:8000', {
       transports: ['websocket', 'polling'] // Try both transport methods
     })
     
     newSocket.on('connect', () => {
-      console.log('Connected to server!')
-      console.log('Socket ID:', newSocket.id)
       setConnected(true)
       setSocket(newSocket)
       
       // Join the game
-      console.log('Joining game:', matchID)
       newSocket.emit('joinGame', { gameId: matchID, playerID })
     })
 
     newSocket.on('disconnect', () => {
-      console.log('Disconnected from server')
       setConnected(false)
       setJoined(false)
     })
 
     newSocket.on('gameState', (state) => {
-      console.log('Received game state:', state)
       setGameState(state)
       setJoined(true)
     })
 
     newSocket.on('playerJoined', (data) => {
-      console.log('Player joined:', data)
+      // Player joined notification
     })
 
     newSocket.on('connect_error', (error) => {
