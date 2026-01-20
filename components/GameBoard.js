@@ -56,10 +56,13 @@ const GameBoard = ({
   const [zoom, setZoom] = useState(1)
   const [isDragging, setIsDragging] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
-  const [dragThreshold, setDragThreshold] = useState(5) // 5px threshold
+  const [dragThreshold, setDragThreshold] = useState(10) // 10px threshold for better tap detection
   const [lastTouchDistance, setLastTouchDistance] = useState(null) // For pinch zoom
   const [hasDragged, setHasDragged] = useState(false)
   const [mouseDownPos, setMouseDownPos] = useState({ x: 0, y: 0 })
+  const [touchStartTime, setTouchStartTime] = useState(0)
+  const [touchStartPos, setTouchStartPos] = useState({ x: 0, y: 0 })
+  const [isTouch, setIsTouch] = useState(false) // Track if this is a touch interaction
   const dragTimeoutRef = useRef(null)
   const containerRef = useRef(null)
 
@@ -73,6 +76,9 @@ const GameBoard = ({
 
   // Handle mouse down for panning
   const handleMouseDown = useCallback((e) => {
+    // Prevent mouse events immediately after touch events
+    if (isTouch) return
+    
     // Prevent text selection during drag
     e.preventDefault()
     e.stopPropagation()
@@ -84,7 +90,7 @@ const GameBoard = ({
     // Disable text selection globally during drag
     document.body.style.userSelect = 'none'
     document.body.style.webkitUserSelect = 'none'
-  }, [cameraOffset])
+  }, [cameraOffset, isTouch])
 
   // Handle mouse move for panning
   const handleMouseMove = useCallback((e) => {
@@ -108,6 +114,9 @@ const GameBoard = ({
 
   // Handle mouse up
   const handleMouseUp = useCallback((e) => {
+    // Prevent mouse events immediately after touch events
+    if (isTouch) return
+    
     if (isDragging) {
       e.preventDefault()
       e.stopPropagation()
@@ -143,7 +152,7 @@ const GameBoard = ({
     // Re-enable text selection
     document.body.style.userSelect = ''
     document.body.style.webkitUserSelect = ''
-  }, [isDragging, mouseDownPos, dragThreshold])
+  }, [isDragging, mouseDownPos, dragThreshold, isTouch])
 
   // Cleanup text selection on unmount
   useEffect(() => {
@@ -161,15 +170,25 @@ const GameBoard = ({
 
   // Handle touch events for mobile
   const handleTouchStart = useCallback((e) => {
+    console.log('Touch start:', e.touches.length)
+    setIsTouch(true) // Mark this as a touch interaction
+    
     if (e.touches.length === 1) {
-      // Single touch - start panning
       const touch = e.touches[0]
-      setIsDragging(true)
+      const currentTime = Date.now()
+      
+      // Record touch start info for tap detection
+      setTouchStartTime(currentTime)
+      setTouchStartPos({ x: touch.clientX, y: touch.clientY })
+      setHasDragged(false)
+      
+      // Don't immediately set dragging - wait to see if it's a tap or drag
       setDragStart({ x: touch.clientX - cameraOffset.x, y: touch.clientY - cameraOffset.y })
-      setLastTouchDistance(null) // Reset pinch distance
+      setLastTouchDistance(null)
     } else if (e.touches.length === 2) {
       // Two touches - start pinch zoom
-      setIsDragging(false) // Don't pan while pinching
+      setIsDragging(false)
+      setLastTouchDistance(null)
       const touch1 = e.touches[0]
       const touch2 = e.touches[1]
       const distance = Math.sqrt(
@@ -181,16 +200,32 @@ const GameBoard = ({
   }, [cameraOffset])
 
   const handleTouchMove = useCallback((e) => {
-    if (e.touches.length === 1 && isDragging) {
-      // Single touch - continue panning
+    if (e.touches.length === 1) {
       const touch = e.touches[0]
-      setCameraOffset({
-        x: touch.clientX - dragStart.x,
-        y: touch.clientY - dragStart.y
-      })
+      const currentTime = Date.now()
+      const timeDiff = currentTime - touchStartTime
+      const moveDistance = Math.sqrt(
+        Math.pow(touch.clientX - touchStartPos.x, 2) + 
+        Math.pow(touch.clientY - touchStartPos.y, 2)
+      )
+      
+      // If moved beyond threshold or enough time passed, consider it dragging
+      if (moveDistance > dragThreshold || timeDiff > 150) {
+        if (!isDragging) {
+          console.log('Starting drag - distance:', moveDistance, 'time:', timeDiff)
+          setIsDragging(true)
+          setHasDragged(true)
+        }
+        
+        // Continue panning
+        setCameraOffset({
+          x: touch.clientX - dragStart.x,
+          y: touch.clientY - dragStart.y
+        })
+      }
     } else if (e.touches.length === 2 && lastTouchDistance !== null) {
       // Two touches - pinch zoom
-      e.preventDefault() // Prevent default pinch behavior
+      e.preventDefault()
       
       const touch1 = e.touches[0]
       const touch2 = e.touches[1]
@@ -199,15 +234,14 @@ const GameBoard = ({
         Math.pow(touch2.clientY - touch1.clientY, 2)
       )
       
-      // Calculate zoom factor based on distance change
       const scale = currentDistance / lastTouchDistance
-      if (scale > 0.8 && scale < 1.2) { // Limit zoom speed
+      if (scale > 0.8 && scale < 1.2) {
         setZoom(prevZoom => Math.max(0.5, Math.min(3, prevZoom * scale)))
       }
       
       setLastTouchDistance(currentDistance)
     }
-  }, [isDragging, dragStart, lastTouchDistance])
+  }, [isDragging, dragStart, lastTouchDistance, touchStartTime, touchStartPos, dragThreshold])
 
   // Add event listeners
   useEffect(() => {
@@ -247,14 +281,63 @@ const GameBoard = ({
 
   // Handle hex click
   const handleHexClick = useCallback((hex) => {
+    console.log('Hex clicked:', hex, 'hasDragged:', hasDragged)
     // Prevent hex clicks if we were dragging
     if (hasDragged) {
+      console.log('Hex click prevented due to dragging')
       return
     }
     if (onHexClick && hex) {
+      console.log('Calling onHexClick with hex:', hex)
       onHexClick(hex)
     }
   }, [onHexClick, hasDragged])
+
+  const handleTouchEnd = useCallback((e) => {
+    console.log('Touch end, hasDragged:', hasDragged, 'isDragging:', isDragging)
+    
+    // If we didn't drag and it was a quick touch, treat it as a tap
+    if (!hasDragged && !isDragging) {
+      const touchEndTime = Date.now()
+      const touchDuration = touchEndTime - touchStartTime
+      
+      // Only treat as tap if it was quick (less than 500ms)
+      if (touchDuration < 500 && touchStartTime > 0) {
+        console.log('Detected tap, duration:', touchDuration)
+        
+        // Find the element under the touch and trigger click
+        if (e.changedTouches.length > 0) {
+          const touch = e.changedTouches[0]
+          const element = document.elementFromPoint(touch.clientX, touch.clientY)
+          
+          // Find the closest hex element
+          const hexElement = element?.closest('[data-hex-q]')
+          if (hexElement) {
+            const q = parseInt(hexElement.getAttribute('data-hex-q'))
+            const r = parseInt(hexElement.getAttribute('data-hex-r'))
+            const hex = { q, r, s: -q - r }
+            
+            console.log('Tap on hex:', hex)
+            
+            // Find the hex data and trigger click
+            const hexDataFound = hexData.find(h => h.q === q && h.r === r)
+            if (hexDataFound && onHexClick) {
+              handleHexClick(hexDataFound)
+            }
+          }
+        }
+      }
+    }
+    
+    // Reset touch state
+    setIsDragging(false)
+    setHasDragged(false)
+    setTouchStartTime(0)
+    setLastTouchDistance(null)
+    
+    // Reset touch flag after a short delay to prevent mouse events
+    setTimeout(() => setIsTouch(false), 100)
+  }, [hasDragged, isDragging, touchStartTime, hexData, onHexClick, handleHexClick])
 
   // Get hex fill color (fallback) - removed to show only tiles
   const getHexFill = (hex) => {
@@ -317,7 +400,7 @@ const GameBoard = ({
       onMouseLeave={handleMouseUp} // Handle mouse leaving the container
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
-      onTouchEnd={handleMouseUp}
+      onTouchEnd={handleTouchEnd}
     >
       <div 
         className="w-full h-full flex items-center justify-center"
@@ -343,21 +426,21 @@ const GameBoard = ({
               const isReachable = highlightedHexes.some(h => h.q === hex.q && h.r === hex.r)
               
               return (
-                <Hexagon
-                  key={`${hex.q}-${hex.r}-${hex.s}`}
-                  q={hex.q}
-                  r={hex.r}
-                  s={hex.s}
-                  onClick={() => handleHexClick(hex)}
-                  cellStyle={{
-                    fill: getHexFill(hex),
-                    stroke: strokeStyle.stroke,
-                    strokeWidth: strokeStyle.strokeWidth,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                    filter: isReachable ? 'brightness(1.3)' : isAttackable ? 'brightness(1.2)' : 'none',
-                  }}
-                >
+                <g key={`${hex.q}-${hex.r}-${hex.s}`} data-hex-q={hex.q} data-hex-r={hex.r}>
+                  <Hexagon
+                    q={hex.q}
+                    r={hex.r}
+                    s={hex.s}
+                    onClick={() => handleHexClick(hex)}
+                    cellStyle={{
+                      fill: getHexFill(hex),
+                      stroke: strokeStyle.stroke,
+                      strokeWidth: strokeStyle.strokeWidth,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                      filter: isReachable ? 'brightness(1.3)' : isAttackable ? 'brightness(1.2)' : 'none',
+                    }}
+                  >
                   {/* 1. TERRAIN IMAGE (Layer 0) */}
                   {getTileImage(hex) && (
                     <image
@@ -419,6 +502,7 @@ const GameBoard = ({
                     </g>
                   )}
                 </Hexagon>
+                </g>
               )
             })}
           </Layout>
