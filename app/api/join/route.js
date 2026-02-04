@@ -85,6 +85,15 @@ export async function POST(request) {
     }
 
     if (!assignedPlayerID) {
+      if (sanitizedPlayerName) {
+        const matchingEntry = Object.entries(game.players || {}).find(([, value]) => value?.name === sanitizedPlayerName)
+        if (matchingEntry) {
+          assignedPlayerID = matchingEntry[0]
+        }
+      }
+    }
+
+    if (!assignedPlayerID) {
       return NextResponse.json({ 
         error: 'Game is full',
         gameId: sanitizedGameId
