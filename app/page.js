@@ -119,7 +119,6 @@ export default function HTTPMultiplayerPage() {
   const [matchID, setMatchID] = useState('')
   const [joined, setJoined] = useState(false)
   const [playerName, setPlayerName] = useState('')
-  const [preferredPlayerID, setPreferredPlayerID] = useState('0')
   const [lobbyGames, setLobbyGames] = useState([])
   const [lobbyLoading, setLobbyLoading] = useState(false)
   const [selectedUnitType, setSelectedUnitType] = useState('SWORDSMAN')
@@ -282,7 +281,7 @@ export default function HTTPMultiplayerPage() {
     return () => clearInterval(pollInterval)
   }, [joined, matchID, playerID])
 
-  const joinLobbyGame = async (gameId, requestedPlayerID) => {
+  const joinLobbyGame = async (gameId) => {
     if (!gameId) {
       setError('Lobby ID not found.')
       return
@@ -298,8 +297,7 @@ export default function HTTPMultiplayerPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ 
-          gameId,
-          playerID: requestedPlayerID,
+          gameId, 
           playerName: playerName || undefined 
         }),
       })
@@ -325,10 +323,8 @@ export default function HTTPMultiplayerPage() {
   }
 
   const createLobbyGame = async () => {
-    const newLobbyId = Array.from({ length: 4 }, () =>
-      String.fromCharCode(65 + Math.floor(Math.random() * 26))
-    ).join('')
-    await joinLobbyGame(newLobbyId, preferredPlayerID)
+    const newLobbyId = `match-${Date.now().toString(36)}`
+    await joinLobbyGame(newLobbyId)
   }
 
   const sendAction = async (action, payload) => {
@@ -525,20 +521,6 @@ export default function HTTPMultiplayerPage() {
                 className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
                 placeholder="Enter your name"
               />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Preferred Player Slot
-              </label>
-              <select
-                value={preferredPlayerID}
-                onChange={(e) => setPreferredPlayerID(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
-              >
-                <option value="0">Player 0</option>
-                <option value="1">Player 1</option>
-              </select>
             </div>
 
             <div className="flex gap-3">
