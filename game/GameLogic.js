@@ -1,5 +1,6 @@
 import { INVALID_MOVE } from 'boardgame.io/dist/cjs/core.js'
 import { v4 as uuidv4 } from 'uuid'
+import { DEFAULT_MAP_ID, generateMapData, getMapConfig } from './maps'
 
 // ============================================
 // UNIT DEFINITIONS - Medieval Roster
@@ -100,8 +101,8 @@ export const TERRAIN_TYPES = {
   PLAIN: { name: 'Plain', defenseBonus: 0, moveCost: 1, passable: true, waterOnly: false },
   FOREST: { name: 'Forest', defenseBonus: 10, moveCost: 1, passable: true, waterOnly: false },
   MOUNTAIN: { name: 'Mountain', defenseBonus: 0, moveCost: Infinity, passable: false, waterOnly: false },
-  WATER: { name: 'Water', defenseBonus: 0, moveCost: Infinity, passable: false, waterOnly: true },
-  HILLS: { name: 'Hills', defenseBonus: 15, moveCost: 2, passable: true, waterOnly: false },
+  WATER: { name: 'Water', defenseBonus: 0, moveCost: 1, passable: true, waterOnly: true },
+  HILLS: { name: 'Hills', defenseBonus: 8, moveCost: 2, passable: true, waterOnly: false },
 }
 
 // ============================================
@@ -181,12 +182,13 @@ export const getUnitAtHex = (q, r, units) => {
 }
 
 // Check if hex is in spawn zone
-export const isInSpawnZone = (q, r, playerID) => {
+export const isInSpawnZone = (q, r, playerID, mapWidth) => {
+  const leftSpawnMax = -mapWidth + 1
+  const rightSpawnMin = mapWidth - 2
   if (playerID === '0') {
-    return q <= -5
-  } else {
-    return q >= 4
+    return q <= leftSpawnMax
   }
+  return q >= rightSpawnMin
 }
 
 // Calculate reachable hexes for a unit (BFS with move points)
@@ -266,7 +268,7 @@ const setupPhase = {
       }
       
       // Check spawn zone
-      if (!isInSpawnZone(q, r, playerID)) {
+      if (!isInSpawnZone(q, r, playerID, G.mapSize?.width || GAME_MODES[G.gameMode]?.mapSize?.width || 6)) {
         return INVALID_MOVE
       }
       
@@ -391,6 +393,9 @@ const battlePhase = {
             const terrain = terrainMap[key] || 'PLAIN'
             const terrainData = TERRAIN_TYPES[terrain]
             
+            const isNaval = unit.isNaval || false
+            if (isNaval && !terrainData.waterOnly) continue
+            if (!isNaval && terrainData.waterOnly) continue
             if (!terrainData.passable) continue
             
             // Check if occupied by any unit (except the moving unit)
@@ -444,8 +449,12 @@ const battlePhase = {
       const targetHexKey = `${target.q},${target.r}`
       const terrain = G.terrainMap[targetHexKey] || 'PLAIN'
       const defenseBonus = TERRAIN_TYPES[terrain].defenseBonus
-      
-      const damage = Math.max(1, attacker.attackPower - defenseBonus)
+      const attackerTerrain = G.terrainMap[`${attacker.q},${attacker.r}`] || 'PLAIN'
+      const hillBonus = attackerTerrain === 'HILLS' && ['ARCHER', 'CATAPULT'].includes(attacker.type)
+        ? 5
+        : 0
+
+      const damage = Math.max(1, attacker.attackPower + hillBonus - defenseBonus)
       target.currentHP -= damage
       attacker.hasAttacked = true
       
@@ -547,24 +556,22 @@ export const MedievalBattleGame = {
     const gameMode = setupData?.gameMode || 'ELIMINATION'
     const modeConfig = GAME_MODES[gameMode]
     
-    // Generate hex map data based on game mode
-    const hexes = []
-    const terrainMap = {}
-    const MAP_WIDTH = modeConfig.mapSize.width
-    const MAP_HEIGHT = modeConfig.mapSize.height
-    
-    // Generate hexes
-    for (let r = -MAP_HEIGHT; r <= MAP_HEIGHT; r++) {
-      const rOffset = Math.floor(r / 2)
-      for (let q = -MAP_WIDTH - rOffset; q <= MAP_WIDTH - rOffset; q++) {
-        const s = -q - r
-        hexes.push({ q, r, s })
-        
-        // Assign terrain based on game mode
-        let terrain = 'PLAIN'
-        
-        if (gameMode === 'ATTACK_DEFEND') {
-          // Attack & Defend map with Paris in center
+    const mapId = setupData?.mapId || DEFAULT_MAP_ID
+    let hexes = []
+    let terrainMap = {}
+    let MAP_WIDTH = modeConfig.mapSize.width
+    let MAP_HEIGHT = modeConfig.mapSize.height
+
+    if (gameMode === 'ATTACK_DEFEND') {
+      // Generate hexes for Attack & Defend mode
+      for (let r = -MAP_HEIGHT; r <= MAP_HEIGHT; r++) {
+        const rOffset = Math.floor(r / 2)
+        for (let q = -MAP_WIDTH - rOffset; q <= MAP_WIDTH - rOffset; q++) {
+          const s = -q - r
+          hexes.push({ q, r, s })
+
+          let terrain = 'PLAIN'
+
           // Water around the edges
           if (Math.abs(q) >= MAP_WIDTH - 1 || Math.abs(r) >= MAP_HEIGHT - 1) {
             terrain = 'WATER'
@@ -578,39 +585,19 @@ export const MedievalBattleGame = {
             terrain = 'MOUNTAIN'
           }
           // Forests
-          else if ((q === -3 && r === 0) || (q === 3 && r === -2) || (q === -1 && r === 3) || (q === 1, r === -4)) {
+          else if ((q === -3 && r === 0) || (q === 3 && r === -2) || (q === -1 && r === 3) || (q === 1 && r === -4)) {
             terrain = 'FOREST'
           }
-        } else {
-          // ELIMINATION mode - original terrain
-          // Mountains in center
-          const mountainPositions = [
-            { q: 0, r: -2 }, { q: 0, r: -1 }, { q: 1, r: -2 },
-            { q: -1, r: 0 }, { q: 0, r: 0 },
-          ]
-          if (mountainPositions.some(pos => pos.q === q && pos.r === r)) {
-            terrain = 'MOUNTAIN'
-          }
-          
-          // Forests
-          const forestPositions = [
-            { q: -4, r: 0 }, { q: -4, r: 1 }, { q: -3, r: 0 }, { q: -5, r: 2 },
-            { q: 3, r: -1 }, { q: 4, r: -2 }, { q: 4, r: -1 }, { q: 3, r: 0 },
-            { q: -1, r: 3 }, { q: 0, r: 3 }, { q: 1, r: 2 },
-            { q: -1, r: -3 }, { q: 0, r: -4 }, { q: 1, r: -4 },
-          ]
-          if (forestPositions.some(pos => pos.q === q && pos.r === r)) {
-            terrain = 'FOREST'
-          }
-          
-          // Water at edges
-          if (Math.abs(q) >= MAP_WIDTH || Math.abs(r) >= MAP_HEIGHT) {
-            terrain = 'WATER'
-          }
+
+          terrainMap[`${q},${r}`] = terrain
         }
-        
-        terrainMap[`${q},${r}`] = terrain
       }
+    } else {
+      const mapData = generateMapData(mapId)
+      hexes = mapData.hexes
+      terrainMap = mapData.terrainMap
+      MAP_WIDTH = mapData.mapConfig.size.width
+      MAP_HEIGHT = mapData.mapConfig.size.height
     }
     
     // Define extraction hexes (edges of map for retreat)
@@ -633,6 +620,8 @@ export const MedievalBattleGame = {
       phase: 'setup',
       log: ['Game started! Place your units in your spawn zone.'],
       gameMode: gameMode,
+      mapId,
+      mapSize: { width: MAP_WIDTH, height: MAP_HEIGHT },
       retreatModeActive: false,
       extractionHexes: extractionHexes,
       objectiveHexes: modeConfig.objectiveHexes || [],

@@ -8,6 +8,8 @@ const TERRAIN_TYPES = {
   PLAIN: { name: 'Plain', color: '#8B9556', defenseBonus: 0 },
   FOREST: { name: 'Forest', color: '#2D5A27', defenseBonus: 2 },
   MOUNTAIN: { name: 'Mountain', color: '#6B7280', impassable: true },
+  HILLS: { name: 'Hills', color: '#A16207', defenseBonus: 1 },
+  WATER: { name: 'Water', color: '#2563EB', impassable: true },
 }
 
 // Generate hex coordinates for a rectangular-ish hex map
@@ -31,9 +33,11 @@ const getTerrainType = (q, r, terrainMap) => {
 }
 
 // Determine spawn zone based on q coordinate
-const getSpawnZone = (q, r) => {
-  if (q <= -5) return 0 // Player 0 (Left/Blue)
-  if (q >= 4) return 1  // Player 1 (Right/Red)
+const getSpawnZone = (q, r, mapWidth) => {
+  const leftSpawnMax = -mapWidth + 1
+  const rightSpawnMin = mapWidth - 2
+  if (q <= leftSpawnMax) return 0 // Player 0 (Left/Blue)
+  if (q >= rightSpawnMin) return 1  // Player 1 (Right/Red)
   return null // No spawn zone
 }
 
@@ -43,12 +47,14 @@ const GameBoard = ({
   highlightedHexes = [], 
   attackableHexes = [],
   units = [],
+  hexes = [],
+  mapSize = null,
   terrainMap = {},
   selectedUnitId = null,
   currentPlayerID = '0'
 }) => {
-  const MAP_WIDTH = 6
-  const MAP_HEIGHT = 4
+  const mapWidth = mapSize?.width || Math.max(6, ...hexes.map(hex => Math.abs(hex.q)))
+  const mapHeight = mapSize?.height || Math.max(4, ...hexes.map(hex => Math.abs(hex.r)))
   const HEX_SIZE = 5.5 
   
   // Camera state
@@ -270,12 +276,13 @@ const GameBoard = ({
 
   // Generate the hex map data
   const hexData = useMemo(() => {
-    return generateHexMap(MAP_WIDTH, MAP_HEIGHT).map(hex => ({
+    const sourceHexes = hexes.length ? hexes : generateHexMap(mapWidth, mapHeight)
+    return sourceHexes.map(hex => ({
       ...hex,
       terrain: getTerrainType(hex.q, hex.r, terrainMap),
-      spawnZone: getSpawnZone(hex.q, hex.r),
+      spawnZone: getSpawnZone(hex.q, hex.r, mapWidth),
     }))
-  }, [terrainMap])
+  }, [terrainMap, hexes, mapWidth, mapHeight])
 
   // Handle hex click
   const handleHexClick = useCallback((hex) => {
@@ -346,6 +353,10 @@ const GameBoard = ({
         return forestVariants[seed % forestVariants.length]
       case 'MOUNTAIN':
         return '/tiles/Mountain_3.png'
+      case 'HILLS':
+        return '/tiles/Hills.png'
+      case 'WATER':
+        return '/tiles/Ocean.png'
       default:
         return null
     }
@@ -400,7 +411,11 @@ const GameBoard = ({
           transition: isDragging ? 'none' : 'transform 0.1s ease-out'
         }}
       >
-        <HexGrid width="100%" height="100%" viewBox="-80 -40 160 120">
+        <HexGrid
+          width="100%"
+          height="100%"
+          viewBox={`-${(mapWidth + 2) * 10} -${(mapHeight + 2) * 10} ${(mapWidth + 2) * 20} ${(mapHeight + 2) * 20}`}
+        >
           <defs>
             <clipPath id="hex-clip">
               <polygon points="0,-5.5 4.76,-2.75 4.76,2.75 0,5.5 -4.76,2.75 -4.76,-2.75" />
