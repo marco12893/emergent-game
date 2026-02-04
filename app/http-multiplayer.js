@@ -320,7 +320,9 @@ export default function HTTPMultiplayerPage() {
                 highlightedHexes={[]}
                 attackableHexes={[]}
                 units={gameState?.units || []}
-                terrainMap={{}}
+                hexes={gameState?.hexes || []}
+                terrainMap={gameState?.terrainMap || {}}
+                mapConfig={gameState?.mapConfig || null}
                 selectedUnitId={null}
                 currentPlayerID={playerID}
               />

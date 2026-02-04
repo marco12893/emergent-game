@@ -352,7 +352,9 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
             highlightedHexes={highlightedHexes}
             attackableHexes={attackableHexes}
             units={G.units.filter(u => u.currentHP > 0)}
+            hexes={G.hexes}
             terrainMap={G.terrainMap}
+            mapConfig={G.mapSize ? { width: G.mapSize.width, height: G.mapSize.height, spawnZones: { player0MaxQ: -(G.mapSize.width - 1), player1MinQ: G.mapSize.width - 2 } } : null}
             selectedUnitId={G.selectedUnitId}
             currentPlayerID={playerID}
           />
