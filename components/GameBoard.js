@@ -478,15 +478,26 @@ const GameBoard = ({
                       )}
                       
                       {/* HP bar */}
-                      <g transform="translate(-5, 5)">
-                        <rect x="0" y="0" width="10" height="1" fill="#374151" rx="0.2" />
+                      <g transform="translate(-5, 5.5)" style={{ filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.9))' }}>
+                        <rect
+                          x="0"
+                          y="0"
+                          width="10"
+                          height="1.6"
+                          fill="rgba(15, 23, 42, 0.9)"
+                          stroke="#E2E8F0"
+                          strokeWidth="0.1"
+                          rx="0.3"
+                        />
                         <rect 
                           x="0" 
                           y="0" 
                           width={10 * (unit.currentHP / unit.maxHP)} 
-                          height="1" 
+                          height="1.6" 
                           fill={unit.currentHP / unit.maxHP > 0.5 ? '#22C55E' : unit.currentHP / unit.maxHP > 0.25 ? '#EAB308' : '#EF4444'} 
-                          rx="0.2" 
+                          stroke="#F8FAFC"
+                          strokeWidth="0.08"
+                          rx="0.3" 
                         />
                       </g>
                     </g>
