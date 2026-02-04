@@ -493,7 +493,7 @@ const GameBoard = ({
                     )}
                     
                     {/* HP bar */}
-                    <g transform="translate(-5, 6.2)" style={{ filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.9))' }}>
+                    <g transform="translate(-5, 4.0)" style={{ filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.9))' }}>
                       <rect
                         x="0"
                         y="0"
