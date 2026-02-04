@@ -410,8 +410,6 @@ const GameBoard = ({
           <Layout size={{ x: HEX_SIZE, y: HEX_SIZE }} flat={false} spacing={1.05} origin={{ x: 0, y: 0 }}>
             {hexData.map((hex) => {
               const strokeStyle = getHexStroke(hex)
-              const unit = getUnitOnHex(hex)
-              const isUnitSelected = unit && unit.id === selectedUnitId
               const isAttackable = attackableHexes.some(h => h.q === hex.q && h.r === hex.r)
               const isReachable = highlightedHexes.some(h => h.q === hex.q && h.r === hex.r)
               
@@ -448,61 +446,76 @@ const GameBoard = ({
                       />
                     )}
                   </Hexagon>
+                </g>
+              )
+            })}
 
-                  {/* 2. UNIT + HUD (Layer 1 - Above Terrain) */}
-                  {unit && (
-                    <g style={{ pointerEvents: 'none' }}>
-                      {/* Unit Image */}
-                      <image
-                        href={`/units/${unit.image || 'swordsman'}_${unit.ownerID === '0' ? 'blue' : 'red'}.png`}
-                        x="-5"
-                        y="-7"
-                        width="10"
-                        height="14"
-                        style={{ 
-                          pointerEvents: 'none',
-                          filter: isUnitSelected ? 'drop-shadow(0 0 3px #FBBF24)' : 'drop-shadow(0px 2px 4px rgba(0,0,0,0.5))'
-                        }}
+            {hexData.map((hex) => {
+              const unit = getUnitOnHex(hex)
+              if (!unit) return null
+              const isUnitSelected = unit.id === selectedUnitId
+
+              return (
+                <g key={`unit-${hex.q}-${hex.r}-${hex.s}`} style={{ pointerEvents: 'none' }}>
+                  <Hexagon
+                    q={hex.q}
+                    r={hex.r}
+                    s={hex.s}
+                    cellStyle={{
+                      fill: 'none',
+                      stroke: 'none',
+                    }}
+                  >
+                    {/* Unit Image */}
+                    <image
+                      href={`/units/${unit.image || 'swordsman'}_${unit.ownerID === '0' ? 'blue' : 'red'}.png`}
+                      x="-5"
+                      y="-7"
+                      width="10"
+                      height="14"
+                      style={{ 
+                        pointerEvents: 'none',
+                        filter: isUnitSelected ? 'drop-shadow(0 0 3px #FBBF24)' : 'drop-shadow(0px 2px 4px rgba(0,0,0,0.5))'
+                      }}
+                    />
+                    
+                    {/* Selection indicator */}
+                    {isUnitSelected && (
+                      <circle
+                        cx="0"
+                        cy="0"
+                        r="6"
+                        fill="none"
+                        stroke="#FBBF24"
+                        strokeWidth="0.4"
+                        opacity="0.8"
                       />
-                      
-                      {/* Selection indicator */}
-                      {isUnitSelected && (
-                        <circle
-                          cx="0"
-                          cy="0"
-                          r="6"
-                          fill="none"
-                          stroke="#FBBF24"
-                          strokeWidth="0.4"
-                          opacity="0.8"
-                        />
-                      )}
-                      
-                      {/* HP bar */}
-                      <g transform="translate(-5, 6.2)" style={{ filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.9))' }}>
-                        <rect
-                          x="0"
-                          y="0"
-                          width="10"
-                          height="1.6"
-                          fill="rgba(15, 23, 42, 0.9)"
-                          stroke="#E2E8F0"
-                          strokeWidth="0.1"
-                          rx="0.3"
-                        />
-                        <rect 
-                          x="0" 
-                          y="0" 
-                          width={10 * (unit.currentHP / unit.maxHP)} 
-                          height="1.6" 
-                          fill={unit.currentHP / unit.maxHP > 0.5 ? '#22C55E' : unit.currentHP / unit.maxHP > 0.25 ? '#EAB308' : '#EF4444'} 
-                          stroke="#F8FAFC"
-                          strokeWidth="0.08"
-                          rx="0.3" 
-                        />
-                      </g>
+                    )}
+                    
+                    {/* HP bar */}
+                    <g transform="translate(-5, 6.2)" style={{ filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.9))' }}>
+                      <rect
+                        x="0"
+                        y="0"
+                        width="10"
+                        height="1.6"
+                        fill="rgba(15, 23, 42, 0.9)"
+                        stroke="#E2E8F0"
+                        strokeWidth="0.1"
+                        rx="0.3"
+                      />
+                      <rect 
+                        x="0" 
+                        y="0" 
+                        width={10 * (unit.currentHP / unit.maxHP)} 
+                        height="1.6" 
+                        fill={unit.currentHP / unit.maxHP > 0.5 ? '#22C55E' : unit.currentHP / unit.maxHP > 0.25 ? '#EAB308' : '#EF4444'} 
+                        stroke="#F8FAFC"
+                        strokeWidth="0.08"
+                        rx="0.3" 
+                      />
                     </g>
-                  )}
+                  </Hexagon>
                 </g>
               )
             })}
