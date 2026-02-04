@@ -128,6 +128,7 @@ export default function HTTPMultiplayerPage() {
   const [loading, setLoading] = useState(false)
   const [highlightedHexes, setHighlightedHexes] = useState([])
   const [attackableHexes, setAttackableHexes] = useState([])
+  const [selectedMapId, setSelectedMapId] = useState('MAP_1')
   const [showVictoryScreen, setShowVictoryScreen] = useState(true) // Default to true, can be closed
   const [selectedUnitForInfo, setSelectedUnitForInfo] = useState(null) // New state for unit info display
   const [showUnitInfoPopup, setShowUnitInfoPopup] = useState(null) // New state for unit info popup
@@ -301,7 +302,7 @@ export default function HTTPMultiplayerPage() {
     return () => clearInterval(pollInterval)
   }, [joined, matchID, playerID])
 
-  const joinLobbyGame = async (gameId, requestedPlayerID) => {
+  const joinLobbyGame = async (gameId, requestedPlayerID, mapId) => {
     if (!gameId) {
       setError('Lobby ID not found.')
       return
@@ -322,7 +323,8 @@ export default function HTTPMultiplayerPage() {
         body: JSON.stringify({ 
           gameId,
           playerID: resolvedPlayerID,
-          playerName: playerName || undefined 
+          playerName: playerName || undefined,
+          mapId: mapId || undefined,
         }),
       })
 
@@ -355,7 +357,7 @@ export default function HTTPMultiplayerPage() {
     const newLobbyId = Array.from({ length: 4 }, () =>
       String.fromCharCode(65 + Math.floor(Math.random() * 26))
     ).join('')
-    await joinLobbyGame(newLobbyId, preferredPlayerID)
+    await joinLobbyGame(newLobbyId, preferredPlayerID, selectedMapId)
   }
 
   const sendAction = async (action, payload) => {
@@ -568,6 +570,23 @@ export default function HTTPMultiplayerPage() {
               </select>
             </div>
 
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Map Selection
+              </label>
+              <select
+                value={selectedMapId}
+                onChange={(e) => setSelectedMapId(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
+              >
+                <option value="MAP_1">Map 1 (Original)</option>
+                <option value="MAP_2">Map 2 (Coastal Divide)</option>
+              </select>
+              <p className="text-xs text-slate-400 mt-1">
+                Map 2 adds a larger battlefield with an ocean at the top.
+              </p>
+            </div>
+
             <div className="flex gap-3">
               <button
                 onClick={createLobbyGame}
@@ -610,6 +629,9 @@ export default function HTTPMultiplayerPage() {
                           <div>
                             <div className="text-sm font-semibold text-white">
                               {game.id}
+                            </div>
+                            <div className="text-xs text-slate-400">
+                              {game.mapName || 'Map 1 (Original)'}
                             </div>
                             <div className="text-xs text-slate-400">
                               Status: {game.status === 'waiting' ? 'Waiting for opponent' : game.status === 'open' ? 'Open' : 'Full'}
@@ -811,7 +833,9 @@ export default function HTTPMultiplayerPage() {
           highlightedHexes={highlightedHexes}
           attackableHexes={attackableHexes}
           units={gameState?.units || []}
+          hexes={gameState?.hexes || []}
           terrainMap={gameState?.terrainMap || {}}
+          mapConfig={gameState?.mapConfig || null}
           selectedUnitId={gameState?.selectedUnitId || null}
           currentPlayerID={playerID}
         />

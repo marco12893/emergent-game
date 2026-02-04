@@ -17,7 +17,7 @@ export async function OPTIONS() {
 export async function POST(request) {
   try {
     const body = await request.json()
-    const { gameId, playerID, playerName } = body
+    const { gameId, playerID, playerName, mapId } = body
     
     // Sanitize and validate inputs
     const sanitizedGameId = sanitizeGameId(gameId)
@@ -60,7 +60,7 @@ export async function POST(request) {
     if (!game) {
       console.log('🆕 Creating new game')
       try {
-        game = await createNewGame(gameId)
+        game = await createNewGame(gameId, mapId)
       } catch (createError) {
         console.error('❌ KV createGame failed:', createError)
         return NextResponse.json({ 

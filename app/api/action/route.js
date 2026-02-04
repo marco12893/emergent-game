@@ -104,8 +104,8 @@ const TERRAIN_TYPES = {
   PLAIN: { name: 'Plain', defenseBonus: 0, moveCost: 1, passable: true, waterOnly: false },
   FOREST: { name: 'Forest', defenseBonus: 10, moveCost: 1, passable: true, waterOnly: false },
   MOUNTAIN: { name: 'Mountain', defenseBonus: 0, moveCost: Infinity, passable: false, waterOnly: false },
-  WATER: { name: 'Water', defenseBonus: 0, moveCost: Infinity, passable: false, waterOnly: true },
-  HILLS: { name: 'Hills', defenseBonus: 15, moveCost: 2, passable: true, waterOnly: false },
+  WATER: { name: 'Water', defenseBonus: 0, moveCost: 1, passable: true, waterOnly: true },
+  HILLS: { name: 'Hills', defenseBonus: 8, moveCost: 2, passable: true, waterOnly: false },
 }
 
 // ============================================
@@ -349,9 +349,10 @@ export async function POST(request) {
           }
           
           // Check spawn zone restriction
-          const inSpawnZone = placePlayerID === '0' ? 
-            q <= -5 : 
-            q >= 4
+          const spawnZones = game.mapConfig?.spawnZones || { player0MaxQ: -5, player1MinQ: 4 }
+          const inSpawnZone = placePlayerID === '0'
+            ? q <= spawnZones.player0MaxQ
+            : q >= spawnZones.player1MinQ
           if (!inSpawnZone) {
             return NextResponse.json({ 
               error: 'Units can only be placed in your spawn zone' 
@@ -652,8 +653,12 @@ export async function POST(request) {
             const targetTerrain = game.terrainMap[targetTerrainKey] || 'PLAIN'
             const terrainData = TERRAIN_TYPES[targetTerrain]
             const defenseBonus = terrainData.defenseBonus || 0
+
+            const attackerTerrainKey = `${sanitizeCoordinate(attacker.q)},${sanitizeCoordinate(attacker.r)}`
+            const attackerTerrain = game.terrainMap[attackerTerrainKey] || 'PLAIN'
+            const hillBonus = (attackerTerrain === 'HILLS' && ['ARCHER', 'CATAPULT'].includes(attacker.type)) ? 5 : 0
             
-            const baseDamage = attacker.attackPower
+            const baseDamage = attacker.attackPower + hillBonus
             
             // Calculate damage reduction based on HP percentage
             const hpPercentage = attacker.currentHP / attacker.maxHP
