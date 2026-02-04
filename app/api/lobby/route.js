@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getGames } from '@/lib/gameState'
+import { getGames, cleanupInactiveGames } from '@/lib/gameState'
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -14,6 +14,11 @@ export async function OPTIONS() {
 
 export async function GET() {
   try {
+    // Run deterministic cleanup (every 2 minutes guaranteed)
+    cleanupInactiveGames().catch(err => {
+      console.error('❌ Lobby cleanup failed:', err);
+    });
+
     const games = await getGames()
     const lobbyGames = Object.values(games).map((game) => {
       const players = Object.entries(game.players || {}).map(([id, data]) => ({
@@ -24,7 +29,7 @@ export async function GET() {
       }))
 
       const playerCount = players.length
-      const status = playerCount >= 2 ? 'full' : playerCount === 1 ? 'waiting' : 'open'
+      const status = 'open' // Always show as open to allow anyone to join
 
       return {
         id: game.id,

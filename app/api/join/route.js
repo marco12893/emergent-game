@@ -84,96 +84,16 @@ export async function POST(request) {
       assignedPlayerID = ['0', '1'].find((id) => !takenPlayers.has(id))
     }
 
+    // If no slots available, just assign the first available slot (always allow joining)
     if (!assignedPlayerID) {
-      if (sanitizedPlayerName) {
-        const matchingEntry = Object.entries(game.players || {}).find(([, value]) => value?.name === sanitizedPlayerName)
-        if (matchingEntry) {
-          assignedPlayerID = matchingEntry[0]
-        }
-      }
+      assignedPlayerID = '0' // Always allow joining as player 0, will overwrite existing
     }
 
-    if (!assignedPlayerID) {
-      return NextResponse.json({ 
-        error: 'Game is full',
-        gameId: sanitizedGameId
-      }, { 
-        status: 409,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type',
-        }
-      })
-    }
-
-    if (game.players[assignedPlayerID]) {
-      const existingPlayer = game.players[assignedPlayerID]
-      const existingName = existingPlayer?.name || `Player ${assignedPlayerID}`
-      const incomingName = sanitizedPlayerName || ''
-      const canRejoin = incomingName
-        ? incomingName === existingName
-        : existingName === `Player ${assignedPlayerID}`
-
-      if (!canRejoin) {
-        return NextResponse.json({ 
-          error: 'Player slot already taken',
-          gameId: sanitizedGameId,
-          playerID: assignedPlayerID
-        }, { 
-          status: 409,
-          headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type',
-          }
-        })
-      }
-
-      game.players[assignedPlayerID] = {
-        ...existingPlayer,
-        joinTime: Date.now(),
-        name: existingName,
-      }
-      
-      try {
-        await setGame(sanitizedGameId, game)
-      } catch (saveError) {
-        console.error('❌ KV setGame failed:', saveError)
-        return NextResponse.json({ 
-          error: 'Database error: Unable to save game',
-          details: 'KV service temporarily unavailable'
-        }, { 
-          status: 503,
-          headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type',
-          }
-        })
-      }
-
-      console.log(`✅ Player ${assignedPlayerID} rejoined game ${gameId}`)
-
-      return NextResponse.json({ 
-        success: true, 
-        gameState: game,
-        playerID: assignedPlayerID,
-        message: `Player ${assignedPlayerID} rejoined successfully`
-      }, {
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type',
-        }
-      })
-    }
-
-    // Add player to game
-    game.players[assignedPlayerID] = { 
-      joined: true, 
+    // Always allow joining - no restrictions
+    game.players[assignedPlayerID] = {
+      name: sanitizedPlayerName || `Player ${assignedPlayerID}`,
       joinTime: Date.now(),
-      name: sanitizedPlayerName || `Player ${assignedPlayerID}`
+      joined: true,
     }
     
     // Save updated game state

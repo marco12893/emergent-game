@@ -308,7 +308,7 @@ export default function HTTPMultiplayerPage() {
     }
 
     const fallbackPlayerID = storedSession?.matchID === gameId ? storedSession.playerID : undefined
-    const resolvedPlayerID = requestedPlayerID ?? fallbackPlayerID
+    const resolvedPlayerID = requestedPlayerID || fallbackPlayerID || preferredPlayerID
 
     setLoading(true)
     setError('')
@@ -636,7 +636,7 @@ export default function HTTPMultiplayerPage() {
                           )}
                         </div>
                         <button
-                          onClick={() => joinLobbyGame(game.id)}
+                          onClick={() => joinLobbyGame(game.id, preferredPlayerID)}
                           disabled={loading || isFull}
                           className="w-full py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 text-white font-semibold rounded-lg transition-all"
                         >
