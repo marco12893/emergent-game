@@ -431,24 +431,25 @@ const GameBoard = ({
                       filter: isReachable ? 'brightness(1.3)' : isAttackable ? 'brightness(1.2)' : 'none',
                     }}
                   >
-                  {/* 1. TERRAIN IMAGE (Layer 0) */}
-                  {getTileImage(hex) && (
-                    <image
-                      href={getTileImage(hex)}
-                      x={-HEX_SIZE * 1.2}
-                      y={-HEX_SIZE * 1.2}
-                      width={HEX_SIZE * 2.4}
-                      height={HEX_SIZE * 2.4}
-                      clipPath="url(#hex-clip)"
-                      preserveAspectRatio="xMidYMid slice"
-                      style={{ 
-                        pointerEvents: 'none', 
-                        opacity: 0.8
-                      }}
-                    />
-                  )}
-                  
-                  {/* 2. UNIT (Layer 1 - On Top) */}
+                    {/* 1. TERRAIN IMAGE (Layer 0) */}
+                    {getTileImage(hex) && (
+                      <image
+                        href={getTileImage(hex)}
+                        x={-HEX_SIZE * 1.2}
+                        y={-HEX_SIZE * 1.2}
+                        width={HEX_SIZE * 2.4}
+                        height={HEX_SIZE * 2.4}
+                        clipPath="url(#hex-clip)"
+                        preserveAspectRatio="xMidYMid slice"
+                        style={{ 
+                          pointerEvents: 'none', 
+                          opacity: 0.8
+                        }}
+                      />
+                    )}
+                  </Hexagon>
+
+                  {/* 2. UNIT + HUD (Layer 1 - Above Terrain) */}
                   {unit && (
                     <g style={{ pointerEvents: 'none' }}>
                       {/* Unit Image */}
@@ -478,7 +479,7 @@ const GameBoard = ({
                       )}
                       
                       {/* HP bar */}
-                      <g transform="translate(-5, 5.5)" style={{ filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.9))' }}>
+                      <g transform="translate(-5, 6.2)" style={{ filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.9))' }}>
                         <rect
                           x="0"
                           y="0"
@@ -502,7 +503,6 @@ const GameBoard = ({
                       </g>
                     </g>
                   )}
-                </Hexagon>
                 </g>
               )
             })}

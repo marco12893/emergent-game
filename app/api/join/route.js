@@ -99,12 +99,59 @@ export async function POST(request) {
     }
 
     if (game.players[assignedPlayerID]) {
+      const existingPlayer = game.players[assignedPlayerID]
+      const existingName = existingPlayer?.name || `Player ${assignedPlayerID}`
+      const incomingName = sanitizedPlayerName || ''
+      const canRejoin = incomingName
+        ? incomingName === existingName
+        : existingName === `Player ${assignedPlayerID}`
+
+      if (!canRejoin) {
+        return NextResponse.json({ 
+          error: 'Player slot already taken',
+          gameId: sanitizedGameId,
+          playerID: assignedPlayerID
+        }, { 
+          status: 409,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type',
+          }
+        })
+      }
+
+      game.players[assignedPlayerID] = {
+        ...existingPlayer,
+        joinTime: Date.now(),
+        name: existingName,
+      }
+      
+      try {
+        await setGame(sanitizedGameId, game)
+      } catch (saveError) {
+        console.error('❌ KV setGame failed:', saveError)
+        return NextResponse.json({ 
+          error: 'Database error: Unable to save game',
+          details: 'KV service temporarily unavailable'
+        }, { 
+          status: 503,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type',
+          }
+        })
+      }
+
+      console.log(`✅ Player ${assignedPlayerID} rejoined game ${gameId}`)
+
       return NextResponse.json({ 
-        error: 'Player slot already taken',
-        gameId: sanitizedGameId,
-        playerID: assignedPlayerID
-      }, { 
-        status: 409,
+        success: true, 
+        gameState: game,
+        playerID: assignedPlayerID,
+        message: `Player ${assignedPlayerID} rejoined successfully`
+      }, {
         headers: {
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'POST, OPTIONS',

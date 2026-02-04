@@ -77,6 +77,7 @@ export default function HTTPMultiplayerPage() {
   const [preferredPlayerID, setPreferredPlayerID] = useState('0')
   const [lobbyGames, setLobbyGames] = useState([])
   const [lobbyLoading, setLobbyLoading] = useState(false)
+  const [storedSession, setStoredSession] = useState(null)
   const [selectedUnitType, setSelectedUnitType] = useState('SWORDSMAN')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -110,6 +111,24 @@ export default function HTTPMultiplayerPage() {
     const interval = setInterval(fetchLobbyGames, 3000)
     return () => clearInterval(interval)
   }, [joined])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const savedSession = JSON.parse(localStorage.getItem('lobbySession') || 'null')
+      if (savedSession?.playerName) {
+        setPlayerName(savedSession.playerName)
+      }
+      if (savedSession?.playerID) {
+        setPreferredPlayerID(savedSession.playerID)
+      }
+      if (savedSession?.matchID) {
+        setStoredSession(savedSession)
+      }
+    } catch (error) {
+      console.error('Failed to read lobby session:', error)
+    }
+  }, [])
 
   // Poll for game state updates
   useEffect(() => {
@@ -225,6 +244,9 @@ export default function HTTPMultiplayerPage() {
       return
     }
 
+    const fallbackPlayerID = storedSession?.matchID === gameId ? storedSession.playerID : undefined
+    const resolvedPlayerID = requestedPlayerID ?? fallbackPlayerID
+
     setLoading(true)
     setError('')
 
@@ -236,7 +258,7 @@ export default function HTTPMultiplayerPage() {
         },
         body: JSON.stringify({ 
           gameId, 
-          playerID: requestedPlayerID,
+          playerID: resolvedPlayerID,
           playerName: playerName || undefined 
         }),
       })
@@ -247,6 +269,11 @@ export default function HTTPMultiplayerPage() {
         setPlayerID(data.playerID)
         setMatchID(gameId)
         setJoined(true)
+        const nextSession = { matchID: gameId, playerID: data.playerID, playerName }
+        setStoredSession(nextSession)
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('lobbySession', JSON.stringify(nextSession))
+        }
       } else if (response.status === 409) {
         const data = await response.json()
         setError(data.error || 'Lobby is full.')
