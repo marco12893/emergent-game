@@ -113,7 +113,10 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
       }
       
       // Otherwise, try to place a unit
-      const isSpawnZone = playerID === '0' ? hex.q <= -5 : hex.q >= 4
+    const mapWidth = G.mapSize?.width || 6
+    const leftSpawnMax = -mapWidth + 1
+    const rightSpawnMin = mapWidth - 2
+    const isSpawnZone = playerID === '0' ? hex.q <= leftSpawnMax : hex.q >= rightSpawnMin
       if (isSpawnZone && hex.terrain !== 'MOUNTAIN') {
         // Check if hex is occupied
         const occupied = G.units.some(u => u.q === hex.q && u.r === hex.r)
@@ -352,6 +355,8 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
             highlightedHexes={highlightedHexes}
             attackableHexes={attackableHexes}
             units={G.units.filter(u => u.currentHP > 0)}
+            hexes={G.hexes || []}
+            mapSize={G.mapSize || null}
             terrainMap={G.terrainMap}
             selectedUnitId={G.selectedUnitId}
             currentPlayerID={playerID}
