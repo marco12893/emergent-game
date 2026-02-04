@@ -118,6 +118,10 @@ export default function HTTPMultiplayerPage() {
   const [playerID, setPlayerID] = useState('')
   const [matchID, setMatchID] = useState('')
   const [joined, setJoined] = useState(false)
+  const [playerName, setPlayerName] = useState('')
+  const [preferredPlayerID, setPreferredPlayerID] = useState('0')
+  const [lobbyGames, setLobbyGames] = useState([])
+  const [lobbyLoading, setLobbyLoading] = useState(false)
   const [selectedUnitType, setSelectedUnitType] = useState('SWORDSMAN')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -146,6 +150,29 @@ export default function HTTPMultiplayerPage() {
       setServerUrl(getServerUrl())
     }
   }, [])
+
+  const fetchLobbyGames = async () => {
+    if (!serverUrl || joined) return
+    setLobbyLoading(true)
+    try {
+      const response = await fetch(`${serverUrl}/api/lobby`)
+      if (response.ok) {
+        const data = await response.json()
+        setLobbyGames(data.games || [])
+      }
+    } catch (err) {
+      console.error('Failed to load lobby games:', err)
+    } finally {
+      setLobbyLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!serverUrl || joined) return
+    fetchLobbyGames()
+    const interval = setInterval(fetchLobbyGames, 3000)
+    return () => clearInterval(interval)
+  }, [serverUrl, joined])
 
   // Poll for game state updates
   useEffect(() => {
@@ -255,9 +282,9 @@ export default function HTTPMultiplayerPage() {
     return () => clearInterval(pollInterval)
   }, [joined, matchID, playerID])
 
-  const connectToGame = async () => {
-    if (!playerID || !matchID) {
-      setError('Please enter Player ID and Match ID')
+  const joinLobbyGame = async (gameId, requestedPlayerID) => {
+    if (!gameId) {
+      setError('Lobby ID not found.')
       return
     }
 
@@ -270,13 +297,22 @@ export default function HTTPMultiplayerPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ gameId: matchID, playerID }),
+        body: JSON.stringify({ 
+          gameId,
+          playerID: requestedPlayerID,
+          playerName: playerName || undefined 
+        }),
       })
 
       if (response.ok) {
         const data = await response.json()
         setGameState(data.gameState)
+        setPlayerID(data.playerID)
+        setMatchID(gameId)
         setJoined(true)
+      } else if (response.status === 409) {
+        const data = await response.json()
+        setError(data.error || 'Lobby is full.')
       } else {
         throw new Error('Failed to join game')
       }
@@ -286,6 +322,13 @@ export default function HTTPMultiplayerPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const createLobbyGame = async () => {
+    const newLobbyId = Array.from({ length: 4 }, () =>
+      String.fromCharCode(65 + Math.floor(Math.random() * 26))
+    ).join('')
+    await joinLobbyGame(newLobbyId, preferredPlayerID)
   }
 
   const sendAction = async (action, payload) => {
@@ -461,7 +504,7 @@ export default function HTTPMultiplayerPage() {
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
         <div className="bg-slate-800 rounded-lg border border-slate-700 p-8 max-w-md w-full">
           <h1 className="text-2xl font-bold text-amber-400 mb-6 text-center">
-            ⚔️ HTTP Multiplayer Battle
+            ⚔️ Lobby Multiplayer
           </h1>
           
           {error && (
@@ -470,40 +513,114 @@ export default function HTTPMultiplayerPage() {
             </div>
           )}
           
-          <div className="space-y-4">
+          <div className="space-y-5">
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">
-                Player ID (0 or 1)
+                Player Name (optional)
               </label>
               <input
                 type="text"
-                value={playerID}
-                onChange={(e) => setPlayerID(e.target.value)}
+                value={playerName}
+                onChange={(e) => setPlayerName(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
-                placeholder="Enter 0 or 1"
+                placeholder="Enter your name"
               />
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">
-                Match ID
+                Preferred Player Slot
               </label>
-              <input
-                type="text"
-                value={matchID}
-                onChange={(e) => setMatchID(e.target.value)}
+              <select
+                value={preferredPlayerID}
+                onChange={(e) => setPreferredPlayerID(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
-                placeholder="Enter match ID"
-              />
+              >
+                <option value="0">Player 0</option>
+                <option value="1">Player 1</option>
+              </select>
             </div>
-            
-            <button
-              onClick={connectToGame}
-              disabled={!playerID || !matchID || loading}
-              className="w-full py-3 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-600 text-white font-bold rounded-lg transition-all"
-            >
-              {loading ? '🔄 Connecting...' : '🎮 Connect & Join Battle'}
-            </button>
+
+            <div className="flex gap-3">
+              <button
+                onClick={createLobbyGame}
+                disabled={loading}
+                className="flex-1 py-3 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-600 text-white font-bold rounded-lg transition-all"
+              >
+                {loading ? '🔄 Creating...' : '➕ Create New Lobby'}
+              </button>
+              <button
+                onClick={fetchLobbyGames}
+                disabled={lobbyLoading}
+                className="px-4 py-3 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-600 text-white font-semibold rounded-lg transition-all"
+              >
+                {lobbyLoading ? '⏳' : '🔄'}
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-sm text-slate-300">
+                <span>Lobby List</span>
+                <span className="text-xs text-slate-500">
+                  {lobbyGames.length} available
+                </span>
+              </div>
+
+              {lobbyGames.length === 0 ? (
+                <div className="text-sm text-slate-400 bg-slate-700/50 border border-slate-600 rounded-lg p-4 text-center">
+                  No active lobbies yet. Create a new lobby to start playing.
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+                  {lobbyGames.map((game) => {
+                    const isFull = game.status === 'full'
+                    return (
+                      <div
+                        key={game.id}
+                        className="border border-slate-600 rounded-lg p-3 bg-slate-700/40"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div>
+                            <div className="text-sm font-semibold text-white">
+                              {game.id}
+                            </div>
+                            <div className="text-xs text-slate-400">
+                              Status: {game.status === 'waiting' ? 'Waiting for opponent' : game.status === 'open' ? 'Open' : 'Full'}
+                            </div>
+                          </div>
+                          <span className={`text-xs font-semibold px-2 py-1 rounded ${
+                            isFull ? 'bg-red-600/60 text-red-200' : 'bg-emerald-600/50 text-emerald-200'
+                          }`}>
+                            {game.playerCount}/2
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-2 mb-3">
+                          {game.players.length > 0 ? (
+                            game.players.map((player) => (
+                              <span
+                                key={player.id}
+                                className="text-xs bg-slate-800/80 border border-slate-600 rounded-full px-2 py-1 text-slate-200"
+                              >
+                                {player.name} (P{player.id})
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-xs text-slate-400">No players yet</span>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => joinLobbyGame(game.id)}
+                          disabled={loading || isFull}
+                          className="w-full py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 text-white font-semibold rounded-lg transition-all"
+                        >
+                          {isFull ? 'Lobby Full' : game.status === 'waiting' ? '🎯 Join & Battle' : '🎮 Enter Lobby'}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
           </div>
           
           <div className="mt-6 text-xs text-slate-400">

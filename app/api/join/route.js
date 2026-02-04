@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getGame, setGame, createNewGame } from '@/lib/gameState'
-import { sanitizeGameId, sanitizePlayerID } from '@/lib/inputSanitization'
+import { sanitizeGameId, sanitizePlayerID, sanitizePlayerName } from '@/lib/inputSanitization'
 
 // Handle OPTIONS requests for CORS preflight
 export async function OPTIONS() {
@@ -17,15 +17,16 @@ export async function OPTIONS() {
 export async function POST(request) {
   try {
     const body = await request.json()
-    const { gameId, playerID } = body
+    const { gameId, playerID, playerName } = body
     
     // Sanitize and validate inputs
     const sanitizedGameId = sanitizeGameId(gameId)
-    const sanitizedPlayerID = sanitizePlayerID(playerID)
+    const sanitizedPlayerID = playerID === undefined || playerID === null ? null : sanitizePlayerID(playerID)
+    const sanitizedPlayerName = sanitizePlayerName(playerName)
     
-    if (!sanitizedGameId || sanitizedPlayerID === null) {
+    if (!sanitizedGameId || (playerID !== undefined && sanitizedPlayerID === null)) {
       return NextResponse.json({ 
-        error: 'Invalid or missing required fields: gameId and playerID' 
+        error: 'Invalid or missing required fields: gameId or playerID' 
       }, { 
         status: 400,
         headers: {
@@ -36,7 +37,7 @@ export async function POST(request) {
       })
     }
     
-    console.log(`🎮 Player ${sanitizedPlayerID} trying to join game ${sanitizedGameId}`)
+    console.log(`🎮 Player ${sanitizedPlayerID ?? 'auto'} trying to join game ${sanitizedGameId}`)
     
     let game
     try {
@@ -76,8 +77,48 @@ export async function POST(request) {
       }
     }
     
+    const takenPlayers = new Set(Object.keys(game.players || {}))
+    let assignedPlayerID = sanitizedPlayerID
+
+    if (!assignedPlayerID) {
+      assignedPlayerID = ['0', '1'].find((id) => !takenPlayers.has(id))
+    }
+
+    if (!assignedPlayerID) {
+      return NextResponse.json({ 
+        error: 'Game is full',
+        gameId: sanitizedGameId
+      }, { 
+        status: 409,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
+        }
+      })
+    }
+
+    if (game.players[assignedPlayerID]) {
+      return NextResponse.json({ 
+        error: 'Player slot already taken',
+        gameId: sanitizedGameId,
+        playerID: assignedPlayerID
+      }, { 
+        status: 409,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
+        }
+      })
+    }
+
     // Add player to game
-    game.players[sanitizedPlayerID] = { joined: true, joinTime: Date.now() }
+    game.players[assignedPlayerID] = { 
+      joined: true, 
+      joinTime: Date.now(),
+      name: sanitizedPlayerName || `Player ${assignedPlayerID}`
+    }
     
     // Save updated game state
     try {
@@ -97,12 +138,13 @@ export async function POST(request) {
       })
     }
     
-    console.log(`✅ Player ${playerID} joined game ${gameId}`)
+    console.log(`✅ Player ${assignedPlayerID} joined game ${gameId}`)
     
     return NextResponse.json({ 
       success: true, 
       gameState: game,
-      message: `Player ${playerID} joined successfully`
+      playerID: assignedPlayerID,
+      message: `Player ${assignedPlayerID} joined successfully`
     }, {
       headers: {
         'Access-Control-Allow-Origin': '*',
