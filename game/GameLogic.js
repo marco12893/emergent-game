@@ -100,8 +100,8 @@ export const TERRAIN_TYPES = {
   PLAIN: { name: 'Plain', defenseBonus: 0, moveCost: 1, passable: true, waterOnly: false },
   FOREST: { name: 'Forest', defenseBonus: 10, moveCost: 1, passable: true, waterOnly: false },
   MOUNTAIN: { name: 'Mountain', defenseBonus: 0, moveCost: Infinity, passable: false, waterOnly: false },
-  WATER: { name: 'Water', defenseBonus: 0, moveCost: Infinity, passable: false, waterOnly: true },
-  HILLS: { name: 'Hills', defenseBonus: 15, moveCost: 2, passable: true, waterOnly: false },
+  WATER: { name: 'Water', defenseBonus: 0, moveCost: 1, passable: true, waterOnly: true },
+  HILLS: { name: 'Hills', defenseBonus: 8, moveCost: 2, passable: true, waterOnly: false },
 }
 
 // ============================================
@@ -181,12 +181,15 @@ export const getUnitAtHex = (q, r, units) => {
 }
 
 // Check if hex is in spawn zone
-export const isInSpawnZone = (q, r, playerID) => {
+export const isInSpawnZone = (q, r, playerID, mapWidth = 6) => {
+  const player0MaxQ = -(mapWidth - 1)
+  const player1MinQ = mapWidth - 2
+
   if (playerID === '0') {
-    return q <= -5
-  } else {
-    return q >= 4
+    return q <= player0MaxQ
   }
+
+  return q >= player1MinQ
 }
 
 // Calculate reachable hexes for a unit (BFS with move points)
@@ -266,7 +269,7 @@ const setupPhase = {
       }
       
       // Check spawn zone
-      if (!isInSpawnZone(q, r, playerID)) {
+      if (!isInSpawnZone(q, r, playerID, G.mapSize?.width)) {
         return INVALID_MOVE
       }
       
@@ -445,7 +448,10 @@ const battlePhase = {
       const terrain = G.terrainMap[targetHexKey] || 'PLAIN'
       const defenseBonus = TERRAIN_TYPES[terrain].defenseBonus
       
-      const damage = Math.max(1, attacker.attackPower - defenseBonus)
+      const attackerTerrainKey = `${attacker.q},${attacker.r}`
+      const attackerTerrain = G.terrainMap[attackerTerrainKey] || 'PLAIN'
+      const hillBonus = (attackerTerrain === 'HILLS' && ['ARCHER', 'CATAPULT'].includes(attacker.type)) ? 5 : 0
+      const damage = Math.max(1, attacker.attackPower + hillBonus - defenseBonus)
       target.currentHP -= damage
       attacker.hasAttacked = true
       
@@ -633,6 +639,7 @@ export const MedievalBattleGame = {
       phase: 'setup',
       log: ['Game started! Place your units in your spawn zone.'],
       gameMode: gameMode,
+      mapSize: { width: MAP_WIDTH, height: MAP_HEIGHT },
       retreatModeActive: false,
       extractionHexes: extractionHexes,
       objectiveHexes: modeConfig.objectiveHexes || [],

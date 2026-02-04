@@ -28,6 +28,8 @@ export async function GET() {
 
       return {
         id: game.id,
+        mapId: game.mapId || 'MAP_1',
+        mapName: game.mapConfig?.name || 'Map 1 (Original)',
         players,
         playerCount,
         status,

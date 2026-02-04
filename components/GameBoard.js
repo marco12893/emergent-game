@@ -7,7 +7,9 @@ import { HexGrid, Layout, Hexagon } from 'react-hexgrid'
 const TERRAIN_TYPES = {
   PLAIN: { name: 'Plain', color: '#8B9556', defenseBonus: 0 },
   FOREST: { name: 'Forest', color: '#2D5A27', defenseBonus: 2 },
+  HILLS: { name: 'Hills', color: '#7C6F3B', defenseBonus: 1 },
   MOUNTAIN: { name: 'Mountain', color: '#6B7280', impassable: true },
+  WATER: { name: 'Water', color: '#1E4A77', impassable: true },
 }
 
 // Generate hex coordinates for a rectangular-ish hex map
@@ -31,9 +33,9 @@ const getTerrainType = (q, r, terrainMap) => {
 }
 
 // Determine spawn zone based on q coordinate
-const getSpawnZone = (q, r) => {
-  if (q <= -5) return 0 // Player 0 (Left/Blue)
-  if (q >= 4) return 1  // Player 1 (Right/Red)
+const getSpawnZone = (q, r, spawnZones) => {
+  if (q <= spawnZones.player0MaxQ) return 0 // Player 0 (Left/Blue)
+  if (q >= spawnZones.player1MinQ) return 1  // Player 1 (Right/Red)
   return null // No spawn zone
 }
 
@@ -44,11 +46,14 @@ const GameBoard = ({
   attackableHexes = [],
   units = [],
   terrainMap = {},
+  hexes = null,
+  mapConfig = null,
   selectedUnitId = null,
   currentPlayerID = '0'
 }) => {
-  const MAP_WIDTH = 6
-  const MAP_HEIGHT = 4
+  const MAP_WIDTH = mapConfig?.width ?? 6
+  const MAP_HEIGHT = mapConfig?.height ?? 4
+  const spawnZones = mapConfig?.spawnZones ?? { player0MaxQ: -5, player1MinQ: 4 }
   const HEX_SIZE = 5.5 
   
   // Camera state
@@ -270,12 +275,13 @@ const GameBoard = ({
 
   // Generate the hex map data
   const hexData = useMemo(() => {
-    return generateHexMap(MAP_WIDTH, MAP_HEIGHT).map(hex => ({
+    const baseHexes = hexes?.length ? hexes : generateHexMap(MAP_WIDTH, MAP_HEIGHT)
+    return baseHexes.map(hex => ({
       ...hex,
       terrain: getTerrainType(hex.q, hex.r, terrainMap),
-      spawnZone: getSpawnZone(hex.q, hex.r),
+      spawnZone: getSpawnZone(hex.q, hex.r, spawnZones),
     }))
-  }, [terrainMap])
+  }, [terrainMap, MAP_WIDTH, MAP_HEIGHT, hexes, spawnZones])
 
   // Handle hex click
   const handleHexClick = useCallback((hex) => {
@@ -346,6 +352,10 @@ const GameBoard = ({
         return forestVariants[seed % forestVariants.length]
       case 'MOUNTAIN':
         return '/tiles/Mountain_3.png'
+      case 'HILLS':
+        return '/tiles/hills.svg'
+      case 'WATER':
+        return '/tiles/ocean.svg'
       default:
         return null
     }

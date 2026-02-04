@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="oceanGradient" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2b6cb0" />
+      <stop offset="100%" stop-color="#1a365d" />
+    </linearGradient>
+    <pattern id="waves" width="40" height="20" patternUnits="userSpaceOnUse">
+      <path d="M0 10 Q10 0 20 10 T40 10" fill="none" stroke="#63b3ed" stroke-width="3" opacity="0.5" />
+    </pattern>
+  </defs>
+  <rect width="200" height="200" fill="url(#oceanGradient)" />
+  <rect width="200" height="200" fill="url(#waves)" />
+</svg>
