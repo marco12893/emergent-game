@@ -122,7 +122,10 @@ export default function SimpleMultiplayerPage() {
     }
 
     // Try to place a new unit
-    const isSpawnZone = playerID === '0' ? hex.q <= -5 : hex.q >= 4
+    const mapWidth = gameState?.mapSize?.width || 6
+    const leftSpawnMax = -mapWidth + 1
+    const rightSpawnMin = mapWidth - 2
+    const isSpawnZone = playerID === '0' ? hex.q <= leftSpawnMax : hex.q >= rightSpawnMin
     if (isSpawnZone) {
       socket.emit('gameAction', {
         gameId: matchID,
@@ -305,7 +308,9 @@ export default function SimpleMultiplayerPage() {
                 highlightedHexes={[]}
                 attackableHexes={[]}
                 units={gameState?.units || []}
-                terrainMap={{}}
+                hexes={gameState?.hexes || []}
+                mapSize={gameState?.mapSize || null}
+                terrainMap={gameState?.terrainMap || {}}
                 selectedUnitId={null}
                 currentPlayerID={playerID}
               />

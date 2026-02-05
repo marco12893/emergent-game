@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { UNIT_TYPES } from '@/game/GameLogic'
+import { DEFAULT_MAP_ID, MAPS } from '@/game/maps'
 import GameBoard from '@/components/GameBoard'
 
 // Unit Info Panel Component
@@ -77,6 +78,7 @@ export default function HTTPMultiplayerPage() {
   const [preferredPlayerID, setPreferredPlayerID] = useState('0')
   const [lobbyGames, setLobbyGames] = useState([])
   const [lobbyLoading, setLobbyLoading] = useState(false)
+  const [selectedMapId, setSelectedMapId] = useState(DEFAULT_MAP_ID)
   const [storedSession, setStoredSession] = useState(null)
   const [selectedUnitType, setSelectedUnitType] = useState('SWORDSMAN')
   const [error, setError] = useState('')
@@ -182,12 +184,18 @@ export default function HTTPMultiplayerPage() {
                     // Check terrain costs
                     const terrain = state.terrainMap[key] || 'PLAIN'
                     const terrainTypes = {
-                      PLAIN: { moveCost: 1, passable: true },
-                      FOREST: { moveCost: 1, passable: true },
-                      MOUNTAIN: { moveCost: Infinity, passable: false }
+                      PLAIN: { moveCost: 1, passable: true, waterOnly: false },
+                      FOREST: { moveCost: 1, passable: true, waterOnly: false },
+                      HILLS: { moveCost: 2, passable: true, waterOnly: false },
+                      MOUNTAIN: { moveCost: Infinity, passable: false, waterOnly: false },
+                      WATER: { moveCost: 1, passable: true, waterOnly: true },
                     }
                     const terrainData = terrainTypes[terrain]
+                    if (!terrainData) continue
                     
+                    const isNaval = selectedUnit.isNaval || false
+                    if (isNaval && !terrainData.waterOnly) continue
+                    if (!isNaval && terrainData.waterOnly) continue
                     if (!terrainData.passable) continue
                     
                     const moveCost = terrainData.moveCost
@@ -238,7 +246,7 @@ export default function HTTPMultiplayerPage() {
     return () => clearInterval(pollInterval)
   }, [joined, matchID, playerID])
 
-  const joinLobbyGame = async (gameId, requestedPlayerID) => {
+  const joinLobbyGame = async (gameId, requestedPlayerID, mapId) => {
     if (!gameId) {
       setError('Lobby ID not found.')
       return
@@ -257,9 +265,10 @@ export default function HTTPMultiplayerPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ 
-          gameId, 
+          gameId,
           playerID: resolvedPlayerID,
-          playerName: playerName || undefined 
+          playerName: playerName || undefined,
+          mapId: mapId || undefined,
         }),
       })
 
@@ -292,7 +301,7 @@ export default function HTTPMultiplayerPage() {
     const newLobbyId = Array.from({ length: 4 }, () =>
       String.fromCharCode(65 + Math.floor(Math.random() * 26))
     ).join('')
-    await joinLobbyGame(newLobbyId, preferredPlayerID)
+    await joinLobbyGame(newLobbyId, preferredPlayerID, selectedMapId)
   }
 
   const sendAction = async (action, payload) => {
@@ -341,7 +350,10 @@ export default function HTTPMultiplayerPage() {
       }
 
       // Try to place a new unit
-      const isSpawnZone = playerID === '0' ? hex.q <= -5 : hex.q >= 4
+      const mapWidth = gameState?.mapSize?.width || 6
+      const leftSpawnMax = -mapWidth + 1
+      const rightSpawnMin = mapWidth - 2
+      const isSpawnZone = playerID === '0' ? hex.q <= leftSpawnMax : hex.q >= rightSpawnMin
       if (isSpawnZone) {
         sendAction('placeUnit', {
           unitType: selectedUnitType,
@@ -461,6 +473,26 @@ export default function HTTPMultiplayerPage() {
                 <option value="0">Player 0</option>
                 <option value="1">Player 1</option>
               </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Map Selection
+              </label>
+              <select
+                value={selectedMapId}
+                onChange={(e) => setSelectedMapId(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
+              >
+                {Object.values(MAPS).map((map) => (
+                  <option key={map.id} value={map.id}>
+                    {map.name}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-slate-400">
+                {MAPS[selectedMapId]?.description}
+              </p>
             </div>
 
             <div className="flex gap-3">
@@ -668,6 +700,8 @@ export default function HTTPMultiplayerPage() {
                 highlightedHexes={highlightedHexes}
                 attackableHexes={attackableHexes}
                 units={gameState?.units || []}
+                hexes={gameState?.hexes || []}
+                mapSize={gameState?.mapSize || null}
                 terrainMap={gameState?.terrainMap || {}}
                 selectedUnitId={gameState?.selectedUnitId || null}
                 currentPlayerID={playerID}
