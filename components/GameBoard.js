@@ -43,6 +43,8 @@ const getSpawnZone = (q, r, mapWidth) => {
 
 const GameBoard = ({ 
   onHexClick, 
+  onHexHover,
+  onHexHoverEnd,
   selectedHex, 
   highlightedHexes = [], 
   attackableHexes = [],
@@ -51,7 +53,8 @@ const GameBoard = ({
   mapSize = null,
   terrainMap = {},
   selectedUnitId = null,
-  currentPlayerID = '0'
+  currentPlayerID = '0',
+  damagePreview = null,
 }) => {
   const mapWidth = mapSize?.width || Math.max(6, ...hexes.map(hex => Math.abs(hex.q)))
   const mapHeight = mapSize?.height || Math.max(4, ...hexes.map(hex => Math.abs(hex.r)))
@@ -295,6 +298,21 @@ const GameBoard = ({
     }
   }, [onHexClick, hasDragged])
 
+  const handleHexHover = useCallback((hex) => {
+    if (hasDragged || isDragging) {
+      return
+    }
+    if (onHexHover && hex) {
+      onHexHover(hex)
+    }
+  }, [hasDragged, isDragging, onHexHover])
+
+  const handleHexHoverEnd = useCallback(() => {
+    if (onHexHoverEnd) {
+      onHexHoverEnd()
+    }
+  }, [onHexHoverEnd])
+
   const handleTouchEnd = useCallback((e) => {
     // If we didn't drag and it was a quick touch, treat it as a tap
     if (!hasDragged && !isDragging) {
@@ -435,6 +453,8 @@ const GameBoard = ({
                     r={hex.r}
                     s={hex.s}
                     onClick={() => handleHexClick(hex)}
+                    onMouseEnter={() => handleHexHover(hex)}
+                    onMouseLeave={handleHexHoverEnd}
                     cellStyle={{
                       fill: getHexFill(hex),
                       stroke: strokeStyle.stroke,
@@ -469,6 +489,8 @@ const GameBoard = ({
               const unit = getUnitOnHex(hex)
               if (!unit) return null
               const isUnitSelected = unit.id === selectedUnitId
+              const showAttackPreview = damagePreview?.targetId === unit.id
+              const showCounterPreview = damagePreview?.attackerId === unit.id
 
               return (
                 <g key={`unit-${hex.q}-${hex.r}-${hex.s}`} style={{ pointerEvents: 'none' }}>
@@ -494,6 +516,24 @@ const GameBoard = ({
                       }}
                     />
                     
+                    {(showAttackPreview || showCounterPreview) && (
+                      <text
+                        x="0"
+                        y="-7.5"
+                        textAnchor="middle"
+                        fontSize="3"
+                        fill={showAttackPreview ? '#FCA5A5' : '#FCD34D'}
+                        opacity="0.6"
+                        style={{ pointerEvents: 'none', fontWeight: '700' }}
+                      >
+                        {showAttackPreview
+                          ? `-${damagePreview.attackDamage}`
+                          : damagePreview.counterDamage > 0
+                            ? `-${damagePreview.counterDamage}`
+                            : '0'}
+                      </text>
+                    )}
+
                     {/* Selection indicator */}
                     {isUnitSelected && (
                       <circle

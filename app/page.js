@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { UNIT_TYPES } from '@/game/GameLogic'
+import { UNIT_TYPES, TERRAIN_TYPES } from '@/game/GameLogic'
 import { DEFAULT_MAP_ID, MAPS } from '@/game/maps'
 import GameBoard from '@/components/GameBoard'
 import VictoryScreen from '@/components/VictoryScreen'
@@ -130,10 +130,13 @@ export default function HTTPMultiplayerPage() {
   const [loading, setLoading] = useState(false)
   const [highlightedHexes, setHighlightedHexes] = useState([])
   const [attackableHexes, setAttackableHexes] = useState([])
+  const [hoveredHex, setHoveredHex] = useState(null)
+  const [damagePreview, setDamagePreview] = useState(null)
   const [showVictoryScreen, setShowVictoryScreen] = useState(true) // Default to true, can be closed
   const [selectedUnitForInfo, setSelectedUnitForInfo] = useState(null) // New state for unit info display
   const [showUnitInfoPopup, setShowUnitInfoPopup] = useState(null) // New state for unit info popup
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false) // State for collapsible left panel
+  const isMyTurn = gameState?.currentPlayer === playerID
   
   // Dynamic server URL for production
   const getServerUrl = () => {
@@ -308,6 +311,97 @@ export default function HTTPMultiplayerPage() {
 
     return () => clearInterval(pollInterval)
   }, [joined, matchID, playerID])
+
+  useEffect(() => {
+    if (!gameState || !hoveredHex || gameState.phase !== 'battle' || !isMyTurn) {
+      setDamagePreview(null)
+      return
+    }
+
+    const selectedUnit = gameState.selectedUnitId
+      ? gameState.units.find(u => u.id === gameState.selectedUnitId)
+      : null
+
+    if (!selectedUnit || selectedUnit.ownerID !== playerID || selectedUnit.hasAttacked) {
+      setDamagePreview(null)
+      return
+    }
+
+    const targetUnit = gameState.units.find(
+      u => u.q === hoveredHex.q && u.r === hoveredHex.r && u.ownerID !== playerID && u.currentHP > 0
+    )
+
+    if (!targetUnit) {
+      setDamagePreview(null)
+      return
+    }
+
+    const distance = Math.max(
+      Math.abs(selectedUnit.q - targetUnit.q),
+      Math.abs(selectedUnit.r - targetUnit.r),
+      Math.abs(selectedUnit.s - targetUnit.s)
+    )
+
+    if (distance > selectedUnit.range) {
+      setDamagePreview(null)
+      return
+    }
+
+    const targetTerrain = gameState.terrainMap[`${targetUnit.q},${targetUnit.r}`] || 'PLAIN'
+    const defenseBonus = TERRAIN_TYPES[targetTerrain]?.defenseBonus ?? 0
+    const attackerTerrain = gameState.terrainMap[`${selectedUnit.q},${selectedUnit.r}`] || 'PLAIN'
+    const hillBonus = attackerTerrain === 'HILLS' && ['ARCHER', 'CATAPULT'].includes(selectedUnit.type)
+      ? 5
+      : 0
+    const baseDamage = selectedUnit.attackPower + hillBonus
+
+    const hpPercentage = selectedUnit.currentHP / selectedUnit.maxHP
+    let damageMultiplier = 1.0
+    if (hpPercentage > 0.75) {
+      damageMultiplier = 1.0
+    } else if (hpPercentage > 0.5) {
+      damageMultiplier = 0.85
+    } else if (hpPercentage > 0.25) {
+      damageMultiplier = 0.70
+    } else {
+      damageMultiplier = 0.50
+    }
+
+    const reducedDamage = Math.round(baseDamage * damageMultiplier)
+    const attackDamage = Math.max(1, reducedDamage - defenseBonus)
+    const targetRemaining = targetUnit.currentHP - attackDamage
+
+    let counterDamage = 0
+    if (targetRemaining > 0 && distance <= targetUnit.range) {
+      if (targetUnit.type !== 'CATAPULT') {
+        const targetHpPercentage = targetRemaining / targetUnit.maxHP
+        let targetDamageMultiplier = 1.0
+        if (targetHpPercentage > 0.75) {
+          targetDamageMultiplier = 1.0
+        } else if (targetHpPercentage > 0.5) {
+          targetDamageMultiplier = 0.85
+        } else if (targetHpPercentage > 0.25) {
+          targetDamageMultiplier = 0.70
+        } else {
+          targetDamageMultiplier = 0.50
+        }
+
+        const meleePenaltyMultiplier = targetUnit.type === 'ARCHER' && distance === 1 ? 0.5 : 1.0
+        const targetReducedDamage = Math.round(
+          targetUnit.attackPower * targetDamageMultiplier * meleePenaltyMultiplier
+        )
+        const attackerDefenseBonus = TERRAIN_TYPES[attackerTerrain]?.defenseBonus ?? 0
+        counterDamage = Math.max(1, targetReducedDamage - attackerDefenseBonus)
+      }
+    }
+
+    setDamagePreview({
+      attackerId: selectedUnit.id,
+      targetId: targetUnit.id,
+      attackDamage,
+      counterDamage,
+    })
+  }, [gameState, hoveredHex, isMyTurn, playerID])
 
   const joinLobbyGame = async (gameId, requestedPlayerID, mapId) => {
     if (!gameId) {
@@ -530,7 +624,22 @@ export default function HTTPMultiplayerPage() {
 
   const endTurn = () => {
     if (!joined) return
+    setSelectedUnitForInfo(null)
+    setHighlightedHexes([])
+    setAttackableHexes([])
+    setHoveredHex(null)
+    setDamagePreview(null)
     sendAction('endTurn', { playerID })
+  }
+
+  const undoMove = () => {
+    if (!joined || !gameState) return
+    const selectedUnit = gameState.selectedUnitId
+      ? gameState.units.find(u => u.id === gameState.selectedUnitId)
+      : null
+    if (!selectedUnit || selectedUnit.hasAttacked || !selectedUnit.lastMove) return
+    sendAction('undoMove', { unitId: selectedUnit.id, playerID })
+    setDamagePreview(null)
   }
 
   const readyForBattle = () => {
@@ -693,7 +802,9 @@ export default function HTTPMultiplayerPage() {
   }
 
   const myUnits = gameState?.units?.filter(u => u.ownerID === playerID) || []
-  const isMyTurn = gameState?.currentPlayer === playerID
+  const selectedUnit = gameState?.selectedUnitId
+    ? gameState.units.find(u => u.id === gameState.selectedUnitId)
+    : null
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 text-white relative">
@@ -842,6 +953,8 @@ export default function HTTPMultiplayerPage() {
       <div className="absolute inset-0">
         <GameBoard
           onHexClick={handleHexClick}
+          onHexHover={setHoveredHex}
+          onHexHoverEnd={() => setHoveredHex(null)}
           selectedHex={null}
           highlightedHexes={highlightedHexes}
           attackableHexes={attackableHexes}
@@ -851,6 +964,7 @@ export default function HTTPMultiplayerPage() {
           terrainMap={gameState?.terrainMap || {}}
           selectedUnitId={gameState?.selectedUnitId || null}
           currentPlayerID={playerID}
+          damagePreview={damagePreview}
         />
       </div>
       
@@ -867,13 +981,22 @@ export default function HTTPMultiplayerPage() {
         )}
         
         {gameState?.phase === 'battle' && (
-          <button
-            onClick={endTurn}
-            disabled={!isMyTurn}
-            className="px-6 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 text-white font-bold rounded-lg shadow-lg transition-all transform hover:scale-105"
-          >
-            End Turn
-          </button>
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={undoMove}
+              disabled={!isMyTurn || !selectedUnit?.lastMove || selectedUnit?.hasAttacked}
+              className="px-6 py-2.5 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-500 text-white font-bold rounded-lg shadow-lg transition-all transform hover:scale-105"
+            >
+              Undo Move
+            </button>
+            <button
+              onClick={endTurn}
+              disabled={!isMyTurn}
+              className="px-6 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 text-white font-bold rounded-lg shadow-lg transition-all transform hover:scale-105"
+            >
+              End Turn
+            </button>
+          </div>
         )}
       </div>
       
