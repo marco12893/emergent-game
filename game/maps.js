@@ -24,19 +24,20 @@ export const generateMapData = (mapId = DEFAULT_MAP_ID) => {
   const terrainMap = {}
 
   const map2Forests = new Set([
-    '-6,1', '-5,1', '-5,0', '-4,1', '-4,0',
-    '5,1', '6,1', '6,2', '5,2', '4,2',
-    '-1,4', '0,4', '1,4', '2,4',
-    '-2,2', '-1,2',
+    '-6,1', '-5,1', '-4,1', '-5,0','-4,0',
+    '5,1', '6,1', '6,0', '5,0', '4,0',
+    '-1,-1', '0,-1',
+    '-7,5', '-6,5', '-5,5',
+    
+
   ])
   const map2Hills = new Set([
-    '-5,2', '-4,2', '-4,3', '-3,3',
-    '2,3', '3,3', '4,3', '5,3',
-    '1,1', '2,1',
+    '-6,2', '-5,2', '-4,2', '-3,1', '-3,0',
+    '-1,4', '0,4', '-1,5', '0,5',
   ])
   const map2Mountains = new Set([
-    '-2,3', '-1,3', '0,2', '1,2', '1,3',
-    '3,1', '4,1', '4,0',
+    '-1,3', '0,3', '0,2',
+    '4,1', '4,0',
   ])
 
   for (let r = -MAP_HEIGHT; r <= MAP_HEIGHT; r++) {
@@ -52,8 +53,13 @@ export const generateMapData = (mapId = DEFAULT_MAP_ID) => {
 
         // Northern ocean with an irregular coastline
         if (r <= -2) {
-          terrain = 'WATER'
-        } else if (r === -1 && (q <= -5 || q >= 4 || q === -2 || q === 1)) {
+          // Exception for (-3, -2) to keep it as plains
+          if (!(q === -2 && r === -2) && 
+              !(q === -1 && r === -3) && !(q === -0 && r === -3) && !(q === 1 && r === -3) && !(q === 2 && r === -3) && !(q === 3 && r === -3) && !(q === -1 && r === -3) && !(q === 3 && r === -2) &&
+              !(q === 9 && r === -2) && !(q === 10 && r === -3)) {
+            terrain = 'WATER'
+          }
+        } else if (r === -1 && (q <= -5 || (q >= 4 && q <= 6) || q === 1)) {
           terrain = 'WATER'
         } else if (map2Mountains.has(key)) {
           terrain = 'MOUNTAIN'
