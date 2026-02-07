@@ -400,7 +400,7 @@ export async function POST(request) {
           // Check spawn zone restriction
           const mapWidth = game.mapSize?.width || 6
           const leftSpawnMax = -mapWidth + 1
-          const rightSpawnMin = mapWidth - 2
+          const rightSpawnMin = mapWidth - 1
           const inSpawnZone = placePlayerID === '0'
             ? q <= leftSpawnMax
             : q >= rightSpawnMin

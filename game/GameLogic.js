@@ -250,7 +250,7 @@ export const getUnitAtHex = (q, r, units) => {
 // Check if hex is in spawn zone
 export const isInSpawnZone = (q, r, playerID, mapWidth) => {
   const leftSpawnMax = -mapWidth + 1
-  const rightSpawnMin = mapWidth - 2
+  const rightSpawnMin = mapWidth - 1
   if (playerID === '0') {
     return q <= leftSpawnMax
   }
