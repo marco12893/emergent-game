@@ -547,6 +547,15 @@ export default function HTTPMultiplayerPage() {
 
   const readyForBattle = () => {
     if (!joined) return
+    const deployedUnits = gameState?.units?.filter(
+      unit => unit.ownerID === playerID && unit.currentHP > 0
+    ).length || 0
+    if (deployedUnits === 0) {
+      const shouldProceed = window.confirm(
+        'You have no units deployed. Are you sure you want to start the battle anyway?'
+      )
+      if (!shouldProceed) return
+    }
     sendAction('readyForBattle', { playerID })
   }
 
