@@ -33,6 +33,8 @@ export async function GET() {
 
       return {
         id: game.id,
+        mapId: game.mapId || 'MAP_1',
+        mapName: game.mapId === 'MAP_2' ? 'Map 2 (Northern Coast)' : 'Map 1 (Heartland)',
         players,
         playerCount,
         status,

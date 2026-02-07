@@ -644,6 +644,9 @@ export default function HTTPMultiplayerPage() {
                               {game.id}
                             </div>
                             <div className="text-xs text-slate-400">
+                              {game.mapName}
+                            </div>
+                            <div className="text-xs text-slate-400">
                               Status: {game.status === 'waiting' ? 'Waiting for opponent' : game.status === 'open' ? 'Open' : 'Full'}
                             </div>
                           </div>
