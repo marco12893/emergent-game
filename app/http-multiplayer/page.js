@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react'
 import { UNIT_TYPES, TERRAIN_TYPES } from '@/game/GameLogic'
 import { DEFAULT_MAP_ID, MAPS } from '@/game/maps'
 import GameBoard from '@/components/GameBoard'
+import ConfirmDialog from '@/components/ConfirmDialog'
 
 // Unit Info Panel Component
 const UnitInfoPanel = ({ unit, isSelected }) => {
@@ -87,6 +88,7 @@ export default function HTTPMultiplayerPage() {
   const [attackableHexes, setAttackableHexes] = useState([])
   const [hoveredHex, setHoveredHex] = useState(null)
   const [damagePreview, setDamagePreview] = useState(null)
+  const [showReadyConfirm, setShowReadyConfirm] = useState(false)
   
   // Dynamic server URL for production
   const serverUrl = process.env.NODE_ENV === 'production' 
@@ -551,11 +553,14 @@ export default function HTTPMultiplayerPage() {
       unit => unit.ownerID === playerID && unit.currentHP > 0
     ).length || 0
     if (deployedUnits === 0) {
-      const shouldProceed = window.confirm(
-        'You have no units deployed. Are you sure you want to start the battle anyway?'
-      )
-      if (!shouldProceed) return
+      setShowReadyConfirm(true)
+      return
     }
+    sendAction('readyForBattle', { playerID })
+  }
+
+  const confirmReadyForBattle = () => {
+    setShowReadyConfirm(false)
     sendAction('readyForBattle', { playerID })
   }
 
@@ -903,6 +908,16 @@ export default function HTTPMultiplayerPage() {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={showReadyConfirm}
+        title="Deploy no units?"
+        description="You have no units deployed. Are you sure you want to start the battle anyway?"
+        confirmLabel="Start Battle"
+        cancelLabel="Go Back"
+        onConfirm={confirmReadyForBattle}
+        onCancel={() => setShowReadyConfirm(false)}
+      />
     </div>
   )
 }

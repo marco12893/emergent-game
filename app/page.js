@@ -5,6 +5,7 @@ import { UNIT_TYPES, TERRAIN_TYPES } from '@/game/GameLogic'
 import { DEFAULT_MAP_ID, MAPS } from '@/game/maps'
 import GameBoard from '@/components/GameBoard'
 import VictoryScreen from '@/components/VictoryScreen'
+import ConfirmDialog from '@/components/ConfirmDialog'
 
 // Landscape detection component
 const LandscapePrompt = () => {
@@ -136,6 +137,7 @@ export default function HTTPMultiplayerPage() {
   const [selectedUnitForInfoId, setSelectedUnitForInfoId] = useState(null) // New state for unit info display
   const [showUnitInfoPopup, setShowUnitInfoPopup] = useState(null) // New state for unit info popup
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false) // State for collapsible left panel
+  const [showReadyConfirm, setShowReadyConfirm] = useState(false)
   const isMyTurn = gameState?.currentPlayer === playerID
   const selectedUnitForInfo = selectedUnitForInfoId
     ? gameState?.units?.find(unit => unit.id === selectedUnitForInfoId)
@@ -668,11 +670,14 @@ export default function HTTPMultiplayerPage() {
       unit => unit.ownerID === playerID && unit.currentHP > 0
     ).length || 0
     if (deployedUnits === 0) {
-      const shouldProceed = window.confirm(
-        'You have no units deployed. Are you sure you want to start the battle anyway?'
-      )
-      if (!shouldProceed) return
+      setShowReadyConfirm(true)
+      return
     }
+    sendAction('readyForBattle', { playerID })
+  }
+
+  const confirmReadyForBattle = () => {
+    setShowReadyConfirm(false)
     sendAction('readyForBattle', { playerID })
   }
 
@@ -1187,6 +1192,16 @@ export default function HTTPMultiplayerPage() {
           units={gameState.units}
         />
       )}
+
+      <ConfirmDialog
+        open={showReadyConfirm}
+        title="Deploy no units?"
+        description="You have no units deployed. Are you sure you want to start the battle anyway?"
+        confirmLabel="Start Battle"
+        cancelLabel="Go Back"
+        onConfirm={confirmReadyForBattle}
+        onCancel={() => setShowReadyConfirm(false)}
+      />
     </div>
   )
 }
