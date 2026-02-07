@@ -1,9 +1,9 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Client } from 'boardgame.io/react'
 import { SocketIO } from 'boardgame.io/multiplayer'
-import { MedievalBattleGame, UNIT_TYPES, getReachableHexes, getAttackableHexes, hexDistance } from '@/game/GameLogic'
+import { MedievalBattleGame, UNIT_TYPES, TERRAIN_TYPES, getReachableHexes, getAttackableHexes, hexDistance } from '@/game/GameLogic'
 import GameBoard from '@/components/GameBoard'
 import VictoryScreen from '@/components/VictoryScreen'
 
@@ -73,6 +73,8 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
   const [highlightedHexes, setHighlightedHexes] = useState([])
   const [attackableHexes, setAttackableHexes] = useState([])
   const [selectedUnitType, setSelectedUnitType] = useState('SWORDSMAN')
+  const [hoveredHex, setHoveredHex] = useState(null)
+  const [damagePreview, setDamagePreview] = useState(null)
   const [showVictoryScreen, setShowVictoryScreen] = useState(true) // Default to true, can be closed
   
   const currentPlayer = ctx.currentPlayer
@@ -97,6 +99,63 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
       setAttackableHexes([])
     }
   }, [selectedUnit, G.hexes, G.units, G.terrainMap, phase])
+
+  useEffect(() => {
+    if (
+      !selectedUnit ||
+      !hoveredHex ||
+      phase !== 'battle' ||
+      !isMyTurn ||
+      selectedUnit.hasAttacked
+    ) {
+      setDamagePreview(null)
+      return
+    }
+
+    const targetUnit = G.units.find(
+      u => u.q === hoveredHex.q && u.r === hoveredHex.r && u.ownerID !== playerID && u.currentHP > 0
+    )
+
+    if (!targetUnit) {
+      setDamagePreview(null)
+      return
+    }
+
+    const distance = hexDistance(selectedUnit, targetUnit)
+    if (distance > selectedUnit.range) {
+      setDamagePreview(null)
+      return
+    }
+
+    const targetTerrain = G.terrainMap[`${targetUnit.q},${targetUnit.r}`] || 'PLAIN'
+    const defenseBonus = TERRAIN_TYPES[targetTerrain]?.defenseBonus ?? 0
+    const attackerTerrain = G.terrainMap[`${selectedUnit.q},${selectedUnit.r}`] || 'PLAIN'
+    const hillBonus = attackerTerrain === 'HILLS' && ['ARCHER', 'CATAPULT'].includes(selectedUnit.type)
+      ? 5
+      : 0
+    const attackDamage = Math.max(1, selectedUnit.attackPower + hillBonus - defenseBonus)
+    const targetRemaining = targetUnit.currentHP - attackDamage
+
+    let counterDamage = 0
+    if (targetRemaining > 0 && selectedUnit.range === 1 && distance === 1) {
+      counterDamage = Math.max(1, Math.floor(targetUnit.attackPower * 0.5))
+    }
+
+    setDamagePreview({
+      attackerId: selectedUnit.id,
+      targetId: targetUnit.id,
+      attackDamage,
+      counterDamage,
+    })
+  }, [selectedUnit, hoveredHex, phase, isMyTurn, G.units, G.terrainMap, playerID])
+
+  useEffect(() => {
+    if (!G.selectedUnitId) {
+      setSelectedHex(null)
+      setHoveredHex(null)
+      setDamagePreview(null)
+    }
+  }, [G.selectedUnitId])
   
   // Handle hex click
   const handleHexClick = (hex) => {
@@ -162,6 +221,21 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
         moves.deselectUnit()
       }
     }
+  }
+
+  const handleEndTurn = () => {
+    if (!isMyTurn) return
+    moves.deselectUnit()
+    setSelectedHex(null)
+    setHoveredHex(null)
+    setDamagePreview(null)
+    moves.endTurn()
+  }
+
+  const handleUndoMove = () => {
+    if (!selectedUnit || selectedUnit.hasAttacked || !selectedUnit.lastMove) return
+    moves.undoMove(selectedUnit.id)
+    setDamagePreview(null)
   }
   
   // Get units for current player display
@@ -293,6 +367,8 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
             <div className="bg-slate-800/80 rounded-lg border border-slate-700 p-4">
               <GameBoard
                 onHexClick={handleHexClick}
+                onHexHover={setHoveredHex}
+                onHexHoverEnd={() => setHoveredHex(null)}
                 selectedHex={selectedHex}
                 highlightedHexes={highlightedHexes}
                 attackableHexes={attackableHexes}
@@ -302,6 +378,7 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
                 terrainMap={G.terrainMap}
                 selectedUnitId={G.selectedUnitId}
                 currentPlayerID={playerID}
+                damagePreview={damagePreview}
               />
             </div>
           </div>
@@ -346,13 +423,22 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
               )}
               
               {phase === 'battle' && (
-                <button
-                  onClick={() => moves.endTurn()}
-                  disabled={!isMyTurn}
-                  className="w-full py-3 rounded-lg font-bold bg-blue-600 hover:bg-blue-500 transition-all disabled:bg-slate-600 disabled:cursor-not-allowed"
-                >
-                  ✓ End Turn
-                </button>
+                <div className="space-y-2">
+                  <button
+                    onClick={handleUndoMove}
+                    disabled={!isMyTurn || !selectedUnit?.lastMove || selectedUnit?.hasAttacked}
+                    className="w-full py-2.5 rounded-lg font-bold bg-slate-700 hover:bg-slate-600 transition-all disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed"
+                  >
+                    ↩ Undo Move
+                  </button>
+                  <button
+                    onClick={handleEndTurn}
+                    disabled={!isMyTurn}
+                    className="w-full py-3 rounded-lg font-bold bg-blue-600 hover:bg-blue-500 transition-all disabled:bg-slate-600 disabled:cursor-not-allowed"
+                  >
+                    ✓ End Turn
+                  </button>
+                </div>
               )}
             </div>
             

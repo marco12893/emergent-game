@@ -401,7 +401,8 @@ export async function POST(request) {
             isNaval: stats.isNaval || false,
             hasMoved: false,
             hasAttacked: false,
-            hasMovedOrAttacked: false // For catapult move-or-attack restriction
+            hasMovedOrAttacked: false, // For catapult move-or-attack restriction
+            lastMove: null
           }
           
           game.units.push(newUnit)
@@ -590,6 +591,15 @@ export async function POST(request) {
             
             const actualCost = getMovementCost(movingUnit.q, movingUnit.r, targetQ, targetR, game.hexes, game.units, game.terrainMap)
             
+            movingUnit.lastMove = {
+              q: movingUnit.q,
+              r: movingUnit.r,
+              s: movingUnit.s,
+              movePoints: movingUnit.movePoints,
+              hasMoved: movingUnit.hasMoved,
+              hasMovedOrAttacked: movingUnit.hasMovedOrAttacked
+            }
+
             // Move the unit
             movingUnit.q = sanitizeCoordinate(targetQ)
             movingUnit.r = sanitizeCoordinate(targetR)
@@ -616,6 +626,68 @@ export async function POST(request) {
               }
             })
           }
+          break
+
+        case 'undoMove':
+          // Validate and sanitize payload
+          const undoMoveSchema = {
+            unitId: { required: true, sanitize: sanitizeUnitId },
+            playerID: { required: true, sanitize: sanitizePlayerID }
+          }
+
+          const undoMoveValidation = validatePayload(payload, undoMoveSchema)
+          if (undoMoveValidation.error) {
+            return NextResponse.json({ 
+              error: 'Invalid payload for undoMove: ' + undoMoveValidation.error 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          const { unitId: undoUnitId, playerID: undoPlayerID } = undoMoveValidation.sanitized
+          const undoUnit = game.units.find(u => u.id === undoUnitId)
+
+          if (!undoUnit || undoUnit.ownerID !== undoPlayerID) {
+            return NextResponse.json({ 
+              error: 'Unit not found or not owned by player' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          if (undoUnit.hasAttacked || !undoUnit.lastMove) {
+            return NextResponse.json({ 
+              error: 'Cannot undo move after attacking or without a previous move' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          undoUnit.q = undoUnit.lastMove.q
+          undoUnit.r = undoUnit.lastMove.r
+          undoUnit.s = undoUnit.lastMove.s
+          undoUnit.movePoints = undoUnit.lastMove.movePoints
+          undoUnit.hasMoved = undoUnit.lastMove.hasMoved
+          undoUnit.hasMovedOrAttacked = undoUnit.lastMove.hasMovedOrAttacked
+          undoUnit.lastMove = null
+
+          game.log.push(`Player ${undoPlayerID}'s ${undoUnit.name} undid their move.`)
+          game.lastUpdate = Date.now()
           break
           
         case 'attackUnit':
@@ -681,6 +753,7 @@ export async function POST(request) {
             
             target.currentHP -= actualDamage
             attacker.hasAttacked = true
+            attacker.lastMove = null
             
             // Catapult move-or-attack restriction
             if (attacker.type === 'CATAPULT') {
@@ -822,7 +895,9 @@ export async function POST(request) {
             unit.hasAttacked = false
             unit.movePoints = unit.maxMovePoints // Reset movement points
             unit.hasMovedOrAttacked = false // Reset catapult move-or-attack restriction
+            unit.lastMove = null
           })
+          game.selectedUnitId = null
           game.log.push(`Player ${payload.playerID} ended turn. Player ${game.currentPlayer}'s turn begins.`)
           game.lastUpdate = Date.now()
           break
