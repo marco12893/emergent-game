@@ -115,7 +115,7 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
       // Otherwise, try to place a unit
     const mapWidth = G.mapSize?.width || 6
     const leftSpawnMax = -mapWidth + 1
-    const rightSpawnMin = mapWidth - 2
+    const rightSpawnMin = mapWidth - 1
     const isSpawnZone = playerID === '0' ? hex.q <= leftSpawnMax : hex.q >= rightSpawnMin
       if (isSpawnZone && hex.terrain !== 'MOUNTAIN') {
         // Check if hex is occupied

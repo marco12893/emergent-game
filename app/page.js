@@ -5,6 +5,7 @@ import { UNIT_TYPES, TERRAIN_TYPES } from '@/game/GameLogic'
 import { DEFAULT_MAP_ID, MAPS } from '@/game/maps'
 import GameBoard from '@/components/GameBoard'
 import VictoryScreen from '@/components/VictoryScreen'
+import ConfirmDialog from '@/components/ConfirmDialog'
 
 // Landscape detection component
 const LandscapePrompt = () => {
@@ -133,10 +134,14 @@ export default function HTTPMultiplayerPage() {
   const [hoveredHex, setHoveredHex] = useState(null)
   const [damagePreview, setDamagePreview] = useState(null)
   const [showVictoryScreen, setShowVictoryScreen] = useState(true) // Default to true, can be closed
-  const [selectedUnitForInfo, setSelectedUnitForInfo] = useState(null) // New state for unit info display
+  const [selectedUnitForInfoId, setSelectedUnitForInfoId] = useState(null) // New state for unit info display
   const [showUnitInfoPopup, setShowUnitInfoPopup] = useState(null) // New state for unit info popup
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false) // State for collapsible left panel
+  const [showReadyConfirm, setShowReadyConfirm] = useState(false)
   const isMyTurn = gameState?.currentPlayer === playerID
+  const selectedUnitForInfo = selectedUnitForInfoId
+    ? gameState?.units?.find(unit => unit.id === selectedUnitForInfoId)
+    : null
   
   // Dynamic server URL for production
   const getServerUrl = () => {
@@ -156,6 +161,14 @@ export default function HTTPMultiplayerPage() {
       setServerUrl(getServerUrl())
     }
   }, [])
+
+  useEffect(() => {
+    if (!selectedUnitForInfoId || !gameState?.units) return
+    const latestUnit = gameState.units.find(unit => unit.id === selectedUnitForInfoId)
+    if (!latestUnit || latestUnit.currentHP <= 0) {
+      setSelectedUnitForInfoId(null)
+    }
+  }, [gameState, selectedUnitForInfoId])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -507,12 +520,12 @@ export default function HTTPMultiplayerPage() {
       if (unitOnHex) {
         // Toggle unit info selection
         if (selectedUnitForInfo && selectedUnitForInfo.id === unitOnHex.id) {
-          setSelectedUnitForInfo(null) // Deselect if same unit
+          setSelectedUnitForInfoId(null) // Deselect if same unit
         } else {
-          setSelectedUnitForInfo(unitOnHex) // Show info for any unit
+          setSelectedUnitForInfoId(unitOnHex.id) // Show info for any unit
         }
       } else {
-        setSelectedUnitForInfo(null) // Clear selection when clicking empty hex
+        setSelectedUnitForInfoId(null) // Clear selection when clicking empty hex
       }
       
       // Don't show error message when just viewing unit info
@@ -528,12 +541,12 @@ export default function HTTPMultiplayerPage() {
       if (unitOnHex) {
         // Toggle unit info for any unit during setup
         if (selectedUnitForInfo && selectedUnitForInfo.id === unitOnHex.id) {
-          setSelectedUnitForInfo(null) // Deselect if same unit
+          setSelectedUnitForInfoId(null) // Deselect if same unit
         } else {
-          setSelectedUnitForInfo(unitOnHex) // Show info for any unit
+          setSelectedUnitForInfoId(unitOnHex.id) // Show info for any unit
         }
       } else {
-        setSelectedUnitForInfo(null) // Clear selection when clicking empty hex
+        setSelectedUnitForInfoId(null) // Clear selection when clicking empty hex
       }
 
       // Check if clicking on own unit to remove it
@@ -546,7 +559,7 @@ export default function HTTPMultiplayerPage() {
       // Try to place a new unit
       const mapWidth = gameState?.mapSize?.width || 6
       const leftSpawnMax = -mapWidth + 1
-      const rightSpawnMin = mapWidth - 2
+      const rightSpawnMin = mapWidth - 1
       const isSpawnZone = playerID === '0' ? hex.q <= leftSpawnMax : hex.q >= rightSpawnMin
       if (isSpawnZone) {
         sendAction('placeUnit', {
@@ -569,7 +582,7 @@ export default function HTTPMultiplayerPage() {
       if (unitOnHex && unitOnHex.ownerID === playerID) {
         sendAction('selectUnit', { unitId: unitOnHex.id, playerID })
         // Automatically show unit info when selecting own unit
-        setSelectedUnitForInfo(unitOnHex)
+        setSelectedUnitForInfoId(unitOnHex.id)
         return
       }
       
@@ -622,18 +635,18 @@ export default function HTTPMultiplayerPage() {
     if (unitOnHex) {
       // Toggle unit info selection
       if (selectedUnitForInfo && selectedUnitForInfo.id === unitOnHex.id) {
-        setSelectedUnitForInfo(null) // Deselect if same unit
+        setSelectedUnitForInfoId(null) // Deselect if same unit
       } else {
-        setSelectedUnitForInfo(unitOnHex) // Show info for any unit
+        setSelectedUnitForInfoId(unitOnHex.id) // Show info for any unit
       }
     } else {
-      setSelectedUnitForInfo(null) // Clear selection when clicking empty hex
+      setSelectedUnitForInfoId(null) // Clear selection when clicking empty hex
     }
   }
 
   const endTurn = () => {
     if (!joined) return
-    setSelectedUnitForInfo(null)
+    setSelectedUnitForInfoId(null)
     setHighlightedHexes([])
     setAttackableHexes([])
     setHoveredHex(null)
@@ -653,6 +666,18 @@ export default function HTTPMultiplayerPage() {
 
   const readyForBattle = () => {
     if (!joined) return
+    const deployedUnits = gameState?.units?.filter(
+      unit => unit.ownerID === playerID && unit.currentHP > 0
+    ).length || 0
+    if (deployedUnits === 0) {
+      setShowReadyConfirm(true)
+      return
+    }
+    sendAction('readyForBattle', { playerID })
+  }
+
+  const confirmReadyForBattle = () => {
+    setShowReadyConfirm(false)
     sendAction('readyForBattle', { playerID })
   }
 
@@ -1077,7 +1102,7 @@ export default function HTTPMultiplayerPage() {
             
             {/* Close button */}
             <button
-              onClick={() => setSelectedUnitForInfo(null)}
+              onClick={() => setSelectedUnitForInfoId(null)}
               className="mt-3 w-full py-1 bg-slate-600 hover:bg-slate-500 text-white text-sm rounded transition-all"
             >
               Close
@@ -1167,6 +1192,16 @@ export default function HTTPMultiplayerPage() {
           units={gameState.units}
         />
       )}
+
+      <ConfirmDialog
+        open={showReadyConfirm}
+        title="Deploy no units?"
+        description="You have no units deployed. Are you sure you want to start the battle anyway?"
+        confirmLabel="Start Battle"
+        cancelLabel="Go Back"
+        onConfirm={confirmReadyForBattle}
+        onCancel={() => setShowReadyConfirm(false)}
+      />
     </div>
   )
 }

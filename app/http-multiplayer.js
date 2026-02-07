@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { UNIT_TYPES } from '@/game/GameLogic'
 import GameBoard from '@/components/GameBoard'
+import ConfirmDialog from '@/components/ConfirmDialog'
 
 // Unit Info Panel Component
 const UnitInfoPanel = ({ unit, isSelected }) => {
@@ -36,6 +37,7 @@ const UnitInfoPanel = ({ unit, isSelected }) => {
           />
         </div>
       </div>
+
     </div>
   )
 }
@@ -48,6 +50,7 @@ export default function HTTPMultiplayerPage() {
   const [selectedUnitType, setSelectedUnitType] = useState('SWORDSMAN')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showReadyConfirm, setShowReadyConfirm] = useState(false)
 
   // Poll for game state updates
   useEffect(() => {
@@ -150,7 +153,7 @@ export default function HTTPMultiplayerPage() {
     // Try to place a new unit
     const mapWidth = gameState?.mapSize?.width || 6
     const leftSpawnMax = -mapWidth + 1
-    const rightSpawnMin = mapWidth - 2
+    const rightSpawnMin = mapWidth - 1
     const isSpawnZone = playerID === '0' ? hex.q <= leftSpawnMax : hex.q >= rightSpawnMin
     if (isSpawnZone) {
       sendAction('placeUnit', {
@@ -171,6 +174,18 @@ export default function HTTPMultiplayerPage() {
 
   const readyForBattle = () => {
     if (!joined) return
+    const deployedUnits = gameState?.units?.filter(
+      unit => unit.ownerID === playerID && unit.currentHP > 0
+    ).length || 0
+    if (deployedUnits === 0) {
+      setShowReadyConfirm(true)
+      return
+    }
+    sendAction('readyForBattle', { playerID })
+  }
+
+  const confirmReadyForBattle = () => {
+    setShowReadyConfirm(false)
     sendAction('readyForBattle', { playerID })
   }
 
@@ -369,9 +384,19 @@ export default function HTTPMultiplayerPage() {
                 ))}
               </div>
             </div>
-          </div>
         </div>
       </div>
     </div>
-  )
+
+    <ConfirmDialog
+      open={showReadyConfirm}
+      title="Deploy no units?"
+      description="You have no units deployed. Are you sure you want to start the battle anyway?"
+      confirmLabel="Start Battle"
+      cancelLabel="Go Back"
+      onConfirm={confirmReadyForBattle}
+      onCancel={() => setShowReadyConfirm(false)}
+    />
+  </div>
+)
 }

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react'
 import io from 'socket.io-client'
 import { UNIT_TYPES } from '@/game/GameLogic'
 import GameBoard from '@/components/GameBoard'
+import ConfirmDialog from '@/components/ConfirmDialog'
 
 // Unit Info Panel Component
 const UnitInfoPanel = ({ unit, isSelected }) => {
@@ -37,6 +38,7 @@ const UnitInfoPanel = ({ unit, isSelected }) => {
           />
         </div>
       </div>
+
     </div>
   )
 }
@@ -49,6 +51,7 @@ export default function SimpleMultiplayerPage() {
   const [matchID, setMatchID] = useState('')
   const [joined, setJoined] = useState(false)
   const [selectedUnitType, setSelectedUnitType] = useState('SWORDSMAN')
+  const [showReadyConfirm, setShowReadyConfirm] = useState(false)
 
   useEffect(() => {
     // Clean up socket on unmount
@@ -124,7 +127,7 @@ export default function SimpleMultiplayerPage() {
     // Try to place a new unit
     const mapWidth = gameState?.mapSize?.width || 6
     const leftSpawnMax = -mapWidth + 1
-    const rightSpawnMin = mapWidth - 2
+    const rightSpawnMin = mapWidth - 1
     const isSpawnZone = playerID === '0' ? hex.q <= leftSpawnMax : hex.q >= rightSpawnMin
     if (isSpawnZone) {
       socket.emit('gameAction', {
@@ -152,7 +155,23 @@ export default function SimpleMultiplayerPage() {
 
   const readyForBattle = () => {
     if (!socket || !joined) return
+    const deployedUnits = gameState?.units?.filter(
+      unit => unit.ownerID === playerID && unit.currentHP > 0
+    ).length || 0
+    if (deployedUnits === 0) {
+      setShowReadyConfirm(true)
+      return
+    }
     
+    socket.emit('gameAction', {
+      gameId: matchID,
+      action: 'readyForBattle',
+      payload: { playerID }
+    })
+  }
+
+  const confirmReadyForBattle = () => {
+    setShowReadyConfirm(false)
     socket.emit('gameAction', {
       gameId: matchID,
       action: 'readyForBattle',
@@ -354,9 +373,19 @@ export default function SimpleMultiplayerPage() {
                 ))}
               </div>
             </div>
-          </div>
         </div>
       </div>
     </div>
-  )
+
+    <ConfirmDialog
+      open={showReadyConfirm}
+      title="Deploy no units?"
+      description="You have no units deployed. Are you sure you want to start the battle anyway?"
+      confirmLabel="Start Battle"
+      cancelLabel="Go Back"
+      onConfirm={confirmReadyForBattle}
+      onCancel={() => setShowReadyConfirm(false)}
+    />
+  </div>
+)
 }

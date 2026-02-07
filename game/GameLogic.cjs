@@ -128,7 +128,7 @@ const isInSpawnZone = (q, r, playerID) => {
   if (playerID === '0') {
     return q <= -5
   } else {
-    return q >= 4
+    return q >= 5
   }
 }
 
