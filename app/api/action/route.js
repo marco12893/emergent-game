@@ -570,7 +570,7 @@ export async function POST(request) {
           const movingUnit = game.units.find(u => u.id === unitId)
           if (movingUnit && movingUnit.movePoints > 0) {
             // Catapult move-or-attack restriction
-            if (movingUnit.type === 'CATAPULT' && movingUnit.hasMovedOrAttacked) {
+            if (movingUnit.type === 'CATAPULT' && !movingUnit.isTransport && movingUnit.hasMovedOrAttacked) {
               return NextResponse.json({ 
                 error: 'Catapult cannot move after attacking this turn' 
               }, { 
@@ -709,7 +709,7 @@ export async function POST(request) {
             }
             
             // Catapult move-or-attack restriction
-            if (movingUnit.type === 'CATAPULT') {
+            if (movingUnit.type === 'CATAPULT' && !movingUnit.isTransport) {
               movingUnit.hasMovedOrAttacked = true
             }
             
@@ -810,7 +810,7 @@ export async function POST(request) {
           
           if (attacker && target && !attacker.hasAttacked) {
             // Catapult move-or-attack restriction
-            if (attacker.type === 'CATAPULT' && attacker.hasMovedOrAttacked) {
+            if (attacker.type === 'CATAPULT' && !attacker.isTransport && attacker.hasMovedOrAttacked) {
               return NextResponse.json({ 
                 error: 'Catapult cannot attack after moving this turn' 
               }, { 
@@ -857,7 +857,7 @@ export async function POST(request) {
             attacker.lastMove = null
             
             // Catapult move-or-attack restriction
-            if (attacker.type === 'CATAPULT') {
+            if (attacker.type === 'CATAPULT' && !attacker.isTransport) {
               attacker.hasMovedOrAttacked = true
             }
             
@@ -895,7 +895,7 @@ export async function POST(request) {
                 const targetBaseDamage = target.attackPower
                 
                 // Catapults cannot counter-attack (siege weapons)
-                if (target.type === 'CATAPULT') {
+                if (target.type === 'CATAPULT' && !target.isTransport) {
                   game.log.push(`${target.name} cannot counter-attack (siege weapon)!`)
                 } else {
                   // Archer melee penalty: 50% less damage in melee combat

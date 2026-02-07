@@ -617,6 +617,7 @@ const battlePhase = {
         if (unit.ownerID === playerID) {
           unit.hasMoved = false
           unit.hasAttacked = false
+          unit.movePoints = unit.maxMovePoints
           unit.lastMove = null
         }
       })

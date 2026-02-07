@@ -506,10 +506,10 @@ const GameBoard = ({
                     {/* Unit Image */}
                     <image
                       href={`/units/${unit.image || 'swordsman'}_${unit.ownerID === '0' ? 'blue' : 'red'}.png`}
-                      x="-5"
-                      y="-7"
-                      width="10"
-                      height="14"
+                      x={unit.isTransport ? '-6' : '-5'}
+                      y={unit.isTransport ? '-8' : '-7'}
+                      width={unit.isTransport ? '12' : '10'}
+                      height={unit.isTransport ? '16' : '14'}
                       style={{ 
                         pointerEvents: 'none',
                         filter: isUnitSelected ? 'drop-shadow(0 0 3px #FBBF24)' : 'drop-shadow(0px 2px 4px rgba(0,0,0,0.5))'
