@@ -78,6 +78,15 @@ const UNIT_TYPES = {
   },
 }
 
+const TRANSPORT_STATS = {
+  name: 'Transport',
+  image: 'transport',
+  maxHP: 40,
+  attackPower: 10,
+  movePoints: 2,
+  range: 1,
+}
+
 const GAME_MODES = {
   ELIMINATION: {
     id: 'ELIMINATION',
@@ -111,6 +120,59 @@ const TERRAIN_TYPES = {
 // ============================================
 // HELPER FUNCTIONS
 // ============================================
+
+const getTerrainData = (terrainMap, q, r) => {
+  const terrainKey = `${sanitizeCoordinate(q)},${sanitizeCoordinate(r)}`
+  const terrain = terrainMap[terrainKey] || 'PLAIN'
+  return TERRAIN_TYPES[terrain]
+}
+
+const canEmbark = unit => {
+  return !unit.isNaval && !unit.isTransport && unit.movePoints >= unit.maxMovePoints
+}
+
+const canDisembark = unit => {
+  return unit.isTransport && unit.movePoints >= unit.maxMovePoints
+}
+
+const applyTransportState = (unit, { resetMovePoints } = {}) => {
+  const baseTemplate = UNIT_TYPES[unit.baseType || unit.type]
+  const healthRatio = unit.maxHP > 0 ? unit.currentHP / unit.maxHP : 1
+
+  unit.isTransport = true
+  unit.isNaval = true
+  unit.name = `Transport (${baseTemplate?.name || unit.name})`
+  unit.image = TRANSPORT_STATS.image
+  unit.maxHP = TRANSPORT_STATS.maxHP
+  unit.currentHP = Math.max(1, Math.round(TRANSPORT_STATS.maxHP * healthRatio))
+  unit.attackPower = TRANSPORT_STATS.attackPower
+  unit.range = TRANSPORT_STATS.range
+  unit.maxMovePoints = TRANSPORT_STATS.movePoints
+  if (resetMovePoints) {
+    unit.movePoints = TRANSPORT_STATS.movePoints
+  }
+}
+
+const restoreFromTransport = (unit, { resetMovePoints } = {}) => {
+  const baseTemplate = UNIT_TYPES[unit.baseType || unit.type]
+  if (!baseTemplate) {
+    return
+  }
+  const healthRatio = unit.maxHP > 0 ? unit.currentHP / unit.maxHP : 1
+
+  unit.isTransport = false
+  unit.isNaval = baseTemplate.isNaval || false
+  unit.name = baseTemplate.name
+  unit.image = baseTemplate.image
+  unit.maxHP = baseTemplate.maxHP
+  unit.currentHP = Math.max(1, Math.round(baseTemplate.maxHP * healthRatio))
+  unit.attackPower = baseTemplate.attackPower
+  unit.range = baseTemplate.range
+  unit.maxMovePoints = baseTemplate.movePoints
+  if (resetMovePoints) {
+    unit.movePoints = baseTemplate.movePoints
+  }
+}
 
 // Calculate hex distance (cube coordinates)
 const hexDistance = (hex1, hex2) => {
@@ -172,17 +234,20 @@ const getReachableHexes = (unit, allHexes, units, terrainMap) => {
       if (visited.has(key) || sanitizedNeighborQ === null || sanitizedNeighborR === null) continue
       
       // Check terrain
-      const terrain = terrainMap[key] || 'PLAIN'
-      const terrainData = TERRAIN_TYPES[terrain]
-      
-      // Naval units can only move on water, ground units cannot move on water
+      const terrainData = getTerrainData(terrainMap, sanitizedNeighborQ, sanitizedNeighborR)
+      const isWater = terrainData.waterOnly
       const isNaval = unit.isNaval || false
-      if (isNaval && !terrainData.waterOnly) continue
-      if (!isNaval && terrainData.waterOnly) continue
+      const isTransport = unit.isTransport || false
+      const embarking = isWater && !isNaval && !isTransport
+      const disembarking = !isWater && isTransport
+
+      if (isWater && !isNaval && !isTransport && !canEmbark(unit)) continue
+      if (!isWater && isNaval && !isTransport) continue
+      if (disembarking && !canDisembark(unit)) continue
       
       if (!terrainData.passable) continue
       
-      const moveCost = terrainData.moveCost
+      const moveCost = embarking || disembarking ? unit.maxMovePoints : terrainData.moveCost
       const remainingAfterMove = current.remainingMove - moveCost
       
       if (remainingAfterMove < 0) continue
@@ -317,27 +382,11 @@ export async function POST(request) {
             })
           }
           
-          // Check if unit is naval and terrain is water
-          const terrainKey = `${sanitizeCoordinate(q)},${sanitizeCoordinate(r)}`
-          const terrain = game.terrainMap[terrainKey] || 'PLAIN'
-          const terrainData = TERRAIN_TYPES[terrain]
+          const terrainData = getTerrainData(game.terrainMap, q, r)
           
           if (stats.isNaval && !terrainData.waterOnly) {
             return NextResponse.json({ 
               error: 'Naval units can only be placed on water tiles' 
-            }, { 
-              status: 400,
-              headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type',
-              }
-            })
-          }
-          
-          if (!stats.isNaval && terrainData.waterOnly) {
-            return NextResponse.json({ 
-              error: 'Ground units cannot be placed on water tiles' 
             }, { 
               status: 400,
               headers: {
@@ -386,6 +435,7 @@ export async function POST(request) {
           const newUnit = {
             id: Date.now().toString(),
             type: unitType,
+            baseType: unitType,
             name: stats.name,
             image: stats.image,
             ownerID: placePlayerID,
@@ -399,10 +449,15 @@ export async function POST(request) {
             maxMovePoints: stats.movePoints,
             range: stats.range,
             isNaval: stats.isNaval || false,
+            isTransport: false,
             hasMoved: false,
             hasAttacked: false,
             hasMovedOrAttacked: false, // For catapult move-or-attack restriction
             lastMove: null
+          }
+          
+          if (terrainData.waterOnly && !newUnit.isNaval) {
+            applyTransportState(newUnit, { resetMovePoints: true })
           }
           
           game.units.push(newUnit)
@@ -515,7 +570,7 @@ export async function POST(request) {
           const movingUnit = game.units.find(u => u.id === unitId)
           if (movingUnit && movingUnit.movePoints > 0) {
             // Catapult move-or-attack restriction
-            if (movingUnit.type === 'CATAPULT' && movingUnit.hasMovedOrAttacked) {
+            if (movingUnit.type === 'CATAPULT' && !movingUnit.isTransport && movingUnit.hasMovedOrAttacked) {
               return NextResponse.json({ 
                 error: 'Catapult cannot move after attacking this turn' 
               }, { 
@@ -535,6 +590,36 @@ export async function POST(request) {
             if (!isReachable) {
               return NextResponse.json({ 
                 error: 'Target hex is not reachable with current movement points' 
+              }, { 
+                status: 400,
+                headers: {
+                  'Access-Control-Allow-Origin': '*',
+                  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                  'Access-Control-Allow-Headers': 'Content-Type',
+                }
+              })
+            }
+
+            const targetTerrain = getTerrainData(game.terrainMap, targetQ, targetR)
+            const isEmbarkMove = targetTerrain.waterOnly && !movingUnit.isNaval && !movingUnit.isTransport
+            const isDisembarkMove = !targetTerrain.waterOnly && movingUnit.isTransport
+
+            if (isEmbarkMove && !canEmbark(movingUnit)) {
+              return NextResponse.json({ 
+                error: 'Unit must have full movement points to embark' 
+              }, { 
+                status: 400,
+                headers: {
+                  'Access-Control-Allow-Origin': '*',
+                  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                  'Access-Control-Allow-Headers': 'Content-Type',
+                }
+              })
+            }
+
+            if (isDisembarkMove && !canDisembark(movingUnit)) {
+              return NextResponse.json({ 
+                error: 'Unit must have full movement points to disembark' 
               }, { 
                 status: 400,
                 headers: {
@@ -568,21 +653,24 @@ export async function POST(request) {
                   
                   if (visited.has(key) || sanitizedNeighborQ === null || sanitizedNeighborR === null) continue
                   
-                  // Check terrain
-                  const terrain = terrainMap[key] || 'PLAIN'
-                  const terrainData = TERRAIN_TYPES[terrain]
-                  
-                  // Naval units can only move on water, ground units cannot move on water
+                  const terrainData = getTerrainData(terrainMap, sanitizedNeighborQ, sanitizedNeighborR)
+                  const isWater = terrainData.waterOnly
                   const isNaval = movingUnit.isNaval || false
-                  if (isNaval && !terrainData.waterOnly) continue
-                  if (!isNaval && terrainData.waterOnly) continue
+                  const isTransport = movingUnit.isTransport || false
+                  const embarking = isWater && !isNaval && !isTransport
+                  const disembarking = !isWater && isTransport
+
+                  if (isWater && !isNaval && !isTransport && !canEmbark(movingUnit)) continue
+                  if (!isWater && isNaval && !isTransport) continue
+                  if (disembarking && !canDisembark(movingUnit)) continue
                   if (!terrainData.passable) continue
                   
                   // Check if occupied by any unit (except the moving unit)
                   if (isHexOccupied(sanitizedNeighborQ, sanitizedNeighborR, units.filter(u => u.id !== movingUnit.id))) continue
                   
                   visited.add(key)
-                  queue.push({ ...neighbor, q: sanitizedNeighborQ, r: sanitizedNeighborR, cost: current.cost + terrainData.moveCost })
+                  const moveCost = embarking || disembarking ? movingUnit.maxMovePoints : terrainData.moveCost
+                  queue.push({ ...neighbor, q: sanitizedNeighborQ, r: sanitizedNeighborR, cost: current.cost + moveCost })
                 }
               }
               
@@ -605,10 +693,23 @@ export async function POST(request) {
             movingUnit.r = sanitizeCoordinate(targetR)
             movingUnit.s = -sanitizeCoordinate(targetQ) - sanitizeCoordinate(targetR)
             movingUnit.movePoints -= actualCost
-            movingUnit.hasMoved = movingUnit.movePoints <= 0 // Mark as moved if no movement points left
+
+            if (isEmbarkMove) {
+              applyTransportState(movingUnit)
+              movingUnit.movePoints = 0
+              movingUnit.hasMoved = true
+              movingUnit.hasAttacked = true
+            } else if (isDisembarkMove) {
+              restoreFromTransport(movingUnit)
+              movingUnit.movePoints = 0
+              movingUnit.hasMoved = true
+              movingUnit.hasAttacked = true
+            } else {
+              movingUnit.hasMoved = movingUnit.movePoints <= 0 // Mark as moved if no movement points left
+            }
             
             // Catapult move-or-attack restriction
-            if (movingUnit.type === 'CATAPULT') {
+            if (movingUnit.type === 'CATAPULT' && !movingUnit.isTransport) {
               movingUnit.hasMovedOrAttacked = true
             }
             
@@ -709,7 +810,7 @@ export async function POST(request) {
           
           if (attacker && target && !attacker.hasAttacked) {
             // Catapult move-or-attack restriction
-            if (attacker.type === 'CATAPULT' && attacker.hasMovedOrAttacked) {
+            if (attacker.type === 'CATAPULT' && !attacker.isTransport && attacker.hasMovedOrAttacked) {
               return NextResponse.json({ 
                 error: 'Catapult cannot attack after moving this turn' 
               }, { 
@@ -756,7 +857,7 @@ export async function POST(request) {
             attacker.lastMove = null
             
             // Catapult move-or-attack restriction
-            if (attacker.type === 'CATAPULT') {
+            if (attacker.type === 'CATAPULT' && !attacker.isTransport) {
               attacker.hasMovedOrAttacked = true
             }
             
@@ -794,7 +895,7 @@ export async function POST(request) {
                 const targetBaseDamage = target.attackPower
                 
                 // Catapults cannot counter-attack (siege weapons)
-                if (target.type === 'CATAPULT') {
+                if (target.type === 'CATAPULT' && !target.isTransport) {
                   game.log.push(`${target.name} cannot counter-attack (siege weapon)!`)
                 } else {
                   // Archer melee penalty: 50% less damage in melee combat
