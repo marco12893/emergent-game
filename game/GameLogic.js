@@ -129,6 +129,7 @@ export const createUnit = (unitType, ownerID, q, r) => {
     s: -q - r,
     hasMoved: false,
     hasAttacked: false,
+    lastMove: null,
   }
 }
 
@@ -411,6 +412,14 @@ const battlePhase = {
       
       const actualCost = getMovementCost(unit.q, unit.r, targetQ, targetR, G.hexes, G.units, G.terrainMap)
       
+      unit.lastMove = {
+        q: unit.q,
+        r: unit.r,
+        s: unit.s,
+        movePoints: unit.movePoints,
+        hasMoved: unit.hasMoved,
+      }
+
       // Move the unit
       const oldQ = unit.q
       const oldR = unit.r
@@ -421,6 +430,26 @@ const battlePhase = {
       unit.hasMoved = unit.movePoints <= 0 // Mark as moved if no movement points left
       
       G.log.push(`Player ${playerID}'s ${unit.name} moved from (${oldQ}, ${oldR}) to (${targetQ}, ${targetR})`)
+    },
+
+    undoMove: ({ G, ctx, playerID }, unitId) => {
+      const unit = G.units.find(u => u.id === unitId)
+      if (!unit || unit.ownerID !== playerID) {
+        return INVALID_MOVE
+      }
+      if (unit.hasAttacked || !unit.lastMove) {
+        return INVALID_MOVE
+      }
+
+      const previous = unit.lastMove
+      unit.q = previous.q
+      unit.r = previous.r
+      unit.s = previous.s
+      unit.movePoints = previous.movePoints
+      unit.hasMoved = previous.hasMoved
+      unit.lastMove = null
+
+      G.log.push(`Player ${playerID}'s ${unit.name} undid their move.`)
     },
     
     attackUnit: ({ G, ctx, playerID }, attackerId, targetId) => {
@@ -457,6 +486,7 @@ const battlePhase = {
       const damage = Math.max(1, attacker.attackPower + hillBonus - defenseBonus)
       target.currentHP -= damage
       attacker.hasAttacked = true
+      attacker.lastMove = null
       
       G.log.push(`Player ${playerID}'s ${attacker.name} hit ${target.name} for ${damage} damage!`)
       
@@ -483,6 +513,7 @@ const battlePhase = {
         if (unit.ownerID === playerID) {
           unit.hasMoved = false
           unit.hasAttacked = false
+          unit.lastMove = null
         }
       })
       
