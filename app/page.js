@@ -559,7 +559,7 @@ export default function HTTPMultiplayerPage() {
       // Try to place a new unit
       const mapWidth = gameState?.mapSize?.width || 6
       const leftSpawnMax = -mapWidth + 1
-      const rightSpawnMin = mapWidth - 1
+      const rightSpawnMin = mapWidth - 2
       const isSpawnZone = playerID === '0' ? hex.q <= leftSpawnMax : hex.q >= rightSpawnMin
       if (isSpawnZone) {
         sendAction('placeUnit', {
