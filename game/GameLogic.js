@@ -69,6 +69,15 @@ export const UNIT_TYPES = {
   },
 }
 
+const TRANSPORT_STATS = {
+  name: 'Transport',
+  image: 'transport',
+  maxHP: 40,
+  attackPower: 10,
+  movePoints: 2,
+  range: 1,
+}
+
 // ============================================
 // GAME MODE DEFINITIONS
 // ============================================
@@ -109,12 +118,66 @@ export const TERRAIN_TYPES = {
 // HELPER FUNCTIONS
 // ============================================
 
+const getTerrainData = (terrainMap, q, r) => {
+  const terrainKey = `${q},${r}`
+  const terrain = terrainMap[terrainKey] || 'PLAIN'
+  return TERRAIN_TYPES[terrain]
+}
+
+const canEmbark = unit => {
+  return !unit.isNaval && !unit.isTransport && unit.movePoints >= unit.maxMovePoints
+}
+
+const canDisembark = unit => {
+  return unit.isTransport && unit.movePoints >= unit.maxMovePoints
+}
+
+const applyTransportState = (unit, { resetMovePoints } = {}) => {
+  const baseTemplate = UNIT_TYPES[unit.baseType || unit.type]
+  const healthRatio = unit.maxHP > 0 ? unit.currentHP / unit.maxHP : 1
+
+  unit.isTransport = true
+  unit.isNaval = true
+  unit.name = `Transport (${baseTemplate?.name || unit.name})`
+  unit.image = TRANSPORT_STATS.image
+  unit.maxHP = TRANSPORT_STATS.maxHP
+  unit.currentHP = Math.max(1, Math.round(TRANSPORT_STATS.maxHP * healthRatio))
+  unit.attackPower = TRANSPORT_STATS.attackPower
+  unit.range = TRANSPORT_STATS.range
+  unit.maxMovePoints = TRANSPORT_STATS.movePoints
+  if (resetMovePoints) {
+    unit.movePoints = TRANSPORT_STATS.movePoints
+  }
+}
+
+const restoreFromTransport = (unit, { resetMovePoints } = {}) => {
+  const baseTemplate = UNIT_TYPES[unit.baseType || unit.type]
+  if (!baseTemplate) {
+    return
+  }
+  const healthRatio = unit.maxHP > 0 ? unit.currentHP / unit.maxHP : 1
+
+  unit.isTransport = false
+  unit.isNaval = baseTemplate.isNaval || false
+  unit.name = baseTemplate.name
+  unit.image = baseTemplate.image
+  unit.maxHP = baseTemplate.maxHP
+  unit.currentHP = Math.max(1, Math.round(baseTemplate.maxHP * healthRatio))
+  unit.attackPower = baseTemplate.attackPower
+  unit.range = baseTemplate.range
+  unit.maxMovePoints = baseTemplate.movePoints
+  if (resetMovePoints) {
+    unit.movePoints = baseTemplate.movePoints
+  }
+}
+
 // Create a new unit instance
 export const createUnit = (unitType, ownerID, q, r) => {
   const template = UNIT_TYPES[unitType]
   return {
     id: uuidv4(),
     type: template.type,
+    baseType: template.type,
     name: template.name,
     image: template.image,
     currentHP: template.maxHP,
@@ -123,6 +186,8 @@ export const createUnit = (unitType, ownerID, q, r) => {
     movePoints: template.movePoints,
     maxMovePoints: template.movePoints,
     range: template.range,
+    isNaval: template.isNaval || false,
+    isTransport: false,
     ownerID: ownerID,
     q: q,
     r: r,
@@ -209,18 +274,20 @@ export const getReachableHexes = (unit, allHexes, units, terrainMap) => {
       const key = `${neighbor.q},${neighbor.r}`
       if (visited.has(key)) continue
       
-      // Check terrain
-      const terrain = terrainMap[key] || 'PLAIN'
-      const terrainData = TERRAIN_TYPES[terrain]
-      
-      // Naval units can only move on water, ground units cannot move on water
+      const terrainData = getTerrainData(terrainMap, neighbor.q, neighbor.r)
+      const isWater = terrainData.waterOnly
       const isNaval = unit.isNaval || false
-      if (isNaval && !terrainData.waterOnly) continue
-      if (!isNaval && terrainData.waterOnly) continue
-      
+      const isTransport = unit.isTransport || false
+      const embarking = isWater && !isNaval && !isTransport
+      const disembarking = !isWater && isTransport
+
+      if (isWater && !isNaval && !isTransport && !canEmbark(unit)) continue
+      if (!isWater && isNaval && !isTransport) continue
+      if (disembarking && !canDisembark(unit)) continue
+
       if (!terrainData.passable) continue
       
-      const moveCost = terrainData.moveCost
+      const moveCost = embarking || disembarking ? unit.maxMovePoints : terrainData.moveCost
       const remainingAfterMove = current.remainingMove - moveCost
       
       if (remainingAfterMove < 0) continue
@@ -283,6 +350,12 @@ const setupPhase = {
       if (isHexOccupied(q, r, G.units)) {
         return INVALID_MOVE
       }
+
+      const terrainData = getTerrainData(G.terrainMap, q, r)
+      const template = UNIT_TYPES[unitType]
+      if (template?.isNaval && !terrainData.waterOnly) {
+        return INVALID_MOVE
+      }
       
       // Check unit limit (5 units per player)
       const playerUnits = G.units.filter(u => u.ownerID === playerID)
@@ -292,6 +365,9 @@ const setupPhase = {
       
       // Create and place the unit
       const newUnit = createUnit(unitType, playerID, q, r)
+      if (terrainData.waterOnly && !newUnit.isNaval) {
+        applyTransportState(newUnit, { resetMovePoints: true })
+      }
       G.units.push(newUnit)
       
       // Log the action
@@ -369,6 +445,17 @@ const battlePhase = {
       if (!isReachable) {
         return INVALID_MOVE
       }
+
+      const targetTerrain = getTerrainData(G.terrainMap, targetQ, targetR)
+      const isEmbarkMove = targetTerrain.waterOnly && !unit.isNaval && !unit.isTransport
+      const isDisembarkMove = !targetTerrain.waterOnly && unit.isTransport
+
+      if (isEmbarkMove && !canEmbark(unit)) {
+        return INVALID_MOVE
+      }
+      if (isDisembarkMove && !canDisembark(unit)) {
+        return INVALID_MOVE
+      }
       
       // Calculate actual movement cost for the path taken
       const getMovementCost = (startQ, startR, targetQ, targetR, allHexes, units, terrainMap) => {
@@ -390,20 +477,24 @@ const battlePhase = {
             const key = `${neighbor.q},${neighbor.r}`
             if (visited.has(key)) continue
             
-            // Check terrain
-            const terrain = terrainMap[key] || 'PLAIN'
-            const terrainData = TERRAIN_TYPES[terrain]
-            
+            const terrainData = getTerrainData(terrainMap, neighbor.q, neighbor.r)
+            const isWater = terrainData.waterOnly
             const isNaval = unit.isNaval || false
-            if (isNaval && !terrainData.waterOnly) continue
-            if (!isNaval && terrainData.waterOnly) continue
+            const isTransport = unit.isTransport || false
+            const embarking = isWater && !isNaval && !isTransport
+            const disembarking = !isWater && isTransport
+
+            if (isWater && !isNaval && !isTransport && !canEmbark(unit)) continue
+            if (!isWater && isNaval && !isTransport) continue
+            if (disembarking && !canDisembark(unit)) continue
             if (!terrainData.passable) continue
             
             // Check if occupied by any unit (except the moving unit)
             if (isHexOccupied(neighbor.q, neighbor.r, units.filter(u => u.id !== unit.id))) continue
             
             visited.add(key)
-            queue.push({ ...neighbor, cost: current.cost + terrainData.moveCost })
+            const moveCost = embarking || disembarking ? unit.maxMovePoints : terrainData.moveCost
+            queue.push({ ...neighbor, cost: current.cost + moveCost })
           }
         }
         
@@ -427,7 +518,20 @@ const battlePhase = {
       unit.r = targetR
       unit.s = -targetQ - targetR
       unit.movePoints -= actualCost
-      unit.hasMoved = unit.movePoints <= 0 // Mark as moved if no movement points left
+
+      if (isEmbarkMove) {
+        applyTransportState(unit)
+        unit.movePoints = 0
+        unit.hasMoved = true
+        unit.hasAttacked = true
+      } else if (isDisembarkMove) {
+        restoreFromTransport(unit)
+        unit.movePoints = 0
+        unit.hasMoved = true
+        unit.hasAttacked = true
+      } else {
+        unit.hasMoved = unit.movePoints <= 0 // Mark as moved if no movement points left
+      }
       
       G.log.push(`Player ${playerID}'s ${unit.name} moved from (${oldQ}, ${oldR}) to (${targetQ}, ${targetR})`)
     },
