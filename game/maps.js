@@ -81,9 +81,6 @@ export const generateMapData = (mapId = DEFAULT_MAP_ID) => {
           terrain = 'FOREST'
         }
 
-        if (Math.abs(q) >= MAP_WIDTH || Math.abs(r) >= MAP_HEIGHT) {
-          terrain = 'WATER'
-        }
       }
 
       terrainMap[`${q},${r}`] = terrain

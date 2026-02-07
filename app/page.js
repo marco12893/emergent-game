@@ -247,12 +247,18 @@ export default function HTTPMultiplayerPage() {
                     // Check terrain costs
                     const terrain = state.terrainMap[key] || 'PLAIN'
                     const terrainTypes = {
-                      PLAIN: { moveCost: 1, passable: true },
-                      FOREST: { moveCost: 1, passable: true },
-                      MOUNTAIN: { moveCost: Infinity, passable: false }
+                      PLAIN: { moveCost: 1, passable: true, waterOnly: false },
+                      FOREST: { moveCost: 1, passable: true, waterOnly: false },
+                      HILLS: { moveCost: 2, passable: true, waterOnly: false },
+                      MOUNTAIN: { moveCost: Infinity, passable: false, waterOnly: false },
+                      WATER: { moveCost: 1, passable: true, waterOnly: true },
                     }
                     const terrainData = terrainTypes[terrain]
+                    if (!terrainData) continue
                     
+                    const isNaval = selectedUnit.isNaval || false
+                    if (isNaval && !terrainData.waterOnly) continue
+                    if (!isNaval && terrainData.waterOnly) continue
                     if (!terrainData.passable) continue
                     
                     const moveCost = terrainData.moveCost
