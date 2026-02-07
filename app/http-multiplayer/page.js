@@ -196,11 +196,20 @@ export default function HTTPMultiplayerPage() {
                     if (!terrainData) continue
                     
                     const isNaval = selectedUnit.isNaval || false
-                    if (isNaval && !terrainData.waterOnly) continue
-                    if (!isNaval && terrainData.waterOnly) continue
+                    const isTransport = selectedUnit.isTransport || false
+                    const canEmbark = !isNaval && !isTransport && selectedUnit.movePoints >= selectedUnit.maxMovePoints
+                    const canDisembark = isTransport && selectedUnit.movePoints >= selectedUnit.maxMovePoints
+                    const embarking = terrainData.waterOnly && !isNaval && !isTransport
+                    const disembarking = !terrainData.waterOnly && isTransport
+
+                    if (embarking && !canEmbark) continue
+                    if (!terrainData.waterOnly && isNaval && !isTransport) continue
+                    if (disembarking && !canDisembark) continue
                     if (!terrainData.passable) continue
                     
-                    const moveCost = terrainData.moveCost
+                    const moveCost = embarking || disembarking
+                      ? selectedUnit.maxMovePoints
+                      : terrainData.moveCost
                     const remainingAfterMove = current.remainingMove - moveCost
                     
                     if (remainingAfterMove >= 0) {
@@ -309,7 +318,7 @@ export default function HTTPMultiplayerPage() {
 
     let counterDamage = 0
     if (targetRemaining > 0 && distance <= targetUnit.range) {
-      if (targetUnit.type !== 'CATAPULT') {
+      if (targetUnit.type !== 'CATAPULT' || targetUnit.isTransport) {
         const targetHpPercentage = targetRemaining / targetUnit.maxHP
         let targetDamageMultiplier = 1.0
         if (targetHpPercentage > 0.75) {
