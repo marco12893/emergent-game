@@ -1388,21 +1388,21 @@ export async function POST(request) {
           game.playersReady[readyPlayerID] = true
           game.log.push(`Player ${readyPlayerID} is ready for battle!`)
 
-          const playOrder = teamMode ? getTeamPlayOrder(maxPlayers) : ['0', '1']
-          const activePlayers = playOrder.filter(id =>
+          const readyPlayOrder = teamMode ? getTeamPlayOrder(maxPlayers) : ['0', '1']
+          const readyActivePlayers = readyPlayOrder.filter(id =>
             game.units.some(unit => unit.ownerID === id)
           )
-          const readyPlayers = activePlayers.filter(id => game.playersReady[id])
+          const readyPlayers = readyActivePlayers.filter(id => game.playersReady[id])
 
-          if (activePlayers.length >= 2 && readyPlayers.length === activePlayers.length) {
+          if (readyActivePlayers.length >= 2 && readyPlayers.length === readyActivePlayers.length) {
             game.phase = 'battle'
-            game.inactivePlayers = playOrder.filter(id => !activePlayers.includes(id))
-            game.currentPlayer = activePlayers[0] || '0' // Reset to first active player for fair turn order
+            game.inactivePlayers = readyPlayOrder.filter(id => !readyActivePlayers.includes(id))
+            game.currentPlayer = readyActivePlayers[0] || '0' // Reset to first active player for fair turn order
             game.log.push(`⚔️ BATTLE PHASE BEGINS! Player ${game.currentPlayer} gets the first turn.`)
           } else {
             // Auto end turn after ready for battle in setup phase
-            const nextIndex = (playOrder.indexOf(game.currentPlayer) + 1) % playOrder.length
-            game.currentPlayer = playOrder[nextIndex]
+            const nextIndex = (readyPlayOrder.indexOf(game.currentPlayer) + 1) % readyPlayOrder.length
+            game.currentPlayer = readyPlayOrder[nextIndex]
             game.log.push(`Player ${readyPlayerID} is ready. Turn passes to Player ${game.currentPlayer}.`)
           }
           game.lastUpdate = Date.now()
