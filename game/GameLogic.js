@@ -130,8 +130,10 @@ const getUnitMoveCost = (unit, terrainData, { embarking, disembarking } = {}) =>
     return unit.maxMovePoints
   }
 
-  const isCatapult = unit.baseType === UNIT_TYPES.CATAPULT.type || unit.type === UNIT_TYPES.CATAPULT.type
-  if (isCatapult && terrainData.name === TERRAIN_TYPES.HILLS.name) {
+  const catapultType = UNIT_TYPES.CATAPULT?.type || 'CATAPULT'
+  const hillsName = TERRAIN_TYPES.HILLS?.name || 'Hills'
+  const isCatapult = unit.baseType === catapultType || unit.type === catapultType
+  if (isCatapult && terrainData.name === hillsName) {
     return 1
   }
 

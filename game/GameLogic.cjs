@@ -44,6 +44,7 @@ const TERRAIN_TYPES = {
   PLAIN: { name: 'Plain', defenseBonus: 0, moveCost: 1, passable: true },
   FOREST: { name: 'Forest', defenseBonus: 2, moveCost: 1, passable: true },
   MOUNTAIN: { name: 'Mountain', defenseBonus: 0, moveCost: Infinity, passable: false },
+  HILLS: { name: 'Hills', defenseBonus: 2, moveCost: 2, passable: true },
 }
 
 // ============================================
@@ -123,6 +124,17 @@ const getUnitAtHex = (q, r, units) => {
   return units.find(u => u.q === q && u.r === r && u.currentHP > 0)
 }
 
+const getUnitMoveCost = (unit, terrainData) => {
+  const catapultType = UNIT_TYPES.CATAPULT?.type || 'CATAPULT'
+  const hillsName = TERRAIN_TYPES.HILLS?.name || 'Hills'
+  const isCatapult = unit.baseType === catapultType || unit.type === catapultType
+  if (isCatapult && terrainData.name === hillsName) {
+    return 1
+  }
+
+  return terrainData.moveCost
+}
+
 // Check if hex is in spawn zone
 const isInSpawnZone = (q, r, playerID) => {
   if (playerID === '0') {
@@ -155,7 +167,7 @@ const getReachableHexes = (unit, allHexes, units, terrainMap) => {
       
       if (!terrainData.passable) continue
       
-      const moveCost = terrainData.moveCost
+      const moveCost = getUnitMoveCost(unit, terrainData)
       const remainingAfterMove = current.remainingMove - moveCost
       
       if (remainingAfterMove < 0) continue
