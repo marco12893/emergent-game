@@ -28,7 +28,7 @@ export async function GET() {
         joinTime: data?.joinTime || null,
       }))
 
-      const playerCount = players.length
+      const playerCount = players.filter(player => player.id !== 'spectator').length
       const status = 'open' // Always show as open to allow anyone to join
 
       const mapNames = {

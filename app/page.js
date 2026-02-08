@@ -139,7 +139,8 @@ export default function HTTPMultiplayerPage() {
   const [showUnitInfoPopup, setShowUnitInfoPopup] = useState(null) // New state for unit info popup
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false) // State for collapsible left panel
   const [showReadyConfirm, setShowReadyConfirm] = useState(false)
-  const isMyTurn = gameState?.currentPlayer === playerID
+  const isSpectator = playerID === 'spectator'
+  const isMyTurn = !isSpectator && gameState?.currentPlayer === playerID
   const selectedUnitForInfo = selectedUnitForInfoId
     ? gameState?.units?.find(unit => unit.id === selectedUnitForInfoId)
     : null
@@ -502,6 +503,10 @@ export default function HTTPMultiplayerPage() {
 
   const sendAction = async (action, payload) => {
     if (!joined) return
+    if (isSpectator) {
+      setError('Spectators cannot perform game actions.')
+      return
+    }
 
     try {
       const requestBody = { gameId: matchID, action, payload }
@@ -529,6 +534,19 @@ export default function HTTPMultiplayerPage() {
 
   const handleHexClick = (hex) => {
     if (!joined || !gameState) return
+    if (isSpectator) {
+      const unitOnHex = gameState.units.find(u => u.q === hex.q && u.r === hex.r && u.currentHP > 0)
+      if (unitOnHex) {
+        if (selectedUnitForInfo && selectedUnitForInfo.id === unitOnHex.id) {
+          setSelectedUnitForInfoId(null)
+        } else {
+          setSelectedUnitForInfoId(unitOnHex.id)
+        }
+      } else {
+        setSelectedUnitForInfoId(null)
+      }
+      return
+    }
 
     // Check if it's the current player's turn for game actions
     if (gameState.currentPlayer !== playerID) {
@@ -737,6 +755,7 @@ export default function HTTPMultiplayerPage() {
               >
                 <option value="0">Player 0</option>
                 <option value="1">Player 1</option>
+                <option value="spectator">Spectator</option>
               </select>
             </div>
 
@@ -766,7 +785,7 @@ export default function HTTPMultiplayerPage() {
                 disabled={loading}
                 className="flex-1 py-3 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-600 text-white font-bold rounded-lg transition-all"
               >
-                {loading ? '🔄 Creating...' : '➕ Create New Lobby'}
+                {loading ? '🔄 Creating...' : preferredPlayerID === 'spectator' ? '👀 Create & Spectate' : '➕ Create New Lobby'}
               </button>
               <button
                 onClick={fetchLobbyGames}
@@ -823,7 +842,7 @@ export default function HTTPMultiplayerPage() {
                                 key={player.id}
                                 className="text-xs bg-slate-800/80 border border-slate-600 rounded-full px-2 py-1 text-slate-200"
                               >
-                                {player.name} (P{player.id})
+                                {player.id === 'spectator' ? `${player.name} (Spectator)` : `${player.name} (P${player.id})`}
                               </span>
                             ))
                           ) : (
@@ -835,7 +854,7 @@ export default function HTTPMultiplayerPage() {
                           disabled={loading || isFull}
                           className="w-full py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 text-white font-semibold rounded-lg transition-all"
                         >
-                          {isFull ? 'Lobby Full' : game.status === 'waiting' ? '🎯 Join & Battle' : '🎮 Enter Lobby'}
+                          {isFull ? 'Lobby Full' : preferredPlayerID === 'spectator' ? '👀 Spectate Lobby' : game.status === 'waiting' ? '🎯 Join & Battle' : '🎮 Enter Lobby'}
                         </button>
                       </div>
                     )
@@ -907,8 +926,10 @@ export default function HTTPMultiplayerPage() {
             {/* Your Player ID */}
             <div className="flex items-center gap-2">
               <span className="text-amber-400 font-semibold">You:</span>
-              <span className={`px-2 py-1 rounded text-xs font-bold ${playerID === '0' ? 'bg-blue-600' : 'bg-red-600'}`}>
-                Player {playerID}
+              <span className={`px-2 py-1 rounded text-xs font-bold ${
+                isSpectator ? 'bg-slate-600' : playerID === '0' ? 'bg-blue-600' : 'bg-red-600'
+              }`}>
+                {isSpectator ? 'Spectator' : `Player ${playerID}`}
               </span>
             </div>
             
@@ -923,7 +944,7 @@ export default function HTTPMultiplayerPage() {
       }
       
       {/* Left Panel - Only visible during setup phase */}
-      {gameState?.phase === 'setup' && (
+      {gameState?.phase === 'setup' && !isSpectator && (
         <div className={`fixed left-0 top-0 z-40 transition-all duration-300 ${
           isLeftPanelCollapsed ? 'w-12' : 'w-1/2 sm:w-1/3 md:w-1/4 lg:w-1/5 xl:w-1/6'
         } bg-slate-800/95 border-r border-slate-600 backdrop-blur-sm h-full`}>
@@ -1022,7 +1043,7 @@ export default function HTTPMultiplayerPage() {
       
       {/* Action Buttons - Bottom Right Corner */}
       <div className="fixed bottom-4 right-4 z-30">
-        {gameState?.phase === 'setup' && (
+        {gameState?.phase === 'setup' && !isSpectator && (
           <button
             onClick={readyForBattle}
             disabled={!isMyTurn}
@@ -1032,7 +1053,7 @@ export default function HTTPMultiplayerPage() {
           </button>
         )}
         
-        {gameState?.phase === 'battle' && (
+        {gameState?.phase === 'battle' && !isSpectator && (
           <div className="flex flex-col gap-2">
             <button
               onClick={undoMove}

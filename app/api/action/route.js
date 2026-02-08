@@ -117,6 +117,12 @@ const TERRAIN_TYPES = {
   HILLS: { name: 'Hills', defenseBonus: 8, moveCost: 2, passable: true, waterOnly: false },
 }
 
+const ACTION_CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+}
+
 // ============================================
 // HELPER FUNCTIONS
 // ============================================
@@ -172,6 +178,16 @@ const restoreFromTransport = (unit, { resetMovePoints } = {}) => {
   if (resetMovePoints) {
     unit.movePoints = baseTemplate.movePoints
   }
+}
+
+const spectatorActionResponse = () => {
+  return NextResponse.json(
+    { error: 'Spectators cannot perform game actions.' },
+    {
+      status: 403,
+      headers: ACTION_CORS_HEADERS,
+    }
+  )
 }
 
 // Calculate hex distance (cube coordinates)
@@ -366,6 +382,10 @@ export async function POST(request) {
           }
           
           const { unitType, q, r, playerID: placePlayerID } = placeUnitValidation.sanitized
+
+          if (placePlayerID === 'spectator') {
+            return spectatorActionResponse()
+          }
           
           // Unit placement logic
           const stats = UNIT_TYPES[unitType]
@@ -487,6 +507,10 @@ export async function POST(request) {
           }
           
           const { unitId: removeUnitId, playerID: removePlayerID } = removeUnitValidation.sanitized
+
+          if (removePlayerID === 'spectator') {
+            return spectatorActionResponse()
+          }
           
           // Find and remove the unit (only allow removing own units)
           const unitToRemove = game.units.find(u => u.id === removeUnitId)
@@ -534,11 +558,19 @@ export async function POST(request) {
               }
             })
           }
+
+          if (sanitizePlayerID(payload?.playerID) === 'spectator') {
+            return spectatorActionResponse()
+          }
           
           game.selectedUnitId = payload.unitId
           break
           
         case 'deselectUnit':
+          if (sanitizePlayerID(payload?.playerID) === 'spectator') {
+            return spectatorActionResponse()
+          }
+
           game.selectedUnitId = null
           break
           
@@ -566,6 +598,10 @@ export async function POST(request) {
           }
           
           const { unitId, targetQ, targetR, playerID: movePlayerID } = moveUnitValidation.sanitized
+
+          if (movePlayerID === 'spectator') {
+            return spectatorActionResponse()
+          }
           
           const movingUnit = game.units.find(u => u.id === unitId)
           if (movingUnit && movingUnit.movePoints > 0) {
@@ -751,6 +787,10 @@ export async function POST(request) {
           }
 
           const { unitId: undoUnitId, playerID: undoPlayerID } = undoMoveValidation.sanitized
+
+          if (undoPlayerID === 'spectator') {
+            return spectatorActionResponse()
+          }
           const undoUnit = game.units.find(u => u.id === undoUnitId)
 
           if (!undoUnit || undoUnit.ownerID !== undoPlayerID) {
@@ -795,6 +835,23 @@ export async function POST(request) {
           if (!payload?.attackerId || !payload?.targetId) {
             return NextResponse.json({ 
               error: 'Missing required fields for attackUnit: attackerId, targetId' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          const attackPlayerID = sanitizePlayerID(payload?.playerID)
+          if (attackPlayerID === 'spectator') {
+            return spectatorActionResponse()
+          }
+          if (payload?.playerID && !attackPlayerID) {
+            return NextResponse.json({ 
+              error: 'Invalid playerID for attackUnit' 
             }, { 
               status: 400,
               headers: {
@@ -861,7 +918,7 @@ export async function POST(request) {
               attacker.hasMovedOrAttacked = true
             }
             
-            game.log.push(`Player ${payload.playerID}'s ${attacker.name} hit ${target.name} for ${actualDamage} damage${damageMultiplier < 1.0 ? ` (reduced to ${Math.round(damageMultiplier * 100)}% due to wounds)` : ''}${defenseBonus > 0 ? ` (terrain defense +${defenseBonus})` : ''}!`)
+            game.log.push(`Player ${attackPlayerID || payload.playerID}'s ${attacker.name} hit ${target.name} for ${actualDamage} damage${damageMultiplier < 1.0 ? ` (reduced to ${Math.round(damageMultiplier * 100)}% due to wounds)` : ''}${defenseBonus > 0 ? ` (terrain defense +${defenseBonus})` : ''}!`)
             
             // Counter-attack logic (if target survives and is in range)
             if (target.currentHP > 0) {
@@ -951,9 +1008,27 @@ export async function POST(request) {
               }
             })
           }
+
+          const endTurnPlayerID = sanitizePlayerID(payload.playerID)
+          if (!endTurnPlayerID) {
+            return NextResponse.json({ 
+              error: 'Invalid playerID for endTurn' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          if (endTurnPlayerID === 'spectator') {
+            return spectatorActionResponse()
+          }
           
           // Increment turn when switching from player 1 to player 0 (new round)
-          if (game.currentPlayer === '1' && payload.playerID === '1') {
+          if (game.currentPlayer === '1' && endTurnPlayerID === '1') {
             if (game.turn === undefined) {
               game.turn = 1
             } else {
@@ -999,7 +1074,7 @@ export async function POST(request) {
             unit.lastMove = null
           })
           game.selectedUnitId = null
-          game.log.push(`Player ${payload.playerID} ended turn. Player ${game.currentPlayer}'s turn begins.`)
+          game.log.push(`Player ${endTurnPlayerID} ended turn. Player ${game.currentPlayer}'s turn begins.`)
           game.lastUpdate = Date.now()
           break
           
@@ -1016,9 +1091,27 @@ export async function POST(request) {
               }
             })
           }
+
+          const readyPlayerID = sanitizePlayerID(payload.playerID)
+          if (!readyPlayerID) {
+            return NextResponse.json({ 
+              error: 'Invalid playerID for readyForBattle' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          if (readyPlayerID === 'spectator') {
+            return spectatorActionResponse()
+          }
           
-          game.playersReady[payload.playerID] = true
-          game.log.push(`Player ${payload.playerID} is ready for battle!`)
+          game.playersReady[readyPlayerID] = true
+          game.log.push(`Player ${readyPlayerID} is ready for battle!`)
           
           if (game.playersReady['0'] && game.playersReady['1']) {
             game.phase = 'battle'
@@ -1027,7 +1120,7 @@ export async function POST(request) {
           } else {
             // Auto end turn after ready for battle in setup phase
             game.currentPlayer = game.currentPlayer === '0' ? '1' : '0'
-            game.log.push(`Player ${payload.playerID} is ready. Turn passes to Player ${game.currentPlayer}.`)
+            game.log.push(`Player ${readyPlayerID} is ready. Turn passes to Player ${game.currentPlayer}.`)
           }
           game.lastUpdate = Date.now()
           break
@@ -1065,6 +1158,10 @@ export async function POST(request) {
           }
           
           const { unitId: retreatUnitId, targetQ: retreatTargetQ, targetR: retreatTargetR, playerID: retreatPlayerID } = retreatUnitValidation.sanitized
+
+          if (retreatPlayerID === 'spectator') {
+            return spectatorActionResponse()
+          }
           
           const unit = game.units.find(u => u.id === retreatUnitId)
           
