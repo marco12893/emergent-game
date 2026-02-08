@@ -1074,114 +1074,148 @@ export default function HTTPMultiplayerPage() {
     )
   }
 
-  const myUnits = gameState?.units?.filter(u => u.ownerID === playerID) || []
-  const selectedUnit = gameState?.selectedUnitId
-    ? gameState.units.find(u => u.id === gameState.selectedUnitId)
-    : null
+  if (gameState?.phase === 'lobby') {
+    const lobbyPlayers = gameState?.players || {}
+    const lobbySpectators = gameState?.spectators || []
+    const lobbyLeaderId = gameState?.leaderId
+    const lobbyMap = MAPS[gameState?.mapId] || MAPS[selectedMapId]
+    const maxPlayers = gameState?.maxPlayers || (teamMode ? 4 : 2)
+    const teamSlotConfig = teamMode
+      ? [
+          { id: '0', label: 'Blue Vanguard', team: 'TEAM 1' },
+          { id: '2', label: 'Green Vanguard', team: 'TEAM 1' },
+          { id: '1', label: 'Red Vanguard', team: 'TEAM 2' },
+          { id: '3', label: 'Yellow Vanguard', team: 'TEAM 2' },
+        ]
+      : [
+          { id: '0', label: 'Player One', team: 'TEAM 1' },
+          { id: '1', label: 'Player Two', team: 'TEAM 2' },
+        ]
+    const teamOneSlots = teamSlotConfig.filter(slot => slot.team === 'TEAM 1')
+    const teamTwoSlots = teamSlotConfig.filter(slot => slot.team === 'TEAM 2')
+    const playerCount = Object.keys(lobbyPlayers).length
+    const canStartMatch = playerID === lobbyLeaderId && playerCount >= 2
 
-  const lobbyPlayers = gameState?.players || {}
-  const lobbySpectators = gameState?.spectators || []
-  const lobbyLeaderId = gameState?.leaderId
-  const teamSlotConfig = [
-    { id: '0', label: 'Blue (P0)', team: 'TEAM 1' },
-    { id: '2', label: 'Green (P2)', team: 'TEAM 1' },
-    { id: '1', label: 'Red (P1)', team: 'TEAM 2' },
-    { id: '3', label: 'Yellow (P3)', team: 'TEAM 2' },
-  ]
-
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 text-white relative">
-      {/* Landscape Prompt */}
-      <LandscapePrompt />
-
-      {teamMode && gameState?.phase === 'setup' && (
-        <div className="relative z-30 mx-auto mt-6 max-w-5xl px-4">
-          <div className="rounded-2xl border border-slate-700 bg-slate-900/80 p-4 shadow-xl backdrop-blur-sm">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-amber-400">🧩 Team Battle Lobby</h2>
-                <p className="text-xs text-slate-400">
-                  Pick a slot on either team. The leader can start the battle when ready.
-                </p>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-slate-300">
-                <span className="rounded-full bg-slate-700 px-3 py-1">Leader: {lobbyLeaderId ?? 'TBD'}</span>
-                <button
-                  onClick={startBattle}
-                  disabled={playerID !== lobbyLeaderId}
-                  className="rounded-full bg-emerald-600 px-4 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-700"
-                >
-                  🚀 Start Battle
-                </button>
-              </div>
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-10">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-300/80">Match Lobby</p>
+              <h1 className="text-3xl font-bold text-amber-200">Choose Your Command Slot</h1>
+              <p className="mt-1 text-sm text-slate-400">
+                {teamMode ? '2v2 Team Battle' : '1v1 Duel'} • Lobby {matchID}
+              </p>
             </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
+              <span className="rounded-full bg-slate-800/80 px-3 py-1">Players: {playerCount}/{maxPlayers}</span>
+              <span className="rounded-full bg-slate-800/80 px-3 py-1">Leader: {lobbyLeaderId ?? 'TBD'}</span>
+              <span className="rounded-full bg-slate-800/80 px-3 py-1">Map: {lobbyMap?.name}</span>
+            </div>
+          </div>
 
-            <div className="mt-4 grid gap-4 md:grid-cols-3">
+          {error && (
+            <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
+              {error}
+            </div>
+          )}
+
+          <div className="grid gap-6 lg:grid-cols-[1fr_0.8fr_1fr]">
+            <div className="rounded-2xl border border-slate-700/80 bg-slate-900/70 p-5 shadow-xl">
+              <div className="mb-4 text-sm font-semibold text-blue-200">TEAM 1</div>
               <div className="space-y-3">
-                <div className="text-sm font-semibold text-blue-300">TEAM 1</div>
-                {teamSlotConfig.filter(slot => slot.team === 'TEAM 1').map(slot => {
+                {teamOneSlots.map(slot => {
                   const occupant = lobbyPlayers[slot.id]
+                  const isCurrent = slot.id === playerID
+                  const isOccupied = Boolean(occupant)
+                  const isLeader = lobbyLeaderId === slot.id
+                  const canClaim = !isOccupied || isCurrent
                   return (
-                    <div key={slot.id} className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/60 p-3">
+                    <div
+                      key={slot.id}
+                      className={`flex items-center justify-between gap-3 rounded-xl border p-4 ${
+                        isCurrent ? 'border-amber-400/70 bg-amber-400/10' : 'border-slate-700 bg-slate-800/60'
+                      }`}
+                    >
                       <div>
                         <div className="text-sm font-semibold text-white">{slot.label}</div>
                         <div className="text-xs text-slate-400">
-                          {occupant ? occupant.name : 'Open slot'}
-                          {occupant && lobbyLeaderId === slot.id && <span className="ml-2 text-amber-300">(Leader)</span>}
+                          {occupant ? occupant.name : 'Add the player'}
+                          {isLeader && <span className="ml-2 text-amber-300">(Leader)</span>}
                         </div>
                       </div>
                       <button
                         onClick={() => claimSlot(slot.id)}
-                        disabled={Boolean(occupant) && slot.id !== playerID}
+                        disabled={!canClaim || isSpectator}
                         className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
                       >
-                        {slot.id === playerID ? 'Your Slot' : occupant ? 'Taken' : 'Join'}
+                        {isCurrent ? 'Your Slot' : isOccupied ? 'Taken' : isSpectator ? 'Spectator' : 'Join'}
                       </button>
                     </div>
                   )
                 })}
               </div>
+            </div>
 
-              <div className="space-y-3">
-                <div className="text-sm font-semibold text-amber-200">Spectators</div>
-                <div className="rounded-lg border border-slate-700 bg-slate-800/60 p-3">
-                  {lobbySpectators.length === 0 ? (
-                    <div className="text-xs text-slate-400">No spectators yet</div>
-                  ) : (
-                    <ul className="space-y-1 text-xs text-slate-300">
-                      {lobbySpectators.map(spectator => (
-                        <li key={spectator.id}>{spectator.name}</li>
-                      ))}
-                    </ul>
-                  )}
-                  <button
-                    onClick={() => claimSlot('spectator')}
-                    className="mt-2 w-full rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white"
-                  >
-                    Watch as Spectator
-                  </button>
+            <div className="rounded-2xl border border-slate-700/80 bg-slate-900/70 p-5 shadow-xl">
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">Battlefield</div>
+              <div className="mt-4 rounded-2xl border border-slate-700/70 bg-slate-800/70 p-4 text-center">
+                <div className="text-sm font-semibold text-amber-200">{lobbyMap?.name || 'Random Map'}</div>
+                <div className="mx-auto mt-3 flex h-40 w-full max-w-[220px] items-center justify-center rounded-xl border border-slate-700 bg-slate-900/70 text-4xl text-slate-500">
+                  🗺️
+                </div>
+                <p className="mt-3 text-xs text-slate-400">{lobbyMap?.description}</p>
+              </div>
+
+              <div className="mt-5 space-y-3 text-xs text-slate-300">
+                <div className="flex items-center justify-between rounded-lg bg-slate-800/70 px-3 py-2">
+                  <span>Season</span>
+                  <span className="text-slate-200">{gameState?.isWinter ? 'Winter' : 'Standard'}</span>
+                </div>
+                <div className="flex items-center justify-between rounded-lg bg-slate-800/70 px-3 py-2">
+                  <span>Mode</span>
+                  <span className="text-slate-200">{teamMode ? 'Team Battle' : 'Duel'}</span>
                 </div>
               </div>
 
+              <button
+                onClick={startBattle}
+                disabled={!canStartMatch}
+                className="mt-5 w-full rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-700"
+              >
+                {playerID === lobbyLeaderId ? (canStartMatch ? '🚀 Start Match' : 'Waiting for players') : 'Waiting for leader'}
+              </button>
+            </div>
+
+            <div className="rounded-2xl border border-slate-700/80 bg-slate-900/70 p-5 shadow-xl">
+              <div className="mb-4 text-sm font-semibold text-red-200">TEAM 2</div>
               <div className="space-y-3">
-                <div className="text-sm font-semibold text-red-300">TEAM 2</div>
-                {teamSlotConfig.filter(slot => slot.team === 'TEAM 2').map(slot => {
+                {teamTwoSlots.map(slot => {
                   const occupant = lobbyPlayers[slot.id]
+                  const isCurrent = slot.id === playerID
+                  const isOccupied = Boolean(occupant)
+                  const isLeader = lobbyLeaderId === slot.id
+                  const canClaim = !isOccupied || isCurrent
                   return (
-                    <div key={slot.id} className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/60 p-3">
+                    <div
+                      key={slot.id}
+                      className={`flex items-center justify-between gap-3 rounded-xl border p-4 ${
+                        isCurrent ? 'border-amber-400/70 bg-amber-400/10' : 'border-slate-700 bg-slate-800/60'
+                      }`}
+                    >
                       <div>
                         <div className="text-sm font-semibold text-white">{slot.label}</div>
                         <div className="text-xs text-slate-400">
-                          {occupant ? occupant.name : 'Open slot'}
-                          {occupant && lobbyLeaderId === slot.id && <span className="ml-2 text-amber-300">(Leader)</span>}
+                          {occupant ? occupant.name : 'Add the player'}
+                          {isLeader && <span className="ml-2 text-amber-300">(Leader)</span>}
                         </div>
                       </div>
                       <button
                         onClick={() => claimSlot(slot.id)}
-                        disabled={Boolean(occupant) && slot.id !== playerID}
+                        disabled={!canClaim || isSpectator}
                         className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
                       >
-                        {slot.id === playerID ? 'Your Slot' : occupant ? 'Taken' : 'Join'}
+                        {isCurrent ? 'Your Slot' : isOccupied ? 'Taken' : isSpectator ? 'Spectator' : 'Join'}
                       </button>
                     </div>
                   )
@@ -1189,9 +1223,57 @@ export default function HTTPMultiplayerPage() {
               </div>
             </div>
           </div>
+
+          <div className="grid gap-4 lg:grid-cols-[1fr_1.5fr]">
+            <div className="rounded-2xl border border-slate-700/80 bg-slate-900/70 p-4 text-xs text-slate-300">
+              <div className="font-semibold text-slate-200">How it works</div>
+              <ul className="mt-2 space-y-1 text-slate-400">
+                <li>• Leader starts the match once at least two players are seated.</li>
+                <li>• After launch, you will place units on the map during setup.</li>
+                <li>• Team battles allow two slots per side.</li>
+              </ul>
+            </div>
+            <div className="rounded-2xl border border-slate-700/80 bg-slate-900/70 p-4 text-xs text-slate-300">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-slate-200">Spectators</span>
+                {!isSpectator && (
+                  <button
+                    onClick={() => claimSlot('spectator')}
+                    className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white"
+                  >
+                    Watch as Spectator
+                  </button>
+                )}
+              </div>
+              {lobbySpectators.length === 0 ? (
+                <div className="mt-2 text-slate-400">No spectators yet.</div>
+              ) : (
+                <ul className="mt-2 space-y-1 text-slate-400">
+                  {lobbySpectators.map(spectator => (
+                    <li key={spectator.id}>{spectator.name}</li>
+                  ))}
+                </ul>
+              )}
+              {isSpectator && (
+                <div className="mt-2 text-xs text-amber-300">You are watching as a spectator.</div>
+              )}
+            </div>
+          </div>
         </div>
-      )}
-      
+      </div>
+    )
+  }
+
+  const myUnits = gameState?.units?.filter(u => u.ownerID === playerID) || []
+  const selectedUnit = gameState?.selectedUnitId
+    ? gameState.units.find(u => u.id === gameState.selectedUnitId)
+    : null
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 text-white relative">
+      {/* Landscape Prompt */}
+      <LandscapePrompt />
+
       {/* Status Bar - Hidden when deploy panel is open */}
       {<div className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-20 transition-all duration-300
         ${(gameState?.phase === 'setup' && !isLeftPanelCollapsed) 

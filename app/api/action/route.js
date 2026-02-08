@@ -587,6 +587,28 @@ export async function POST(request) {
             })
           }
 
+          if (game.phase === 'lobby') {
+            const playOrder = getGamePlayOrder(game)
+            const activePlayers = playOrder.filter(id => game.players?.[id])
+            if (activePlayers.length < 2) {
+              return NextResponse.json({ 
+                error: 'At least two players must be in the lobby to start the match' 
+              }, { 
+                status: 400,
+                headers: {
+                  'Access-Control-Allow-Origin': '*',
+                  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                  'Access-Control-Allow-Headers': 'Content-Type',
+                }
+              })
+            }
+            game.phase = 'setup'
+            game.currentPlayer = activePlayers[0] || playOrder[0] || '0'
+            game.log.push('🧭 Match started! Deploy units to begin the siege.')
+            game.lastUpdate = Date.now()
+            break
+          }
+
           const playOrder = getGamePlayOrder(game)
           const activePlayers = playOrder.filter(id =>
             game.units.some(unit => unit.ownerID === id)
@@ -639,6 +661,19 @@ export async function POST(request) {
 
           if (placePlayerID === 'spectator') {
             return spectatorActionResponse()
+          }
+
+          if (game.phase !== 'setup') {
+            return NextResponse.json({ 
+              error: 'Units can only be placed during the setup phase' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
           }
 
           if (!isValidPlayerForGame(placePlayerID, game)) {
@@ -778,6 +813,19 @@ export async function POST(request) {
 
           if (removePlayerID === 'spectator') {
             return spectatorActionResponse()
+          }
+
+          if (game.phase !== 'setup') {
+            return NextResponse.json({ 
+              error: 'Units can only be removed during the setup phase' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
           }
 
           if (!isValidPlayerForGame(removePlayerID, game)) {
@@ -1582,6 +1630,19 @@ export async function POST(request) {
 
           if (readyPlayerID === 'spectator') {
             return spectatorActionResponse()
+          }
+
+          if (game.phase !== 'setup') {
+            return NextResponse.json({ 
+              error: 'Players can only ready up during the setup phase' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
           }
 
           if (!isValidPlayerForGame(readyPlayerID, game)) {

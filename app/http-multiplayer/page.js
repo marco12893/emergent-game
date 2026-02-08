@@ -796,6 +796,117 @@ export default function HTTPMultiplayerPage() {
     )
   }
 
+  if (gameState?.phase === 'lobby') {
+    const lobbyPlayers = gameState?.players || {}
+    const lobbyLeaderId = gameState?.leaderId
+    const lobbyMap = MAPS[gameState?.mapId] || MAPS[selectedMapId]
+    const playerCount = Object.keys(lobbyPlayers).length
+    const canStartMatch = playerID === lobbyLeaderId && playerCount >= 2
+    const slotConfig = [
+      { id: '0', label: 'Team 1' },
+      { id: '1', label: 'Team 2' },
+    ]
+
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white">
+        <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-10">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-300/80">Match Lobby</p>
+              <h1 className="text-3xl font-bold text-amber-200">Choose Your Command Slot</h1>
+              <p className="mt-1 text-sm text-slate-400">Lobby {matchID} • 1v1 Duel</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
+              <span className="rounded-full bg-slate-800/80 px-3 py-1">Players: {playerCount}/2</span>
+              <span className="rounded-full bg-slate-800/80 px-3 py-1">Leader: {lobbyLeaderId ?? 'TBD'}</span>
+              <span className="rounded-full bg-slate-800/80 px-3 py-1">Map: {lobbyMap?.name}</span>
+            </div>
+          </div>
+
+          {error && (
+            <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
+              {error}
+            </div>
+          )}
+
+          <div className="grid gap-6 lg:grid-cols-[1fr_0.8fr_1fr]">
+            <div className="rounded-2xl border border-slate-700/80 bg-slate-900/70 p-5 shadow-xl">
+              <div className="mb-4 text-sm font-semibold text-blue-200">TEAM 1</div>
+              {slotConfig.slice(0, 1).map(slot => {
+                const occupant = lobbyPlayers[slot.id]
+                const isCurrent = slot.id === playerID
+                const isOccupied = Boolean(occupant)
+                return (
+                  <div key={slot.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-800/60 p-4">
+                    <div>
+                      <div className="text-sm font-semibold text-white">{slot.label}</div>
+                      <div className="text-xs text-slate-400">
+                        {occupant ? occupant.name : 'Add the player'}
+                        {lobbyLeaderId === slot.id && <span className="ml-2 text-amber-300">(Leader)</span>}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => sendAction('claimSlot', { playerID, desiredSlot: slot.id, playerName: playerName || undefined })}
+                      disabled={isOccupied && !isCurrent}
+                      className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
+                    >
+                      {isCurrent ? 'Your Slot' : isOccupied ? 'Taken' : 'Join'}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+
+            <div className="rounded-2xl border border-slate-700/80 bg-slate-900/70 p-5 shadow-xl">
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">Battlefield</div>
+              <div className="mt-4 rounded-2xl border border-slate-700/70 bg-slate-800/70 p-4 text-center">
+                <div className="text-sm font-semibold text-amber-200">{lobbyMap?.name || 'Random Map'}</div>
+                <div className="mx-auto mt-3 flex h-40 w-full max-w-[220px] items-center justify-center rounded-xl border border-slate-700 bg-slate-900/70 text-4xl text-slate-500">
+                  🗺️
+                </div>
+                <p className="mt-3 text-xs text-slate-400">{lobbyMap?.description}</p>
+              </div>
+              <button
+                onClick={() => sendAction('startBattle', { playerID })}
+                disabled={!canStartMatch}
+                className="mt-5 w-full rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-700"
+              >
+                {playerID === lobbyLeaderId ? (canStartMatch ? '🚀 Start Match' : 'Waiting for players') : 'Waiting for leader'}
+              </button>
+            </div>
+
+            <div className="rounded-2xl border border-slate-700/80 bg-slate-900/70 p-5 shadow-xl">
+              <div className="mb-4 text-sm font-semibold text-red-200">TEAM 2</div>
+              {slotConfig.slice(1).map(slot => {
+                const occupant = lobbyPlayers[slot.id]
+                const isCurrent = slot.id === playerID
+                const isOccupied = Boolean(occupant)
+                return (
+                  <div key={slot.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-800/60 p-4">
+                    <div>
+                      <div className="text-sm font-semibold text-white">{slot.label}</div>
+                      <div className="text-xs text-slate-400">
+                        {occupant ? occupant.name : 'Add the player'}
+                        {lobbyLeaderId === slot.id && <span className="ml-2 text-amber-300">(Leader)</span>}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => sendAction('claimSlot', { playerID, desiredSlot: slot.id, playerName: playerName || undefined })}
+                      disabled={isOccupied && !isCurrent}
+                      className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
+                    >
+                      {isCurrent ? 'Your Slot' : isOccupied ? 'Taken' : 'Join'}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const myUnits = gameState?.units?.filter(u => u.ownerID === playerID) || []
   const isMyTurn = gameState?.currentPlayer === playerID
   const selectedUnit = gameState?.selectedUnitId
