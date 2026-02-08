@@ -370,6 +370,7 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
                 selectedUnitId={G.selectedUnitId}
                 currentPlayerID={playerID}
                 damagePreview={damagePreview}
+                showSpawnZones={G.phase === 'setup'}
               />
             </div>
           </div>

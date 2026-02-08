@@ -332,6 +332,7 @@ export default function SimpleMultiplayerPage() {
                 terrainMap={gameState?.terrainMap || {}}
                 selectedUnitId={null}
                 currentPlayerID={playerID}
+                showSpawnZones={gameState?.phase === 'setup'}
               />
             </div>
           </div>
