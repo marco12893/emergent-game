@@ -2,6 +2,7 @@
 
 import React, { useMemo, useCallback, useState, useRef, useEffect } from 'react'
 import { HexGrid, Layout, Hexagon } from 'react-hexgrid'
+import { getUnitSpriteProps } from '@/game/teamUtils'
 
 // Terrain types with their properties
 const TERRAIN_TYPES = {
@@ -57,6 +58,7 @@ const GameBoard = ({
   damagePreview = null,
   showSpawnZones = true,
   isWinter = false,
+  teamMode = false,
 }) => {
   const mapWidth = mapSize?.width || Math.max(6, ...hexes.map(hex => Math.abs(hex.q)))
   const mapHeight = mapSize?.height || Math.max(4, ...hexes.map(hex => Math.abs(hex.r)))
@@ -539,6 +541,13 @@ const GameBoard = ({
               const isUnitSelected = unit.id === selectedUnitId
               const showAttackPreview = damagePreview?.targetId === unit.id
               const showCounterPreview = damagePreview?.attackerId === unit.id
+              const { src, filter } = getUnitSpriteProps(unit, unit.ownerID)
+              const dropShadow = isUnitSelected
+                ? 'drop-shadow(0 0 3px #FBBF24)'
+                : 'drop-shadow(0px 2px 4px rgba(0,0,0,0.5))'
+              const filterStyle = filter && filter !== 'none'
+                ? `${filter} ${dropShadow}`
+                : dropShadow
 
               return (
                 <g key={`unit-${hex.q}-${hex.r}-${hex.s}`} style={{ pointerEvents: 'none' }}>
@@ -553,14 +562,14 @@ const GameBoard = ({
                   >
                     {/* Unit Image */}
                     <image
-                      href={`/units/${unit.image || 'swordsman'}_${unit.ownerID === '0' ? 'blue' : 'red'}.png`}
+                      href={src}
                       x={unit.isTransport ? '-6' : '-5'}
                       y={unit.isTransport ? '-8' : '-7'}
                       width={unit.isTransport ? '12' : '10'}
                       height={unit.isTransport ? '16' : '14'}
                       style={{ 
                         pointerEvents: 'none',
-                        filter: isUnitSelected ? 'drop-shadow(0 0 3px #FBBF24)' : 'drop-shadow(0px 2px 4px rgba(0,0,0,0.5))'
+                        filter: filterStyle
                       }}
                     />
                     
