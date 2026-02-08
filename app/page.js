@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useRef } from 'react'
-import { UNIT_TYPES, TERRAIN_TYPES, isInSpawnZone } from '@/game/GameLogic'
+import { UNIT_TYPES, TERRAIN_TYPES, getDeployableHexes } from '@/game/GameLogic'
 import { areAllies, getPlayerColor, getUnitSpriteProps } from '@/game/teamUtils'
 import { DEFAULT_MAP_ID, MAPS } from '@/game/maps'
 import GameBoard from '@/components/GameBoard'
@@ -394,7 +394,7 @@ export default function HTTPMultiplayerPage() {
               setHighlightedHexes(reachable)
               setAttackableHexes(attackable)
             }
-          } else {
+          } else if (state.phase !== 'setup') {
             setHighlightedHexes([])
             setAttackableHexes([])
           }
@@ -406,6 +406,27 @@ export default function HTTPMultiplayerPage() {
 
     return () => clearInterval(pollInterval)
   }, [joined, matchID, playerID])
+
+  useEffect(() => {
+    if (!gameState || gameState.phase !== 'setup') return
+    if (!isMyTurn) {
+      setHighlightedHexes([])
+      setAttackableHexes([])
+      return
+    }
+    const mapWidth = gameState?.mapSize?.width || 6
+    const deployableHexes = getDeployableHexes({
+      unitType: selectedUnitType,
+      hexes: gameState.hexes,
+      units: gameState.units,
+      terrainMap: gameState.terrainMap,
+      playerID,
+      mapWidth,
+      teamMode,
+    })
+    setHighlightedHexes(deployableHexes)
+    setAttackableHexes([])
+  }, [gameState, isMyTurn, playerID, selectedUnitType, teamMode])
 
   useEffect(() => {
     if (!gameState || !hoveredHex || gameState.phase !== 'battle' || !isMyTurn) {
@@ -704,8 +725,17 @@ export default function HTTPMultiplayerPage() {
 
       // Try to place a new unit
       const mapWidth = gameState?.mapSize?.width || 6
-      const isSpawnZone = isInSpawnZone(hex.q, hex.r, playerID, mapWidth, teamMode)
-      if (isSpawnZone) {
+      const deployableHexes = getDeployableHexes({
+        unitType: selectedUnitType,
+        hexes: gameState.hexes,
+        units: gameState.units,
+        terrainMap: gameState.terrainMap,
+        playerID,
+        mapWidth,
+        teamMode,
+      })
+      const isDeployable = deployableHexes.some(h => h.q === hex.q && h.r === hex.r)
+      if (isDeployable) {
         sendAction('placeUnit', {
           unitType: selectedUnitType,
           q: hex.q,
@@ -713,7 +743,7 @@ export default function HTTPMultiplayerPage() {
           playerID
         })
       } else {
-        setError('You can only place units in your spawn zone!')
+        setError('You can only place units in valid spawn hexes!')
         setTimeout(() => setError(''), 2000)
       }
       return
