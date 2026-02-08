@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { UNIT_TYPES } from '@/game/GameLogic'
 import GameBoard from '@/components/GameBoard'
 import ConfirmDialog from '@/components/ConfirmDialog'
@@ -49,6 +49,7 @@ export default function HTTPMultiplayerPage() {
   const [joined, setJoined] = useState(false)
   const [selectedUnitType, setSelectedUnitType] = useState('SWORDSMAN')
   const [error, setError] = useState('')
+  const errorTimeoutRef = useRef(null)
   const [loading, setLoading] = useState(false)
   const [showReadyConfirm, setShowReadyConfirm] = useState(false)
 
@@ -70,6 +71,22 @@ export default function HTTPMultiplayerPage() {
 
     return () => clearInterval(pollInterval)
   }, [joined, matchID])
+
+  useEffect(() => {
+    if (!error) return undefined
+    if (errorTimeoutRef.current) {
+      clearTimeout(errorTimeoutRef.current)
+    }
+    errorTimeoutRef.current = setTimeout(() => {
+      setError('')
+      errorTimeoutRef.current = null
+    }, 3000)
+    return () => {
+      if (errorTimeoutRef.current) {
+        clearTimeout(errorTimeoutRef.current)
+      }
+    }
+  }, [error])
 
   const connectToGame = async () => {
     if (!playerID || !matchID) {
