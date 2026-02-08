@@ -125,6 +125,7 @@ export default function HTTPMultiplayerPage() {
   const [lobbyGames, setLobbyGames] = useState([])
   const [lobbyLoading, setLobbyLoading] = useState(false)
   const [selectedMapId, setSelectedMapId] = useState(DEFAULT_MAP_ID)
+  const [isWinter, setIsWinter] = useState(false)
   const [storedSession, setStoredSession] = useState(null)
   const [selectedUnitType, setSelectedUnitType] = useState('SWORDSMAN')
   const [error, setError] = useState('')
@@ -481,7 +482,7 @@ export default function HTTPMultiplayerPage() {
     })
   }, [gameState, hoveredHex, isMyTurn, playerID])
 
-  const joinLobbyGame = async (gameId, requestedPlayerID, mapId) => {
+  const joinLobbyGame = async (gameId, requestedPlayerID, mapId, winter) => {
     if (!gameId) {
       setError('Lobby ID not found.')
       return
@@ -504,6 +505,7 @@ export default function HTTPMultiplayerPage() {
           playerID: resolvedPlayerID,
           playerName: playerName || undefined,
           mapId: mapId || undefined,
+          winter: typeof winter === 'boolean' ? winter : undefined,
         }),
       })
 
@@ -536,7 +538,7 @@ export default function HTTPMultiplayerPage() {
     const newLobbyId = Array.from({ length: 4 }, () =>
       String.fromCharCode(65 + Math.floor(Math.random() * 26))
     ).join('')
-    await joinLobbyGame(newLobbyId, preferredPlayerID, selectedMapId)
+    await joinLobbyGame(newLobbyId, preferredPlayerID, selectedMapId, isWinter)
   }
 
   const sendAction = async (action, payload) => {
@@ -861,6 +863,21 @@ export default function HTTPMultiplayerPage() {
               </p>
             </div>
 
+            <div>
+              <label className="flex items-center gap-2 text-sm font-medium text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={isWinter}
+                  onChange={(e) => setIsWinter(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-500 bg-slate-700 text-amber-400 focus:ring-amber-400"
+                />
+                Winter (snowy visuals)
+              </label>
+              <p className="mt-1 text-xs text-slate-400">
+                Winter only changes the map art — gameplay stays the same.
+              </p>
+            </div>
+
             <div className="flex gap-3">
               <button
                 onClick={createLobbyGame}
@@ -906,6 +923,9 @@ export default function HTTPMultiplayerPage() {
                             </div>
                             <div className="text-xs text-slate-400">
                               {game.mapName}
+                            </div>
+                            <div className="text-xs text-slate-400">
+                              Season: {game.isWinter ? 'Winter' : 'Standard'}
                             </div>
                             <div className="text-xs text-slate-400">
                               Status: {game.status === 'waiting' ? 'Waiting for opponent' : game.status === 'open' ? 'Open' : 'Full'}
@@ -1120,6 +1140,7 @@ export default function HTTPMultiplayerPage() {
           currentPlayerID={playerID}
           damagePreview={damagePreview}
           showSpawnZones={gameState?.phase === 'setup'}
+          isWinter={gameState?.isWinter}
         />
       </div>
       

@@ -361,6 +361,7 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
             selectedUnitId={G.selectedUnitId}
             currentPlayerID={playerID}
             showSpawnZones={G.phase === 'setup'}
+            isWinter={G.isWinter}
           />
         </div>
 

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getGame, setGame, createNewGame } from '@/lib/gameState'
-import { sanitizeGameId, sanitizeMapId, sanitizePlayerID, sanitizePlayerName } from '@/lib/inputSanitization'
+import { sanitizeGameId, sanitizeMapId, sanitizePlayerID, sanitizePlayerName, sanitizeWinterFlag } from '@/lib/inputSanitization'
 
 // Handle OPTIONS requests for CORS preflight
 export async function OPTIONS() {
@@ -17,13 +17,14 @@ export async function OPTIONS() {
 export async function POST(request) {
   try {
     const body = await request.json()
-    const { gameId, playerID, playerName, mapId } = body
+    const { gameId, playerID, playerName, mapId, winter } = body
     
     // Sanitize and validate inputs
     const sanitizedGameId = sanitizeGameId(gameId)
     const sanitizedPlayerID = playerID === undefined || playerID === null ? null : sanitizePlayerID(playerID)
     const sanitizedPlayerName = sanitizePlayerName(playerName)
     const sanitizedMapId = sanitizeMapId(mapId)
+    const sanitizedWinter = sanitizeWinterFlag(winter)
     
     if (!sanitizedGameId || (playerID !== undefined && sanitizedPlayerID === null)) {
       return NextResponse.json({ 
@@ -61,7 +62,7 @@ export async function POST(request) {
     if (!game) {
       console.log('🆕 Creating new game')
       try {
-        game = await createNewGame(gameId, sanitizedMapId || undefined)
+        game = await createNewGame(gameId, sanitizedMapId || undefined, sanitizedWinter)
       } catch (createError) {
         console.error('❌ KV createGame failed:', createError)
         return NextResponse.json({ 

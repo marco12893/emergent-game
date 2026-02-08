@@ -333,6 +333,7 @@ export default function SimpleMultiplayerPage() {
                 selectedUnitId={null}
                 currentPlayerID={playerID}
                 showSpawnZones={gameState?.phase === 'setup'}
+                isWinter={gameState?.isWinter}
               />
             </div>
           </div>

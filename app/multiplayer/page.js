@@ -371,6 +371,7 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
                 currentPlayerID={playerID}
                 damagePreview={damagePreview}
                 showSpawnZones={G.phase === 'setup'}
+                isWinter={G.isWinter}
               />
             </div>
           </div>
