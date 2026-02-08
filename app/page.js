@@ -147,6 +147,7 @@ export default function HTTPMultiplayerPage() {
   const [showReadyConfirm, setShowReadyConfirm] = useState(false)
   const [chatInput, setChatInput] = useState('')
   const [isChatOpen, setIsChatOpen] = useState(false)
+  const [forceLobbySelection, setForceLobbySelection] = useState(false)
   const chatInputRef = useRef(null)
   const isSpectator = playerID === 'spectator'
   const isMyTurn = !isSpectator && gameState?.currentPlayer === playerID
@@ -157,6 +158,7 @@ export default function HTTPMultiplayerPage() {
     ? gameState?.units?.find(unit => unit.id === selectedUnitForInfoId)
     : null
   const chatMessages = gameState?.chatMessages || []
+  const shouldShowLobbySelection = forceLobbySelection || gameState?.phase === 'lobby'
 
   const getChatSenderClass = (message) => {
     if (message?.playerID === '0') return 'text-blue-400'
@@ -535,6 +537,9 @@ export default function HTTPMultiplayerPage() {
         setPlayerID(data.playerID)
         setMatchID(gameId)
         setJoined(true)
+        setForceLobbySelection(
+          data.playerID !== 'spectator' && data.gameState?.phase !== 'lobby'
+        )
         const nextSession = { matchID: gameId, playerID: data.playerID, playerName }
         setStoredSession(nextSession)
         if (typeof window !== 'undefined') {
@@ -850,8 +855,8 @@ export default function HTTPMultiplayerPage() {
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-300/80">Medieval Tactical Battle</p>
               <h1 className="text-3xl font-bold text-amber-300 md:text-4xl">Pre-Game Lobby</h1>
               <p className="mt-2 max-w-2xl text-sm text-slate-300">
-                Create a lobby, invite your squad, and jump into battle. Player slots are assigned automatically —
-                team battles unlock a slot-claim screen once you enter the lobby.
+                Create a lobby, invite your squad, and jump into battle. Pick any slot once you enter the lobby —
+                team battles let you claim any command seat on entry.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
@@ -901,7 +906,7 @@ export default function HTTPMultiplayerPage() {
                       }`}
                     >
                       🛡️ Join as Player
-                      <p className="mt-1 text-xs font-normal text-slate-400">Auto-assigns you a slot.</p>
+                      <p className="mt-1 text-xs font-normal text-slate-400">Pick any slot once you enter the lobby.</p>
                     </button>
                     <button
                       type="button"
@@ -1045,10 +1050,10 @@ export default function HTTPMultiplayerPage() {
                         <div className="mt-4 flex flex-wrap gap-2">
                           <button
                             onClick={() => joinLobbyGame(game.id, joinAsSpectator ? 'spectator' : undefined)}
-                            disabled={loading || isFull}
+                            disabled={loading}
                             className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:bg-slate-600"
                           >
-                            {isFull ? 'Lobby Full' : joinAsSpectator ? '👀 Watch Lobby' : '🎯 Enter Lobby'}
+                            {joinAsSpectator ? '👀 Watch Lobby' : '🎯 Enter Lobby'}
                           </button>
                           {!joinAsSpectator && (
                             <button
@@ -1072,7 +1077,7 @@ export default function HTTPMultiplayerPage() {
     )
   }
 
-  if (gameState?.phase === 'lobby') {
+  if (shouldShowLobbySelection) {
     const lobbyPlayers = gameState?.players || {}
     const lobbySpectators = gameState?.spectators || []
     const lobbyLeaderId = gameState?.leaderId
@@ -1127,7 +1132,6 @@ export default function HTTPMultiplayerPage() {
                   const isCurrent = slot.id === playerID
                   const isOccupied = Boolean(occupant)
                   const isLeader = lobbyLeaderId === slot.id
-                  const canClaim = !isOccupied || isCurrent
                   return (
                     <div
                       key={slot.id}
@@ -1144,10 +1148,10 @@ export default function HTTPMultiplayerPage() {
                       </div>
                       <button
                         onClick={() => claimSlot(slot.id)}
-                        disabled={!canClaim || isSpectator}
+                        disabled={isSpectator}
                         className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
                       >
-                        {isCurrent ? 'Your Slot' : isOccupied ? 'Taken' : isSpectator ? 'Spectator' : 'Join'}
+                        {isCurrent ? 'Your Slot' : isOccupied ? 'Claim' : isSpectator ? 'Spectator' : 'Join'}
                       </button>
                     </div>
                   )
@@ -1176,13 +1180,27 @@ export default function HTTPMultiplayerPage() {
                 </div>
               </div>
 
-              <button
-                onClick={startBattle}
-                disabled={!canStartMatch}
-                className="mt-5 w-full rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-700"
-              >
-                {playerID === lobbyLeaderId ? (canStartMatch ? '🚀 Start Match' : 'Waiting for players') : 'Waiting for leader'}
-              </button>
+              {forceLobbySelection ? (
+                <div className="mt-5 space-y-3">
+                  <div className="rounded-lg border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                    Rejoining a match in progress. Pick a slot, then enter the battle.
+                  </div>
+                  <button
+                    onClick={() => setForceLobbySelection(false)}
+                    className="w-full rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-400"
+                  >
+                    ✅ Join Game
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={startBattle}
+                  disabled={!canStartMatch}
+                  className="mt-5 w-full rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-700"
+                >
+                  {playerID === lobbyLeaderId ? (canStartMatch ? '🚀 Start Match' : 'Waiting for players') : 'Waiting for leader'}
+                </button>
+              )}
             </div>
 
             <div className="rounded-2xl border border-slate-700/80 bg-slate-900/70 p-5 shadow-xl">
@@ -1193,7 +1211,6 @@ export default function HTTPMultiplayerPage() {
                   const isCurrent = slot.id === playerID
                   const isOccupied = Boolean(occupant)
                   const isLeader = lobbyLeaderId === slot.id
-                  const canClaim = !isOccupied || isCurrent
                   return (
                     <div
                       key={slot.id}
@@ -1210,10 +1227,10 @@ export default function HTTPMultiplayerPage() {
                       </div>
                       <button
                         onClick={() => claimSlot(slot.id)}
-                        disabled={!canClaim || isSpectator}
+                        disabled={isSpectator}
                         className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
                       >
-                        {isCurrent ? 'Your Slot' : isOccupied ? 'Taken' : isSpectator ? 'Spectator' : 'Join'}
+                        {isCurrent ? 'Your Slot' : isOccupied ? 'Claim' : isSpectator ? 'Spectator' : 'Join'}
                       </button>
                     </div>
                   )

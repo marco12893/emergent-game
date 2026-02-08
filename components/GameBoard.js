@@ -33,12 +33,13 @@ const getTerrainType = (q, r, terrainMap) => {
   return 'PLAIN'
 }
 
-// Determine spawn zone based on q coordinate
+// Determine spawn zone based on offset column
 const getSpawnZone = (q, r, mapWidth) => {
-  const leftSpawnMax = -mapWidth + 1
+  const column = q + Math.floor(r / 2)
+  const leftSpawnMax = -mapWidth + 2
   const rightSpawnMin = mapWidth - 2
-  if (q <= leftSpawnMax) return 0 // Player 0 (Left/Blue)
-  if (q >= rightSpawnMin) return 1  // Player 1 (Right/Red)
+  if (column <= leftSpawnMax) return 0 // Player 0 (Left/Blue)
+  if (column >= rightSpawnMin) return 1  // Player 1 (Right/Red)
   return null // No spawn zone
 }
 

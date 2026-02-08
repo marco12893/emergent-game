@@ -91,16 +91,8 @@ export async function POST(request) {
     }
 
     if (!assignedPlayerID) {
-      return NextResponse.json({ 
-        error: 'Lobby is full.' 
-      }, { 
-        status: 409,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type',
-        }
-      })
+      const playOrder = game.teamMode ? getTeamPlayOrder(maxPlayers) : ['0', '1']
+      assignedPlayerID = playOrder[0] || '0'
     }
 
     if (assignedPlayerID !== 'spectator' && Number(assignedPlayerID) >= maxPlayers) {
@@ -130,18 +122,6 @@ export async function POST(request) {
         joinTime: Date.now(),
       })
     } else {
-      if (takenPlayers.has(assignedPlayerID)) {
-        return NextResponse.json({ 
-          error: `Player slot ${assignedPlayerID} is already taken.` 
-        }, { 
-          status: 409,
-          headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type',
-          }
-        })
-      }
       game.players[assignedPlayerID] = {
         name: sanitizedPlayerName || defaultName,
         joinTime: Date.now(),

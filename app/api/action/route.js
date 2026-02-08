@@ -493,19 +493,6 @@ export async function POST(request) {
             }
           } else {
             const desiredSlotId = String(desiredIndex)
-            if (game.players?.[desiredSlotId] && desiredSlotId !== claimPlayerID) {
-              return NextResponse.json({ 
-                error: 'Desired slot is already occupied' 
-              }, { 
-                status: 409,
-                headers: {
-                  'Access-Control-Allow-Origin': '*',
-                  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                  'Access-Control-Allow-Headers': 'Content-Type',
-                }
-              })
-            }
-
             if (desiredSlotId !== claimPlayerID) {
               game.players[desiredSlotId] = {
                 ...existingEntry,
