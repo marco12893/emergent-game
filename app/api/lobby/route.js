@@ -31,10 +31,16 @@ export async function GET() {
       const playerCount = players.length
       const status = 'open' // Always show as open to allow anyone to join
 
+      const mapNames = {
+        MAP_1: 'Map 1 (Heartland)',
+        MAP_2: 'Map 2 (Northern Coast)',
+        MAP_3: 'Map 3 (Open Sea)',
+      }
+
       return {
         id: game.id,
         mapId: game.mapId || 'MAP_1',
-        mapName: game.mapId === 'MAP_2' ? 'Map 2 (Northern Coast)' : 'Map 1 (Heartland)',
+        mapName: mapNames[game.mapId] || mapNames.MAP_1,
         players,
         playerCount,
         status,

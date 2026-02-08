@@ -307,14 +307,11 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
                   {Object.values(UNIT_TYPES).map(unit => (
                     <button
                       key={unit.type}
-                      onClick={() => unit.type !== 'WARSHIP' && setSelectedUnitType(unit.type)}
-                      disabled={unit.type === 'WARSHIP'}
+                      onClick={() => setSelectedUnitType(unit.type)}
                       className={`w-full p-2 rounded border text-left transition-all ${
-                        unit.type === 'WARSHIP'
-                          ? 'border-slate-700 bg-slate-800/50 opacity-50 cursor-not-allowed'
-                          : selectedUnitType === unit.type 
-                            ? 'border-amber-400 bg-amber-400/20' 
-                            : 'border-slate-600 hover:border-slate-500'
+                        selectedUnitType === unit.type 
+                          ? 'border-amber-400 bg-amber-400/20' 
+                          : 'border-slate-600 hover:border-slate-500'
                       }`}
                     >
                       <div className="flex items-center gap-2">
@@ -322,15 +319,9 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
                         <div>
                           <div className="font-semibold">
                             {unit.name}
-                            {unit.type === 'WARSHIP' && (
-                              <span className="ml-2 text-xs text-red-400 font-normal">(Unavailable)</span>
-                            )}
                           </div>
                           <div className="text-xs text-slate-400">
-                            {unit.type === 'WARSHIP' 
-                              ? 'Naval units require water terrain - coming soon!' 
-                              : unit.description
-                            }
+                            {unit.description}
                           </div>
                         </div>
                       </div>

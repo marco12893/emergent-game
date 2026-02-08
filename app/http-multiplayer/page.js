@@ -770,7 +770,7 @@ export default function HTTPMultiplayerPage() {
                   <p>💡 Click your units to select them</p>
                   <p>🟢 Green hexes = movement options (based on movement points)</p>
                   <p>🔴 Red hexes = attack targets</p>
-                  <p>⚔️ Swordsman: 2 move, 25 ATK | Archer: 2 move, 30 ATK | Knight: 3 move, 30 ATK | Militia: 2 move, 20 ATK | Catapult: 1 move, 50 ATK | Warship: 3 move, 30 ATK (naval)</p>
+                  <p>⚔️ Swordsman: 2 move, 25 ATK | Archer: 2 move, 30 ATK | Knight: 3 move, 30 ATK | Militia: 2 move, 20 ATK | Catapult: 1 move, 50 ATK | War Galley: 3 move, 30 ATK (naval)</p>
                 </div>
               )}
               
@@ -779,14 +779,11 @@ export default function HTTPMultiplayerPage() {
                   {Object.values(UNIT_TYPES).map(unit => (
                     <button
                       key={unit.type}
-                      onClick={() => unit.type !== 'WARSHIP' && setSelectedUnitType(unit.type)}
-                      disabled={unit.type === 'WARSHIP'}
+                      onClick={() => setSelectedUnitType(unit.type)}
                       className={`w-full p-2 rounded border text-left transition-all ${
-                        unit.type === 'WARSHIP'
-                          ? 'border-slate-700 bg-slate-800/50 opacity-50 cursor-not-allowed'
-                          : selectedUnitType === unit.type 
-                            ? 'border-amber-400 bg-amber-400/20' 
-                            : 'border-slate-600 hover:border-slate-500'
+                        selectedUnitType === unit.type 
+                          ? 'border-amber-400 bg-amber-400/20' 
+                          : 'border-slate-600 hover:border-slate-500'
                       }`}
                     >
                       <div className="flex items-center gap-2">
@@ -794,15 +791,9 @@ export default function HTTPMultiplayerPage() {
                         <div>
                           <div className="font-semibold">
                             {unit.name}
-                            {unit.type === 'WARSHIP' && (
-                              <span className="ml-2 text-xs text-red-400 font-normal">(Unavailable)</span>
-                            )}
                           </div>
                           <div className="text-xs text-slate-400">
-                            {unit.type === 'WARSHIP' 
-                              ? 'Naval units require water terrain - coming soon!' 
-                              : unit.description
-                            }
+                            {unit.description}
                           </div>
                         </div>
                       </div>
