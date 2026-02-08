@@ -562,7 +562,7 @@ export default function HTTPMultiplayerPage() {
 
   const sendAction = async (action, payload) => {
     if (!joined) return
-    if (isSpectator) {
+    if (isSpectator && action !== 'claimSlot') {
       setError('Spectators cannot perform game actions.')
       return
     }
@@ -581,6 +581,7 @@ export default function HTTPMultiplayerPage() {
       if (response.ok) {
         const data = await response.json()
         setGameState(data.gameState)
+        return data
       } else {
         const errorData = await response.json()
         throw new Error(errorData.error || 'Failed to send action')
@@ -588,6 +589,7 @@ export default function HTTPMultiplayerPage() {
     } catch (err) {
       console.error('Action error:', err)
       setError(err.message || 'Failed to send action to server')
+      return null
     }
   }
 
@@ -814,6 +816,27 @@ export default function HTTPMultiplayerPage() {
     sendAction('readyForBattle', { playerID })
   }
 
+  const claimSlot = async (slotId) => {
+    if (!joined) return
+    const result = await sendAction('claimSlot', {
+      playerID,
+      desiredSlot: slotId,
+      playerName: playerName || undefined,
+    })
+    if (result?.success) {
+      if (slotId === 'spectator') {
+        setPlayerID('spectator')
+      } else {
+        setPlayerID(String(slotId))
+      }
+    }
+  }
+
+  const startBattle = async () => {
+    if (!joined) return
+    await sendAction('startBattle', { playerID })
+  }
+
   const confirmReadyForBattle = () => {
     setShowReadyConfirm(false)
     sendAction('readyForBattle', { playerID })
@@ -858,6 +881,8 @@ export default function HTTPMultiplayerPage() {
               >
                 <option value="0">Player 0</option>
                 <option value="1">Player 1</option>
+                {teamModeEnabled && <option value="2">Player 2</option>}
+                {teamModeEnabled && <option value="3">Player 3</option>}
                 <option value="spectator">Spectator</option>
               </select>
             </div>
@@ -1016,10 +1041,118 @@ export default function HTTPMultiplayerPage() {
     ? gameState.units.find(u => u.id === gameState.selectedUnitId)
     : null
 
+  const lobbyPlayers = gameState?.players || {}
+  const lobbySpectators = gameState?.spectators || []
+  const lobbyLeaderId = gameState?.leaderId
+  const teamSlotConfig = [
+    { id: '0', label: 'Blue (P0)', team: 'TEAM 1' },
+    { id: '2', label: 'Green (P2)', team: 'TEAM 1' },
+    { id: '1', label: 'Red (P1)', team: 'TEAM 2' },
+    { id: '3', label: 'Yellow (P3)', team: 'TEAM 2' },
+  ]
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 text-white relative">
       {/* Landscape Prompt */}
       <LandscapePrompt />
+
+      {teamMode && gameState?.phase === 'setup' && (
+        <div className="relative z-30 mx-auto mt-6 max-w-5xl px-4">
+          <div className="rounded-2xl border border-slate-700 bg-slate-900/80 p-4 shadow-xl backdrop-blur-sm">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-amber-400">🧩 Team Battle Lobby</h2>
+                <p className="text-xs text-slate-400">
+                  Pick a slot on either team. The leader can start the battle when ready.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-slate-300">
+                <span className="rounded-full bg-slate-700 px-3 py-1">Leader: {lobbyLeaderId ?? 'TBD'}</span>
+                <button
+                  onClick={startBattle}
+                  disabled={playerID !== lobbyLeaderId}
+                  className="rounded-full bg-emerald-600 px-4 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-700"
+                >
+                  🚀 Start Battle
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-4 md:grid-cols-3">
+              <div className="space-y-3">
+                <div className="text-sm font-semibold text-blue-300">TEAM 1</div>
+                {teamSlotConfig.filter(slot => slot.team === 'TEAM 1').map(slot => {
+                  const occupant = lobbyPlayers[slot.id]
+                  return (
+                    <div key={slot.id} className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/60 p-3">
+                      <div>
+                        <div className="text-sm font-semibold text-white">{slot.label}</div>
+                        <div className="text-xs text-slate-400">
+                          {occupant ? occupant.name : 'Open slot'}
+                          {occupant && lobbyLeaderId === slot.id && <span className="ml-2 text-amber-300">(Leader)</span>}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => claimSlot(slot.id)}
+                        disabled={Boolean(occupant) && slot.id !== playerID}
+                        className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
+                      >
+                        {slot.id === playerID ? 'Your Slot' : occupant ? 'Taken' : 'Join'}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div className="space-y-3">
+                <div className="text-sm font-semibold text-amber-200">Spectators</div>
+                <div className="rounded-lg border border-slate-700 bg-slate-800/60 p-3">
+                  {lobbySpectators.length === 0 ? (
+                    <div className="text-xs text-slate-400">No spectators yet</div>
+                  ) : (
+                    <ul className="space-y-1 text-xs text-slate-300">
+                      {lobbySpectators.map(spectator => (
+                        <li key={spectator.id}>{spectator.name}</li>
+                      ))}
+                    </ul>
+                  )}
+                  <button
+                    onClick={() => claimSlot('spectator')}
+                    className="mt-2 w-full rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white"
+                  >
+                    Watch as Spectator
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="text-sm font-semibold text-red-300">TEAM 2</div>
+                {teamSlotConfig.filter(slot => slot.team === 'TEAM 2').map(slot => {
+                  const occupant = lobbyPlayers[slot.id]
+                  return (
+                    <div key={slot.id} className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/60 p-3">
+                      <div>
+                        <div className="text-sm font-semibold text-white">{slot.label}</div>
+                        <div className="text-xs text-slate-400">
+                          {occupant ? occupant.name : 'Open slot'}
+                          {occupant && lobbyLeaderId === slot.id && <span className="ml-2 text-amber-300">(Leader)</span>}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => claimSlot(slot.id)}
+                        disabled={Boolean(occupant) && slot.id !== playerID}
+                        className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
+                      >
+                        {slot.id === playerID ? 'Your Slot' : occupant ? 'Taken' : 'Join'}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Status Bar - Hidden when deploy panel is open */}
       {<div className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-20 transition-all duration-300

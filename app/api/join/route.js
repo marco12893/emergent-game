@@ -113,10 +113,23 @@ export async function POST(request) {
       ? 'Spectator'
       : `Player ${assignedPlayerID}`
 
-    game.players[assignedPlayerID] = {
-      name: sanitizedPlayerName || defaultName,
-      joinTime: Date.now(),
-      joined: true,
+    if (assignedPlayerID === 'spectator') {
+      const spectatorId = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+      game.spectators = game.spectators || []
+      game.spectators.push({
+        id: spectatorId,
+        name: sanitizedPlayerName || defaultName,
+        joinTime: Date.now(),
+      })
+    } else {
+      game.players[assignedPlayerID] = {
+        name: sanitizedPlayerName || defaultName,
+        joinTime: Date.now(),
+        joined: true,
+      }
+      if (!game.leaderId) {
+        game.leaderId = assignedPlayerID
+      }
     }
     
     // Save updated game state

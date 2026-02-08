@@ -89,6 +89,12 @@ const isValidPlayerForGame = (playerID, game) => {
   return numericId >= 0 && numericId < maxPlayers
 }
 
+const getGamePlayOrder = (game) => {
+  const teamMode = Boolean(game.teamMode)
+  const maxPlayers = game.maxPlayers || (teamMode ? 4 : 2)
+  return teamMode ? getTeamPlayOrder(maxPlayers) : ['0', '1']
+}
+
 const TRANSPORT_STATS = {
   name: 'Transport',
   image: 'transport',
@@ -396,10 +402,216 @@ export async function POST(request) {
     if (!game.objectiveControl) {
       game.objectiveControl = { [game.attackerId]: 0, [game.defenderId]: 0 }
     }
+    if (!game.spectators) {
+      game.spectators = []
+    }
+    if (!game.leaderId && game.players?.['0']) {
+      game.leaderId = '0'
+    }
     
     // Handle different game actions
     try {
       switch (gameAction) {
+        case 'claimSlot': {
+          const claimSlotSchema = {
+            playerID: { required: true, sanitize: sanitizePlayerID },
+            desiredSlot: { required: true },
+            playerName: { required: false, sanitize: sanitizePlayerName },
+          }
+
+          const claimSlotValidation = validatePayload(payload, claimSlotSchema)
+          if (claimSlotValidation.error) {
+            return NextResponse.json({ 
+              error: 'Invalid payload for claimSlot: ' + claimSlotValidation.error 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          const { playerID: claimPlayerID, desiredSlot, playerName: claimPlayerName } = claimSlotValidation.sanitized
+          if (!claimPlayerID || claimPlayerID === 'spectator') {
+            return NextResponse.json({ 
+              error: 'Invalid playerID for claimSlot' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          const maxPlayers = game.maxPlayers || (teamMode ? 4 : 2)
+          const normalizedDesired = String(desiredSlot)
+          const desiredIsSpectator = normalizedDesired === 'spectator'
+          const desiredIndex = Number(normalizedDesired)
+
+          if (!desiredIsSpectator && (!Number.isInteger(desiredIndex) || desiredIndex < 0 || desiredIndex >= maxPlayers)) {
+            return NextResponse.json({ 
+              error: 'Desired slot is not valid for this lobby' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          const existingEntry = game.players?.[claimPlayerID]
+          if (!existingEntry) {
+            return NextResponse.json({ 
+              error: 'Player is not registered in this lobby' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          if (desiredIsSpectator) {
+            game.spectators = game.spectators || []
+            game.spectators.push({
+              id: claimPlayerID,
+              name: claimPlayerName || existingEntry.name || `Player ${claimPlayerID}`,
+              joinTime: Date.now(),
+            })
+            delete game.players[claimPlayerID]
+            if (game.leaderId === claimPlayerID) {
+              const remainingPlayers = Object.keys(game.players || {})
+              game.leaderId = remainingPlayers.length > 0 ? remainingPlayers[0] : null
+            }
+          } else {
+            const desiredSlotId = String(desiredIndex)
+            if (game.players?.[desiredSlotId] && desiredSlotId !== claimPlayerID) {
+              return NextResponse.json({ 
+                error: 'Desired slot is already occupied' 
+              }, { 
+                status: 409,
+                headers: {
+                  'Access-Control-Allow-Origin': '*',
+                  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                  'Access-Control-Allow-Headers': 'Content-Type',
+                }
+              })
+            }
+
+            if (desiredSlotId !== claimPlayerID) {
+              game.players[desiredSlotId] = {
+                ...existingEntry,
+                name: claimPlayerName || existingEntry.name || `Player ${desiredSlotId}`,
+                joinTime: existingEntry.joinTime || Date.now(),
+                joined: true,
+              }
+              delete game.players[claimPlayerID]
+              if (game.leaderId === claimPlayerID) {
+                game.leaderId = desiredSlotId
+              }
+            } else if (claimPlayerName) {
+              game.players[claimPlayerID] = {
+                ...existingEntry,
+                name: claimPlayerName,
+              }
+            }
+
+            if (!game.leaderId) {
+              game.leaderId = desiredSlotId
+            }
+          }
+
+          game.lastUpdate = Date.now()
+          break
+        }
+
+        case 'startBattle': {
+          if (!payload?.playerID) {
+            return NextResponse.json({ 
+              error: 'Missing required field for startBattle: playerID' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          const startPlayerID = sanitizePlayerID(payload.playerID)
+          if (!startPlayerID || startPlayerID === 'spectator') {
+            return NextResponse.json({ 
+              error: 'Invalid playerID for startBattle' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          if (!isValidPlayerForGame(startPlayerID, game)) {
+            return NextResponse.json({ 
+              error: 'Invalid playerID for this lobby' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          if (game.leaderId && game.leaderId !== startPlayerID) {
+            return NextResponse.json({ 
+              error: 'Only the lobby leader can start the battle' 
+            }, { 
+              status: 403,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          const playOrder = getGamePlayOrder(game)
+          const activePlayers = playOrder.filter(id =>
+            game.units.some(unit => unit.ownerID === id)
+          )
+          if (activePlayers.length < 2) {
+            return NextResponse.json({ 
+              error: 'At least two players need units to start the battle' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          game.phase = 'battle'
+          game.inactivePlayers = playOrder.filter(id => !activePlayers.includes(id))
+          game.currentPlayer = activePlayers[0] || '0'
+          game.log.push(`⚔️ BATTLE PHASE BEGINS! Player ${game.currentPlayer} gets the first turn.`)
+          game.lastUpdate = Date.now()
+          break
+        }
+
         case 'placeUnit':
           // Validate and sanitize payload
           const placeUnitSchema = {
@@ -1273,7 +1485,7 @@ export async function POST(request) {
             })
           }
           
-          const playOrder = teamMode ? getTeamPlayOrder(maxPlayers) : ['0', '1']
+          const playOrder = getGamePlayOrder(game)
           const activePlayers = playOrder.filter(id =>
             game.units.some(unit => unit.ownerID === id && unit.currentHP > 0)
           )
@@ -1388,7 +1600,7 @@ export async function POST(request) {
           game.playersReady[readyPlayerID] = true
           game.log.push(`Player ${readyPlayerID} is ready for battle!`)
 
-          const readyPlayOrder = teamMode ? getTeamPlayOrder(maxPlayers) : ['0', '1']
+          const readyPlayOrder = getGamePlayOrder(game)
           const readyActivePlayers = readyPlayOrder.filter(id =>
             game.units.some(unit => unit.ownerID === id)
           )
