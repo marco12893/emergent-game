@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import { UNIT_TYPES, TERRAIN_TYPES } from '@/game/GameLogic'
+import { getPlayerColor, getUnitSpriteProps } from '@/game/teamUtils'
 import { DEFAULT_MAP_ID, MAPS } from '@/game/maps'
 import GameBoard from '@/components/GameBoard'
 import VictoryScreen from '@/components/VictoryScreen'
@@ -53,6 +54,8 @@ const UnitInfoPanel = ({ unit, isSelected }) => {
   
   const hpPercent = (unit.currentHP / unit.maxHP) * 100
   const hpColor = hpPercent > 60 ? 'bg-green-500' : hpPercent > 30 ? 'bg-yellow-500' : 'bg-red-500'
+  const { src, filter } = getUnitSpriteProps(unit, unit.ownerID)
+  const playerColor = getPlayerColor(unit.ownerID)
   
   return (
     <div className={`p-3 rounded-lg border-2 transition-all ${
@@ -60,13 +63,14 @@ const UnitInfoPanel = ({ unit, isSelected }) => {
     }`}>
       <div className="flex items-center gap-3 mb-2">
         <img 
-          src={`/units/${unit.image || 'swordsman'}_${unit.ownerID === '0' ? 'blue' : 'red'}.png`}
+          src={src}
           className="w-8 h-8"
+          style={{ filter }}
           alt={unit.name || 'Unit'}
         />
         <div>
           <div className="font-semibold text-white">{unit.name || 'Unit'}</div>
-          <div className="text-xs text-slate-400">Player {unit.ownerID}</div>
+          <div className="text-xs text-slate-400">Player {unit.ownerID} ({playerColor})</div>
         </div>
       </div>
       
@@ -145,6 +149,8 @@ export default function HTTPMultiplayerPage() {
   const chatInputRef = useRef(null)
   const isSpectator = playerID === 'spectator'
   const isMyTurn = !isSpectator && gameState?.currentPlayer === playerID
+  const playerColor = getPlayerColor(playerID)
+  const generalSprite = getUnitSpriteProps({ image: 'General' }, playerID)
   const selectedUnitForInfo = selectedUnitForInfoId
     ? gameState?.units?.find(unit => unit.id === selectedUnitForInfoId)
     : null
@@ -1074,14 +1080,20 @@ export default function HTTPMultiplayerPage() {
               {/* Player Info Section */}
               <div className="bg-slate-700/50 rounded-lg p-3 flex items-center gap-3">
                 <img 
-                  src={`/units/General_${playerID === '0' ? 'blue' : 'red'}.png`}
+                  src={generalSprite.src}
                   className="w-12 h-12"
+                  style={{ filter: generalSprite.filter }}
                   alt="Player Avatar"
                 />
                 <div>
                   <div className="text-white font-bold text-sm">Player {playerID}</div>
-                  <div className={`text-xs ${playerID === '0' ? 'text-blue-400' : 'text-red-400'}`}>
-                    {playerID === '0' ? 'Blue Army' : 'Red Army'}
+                  <div className={`text-xs ${
+                    playerColor === 'blue' ? 'text-blue-400' :
+                    playerColor === 'green' ? 'text-green-400' :
+                    playerColor === 'yellow' ? 'text-yellow-400' :
+                    'text-red-400'
+                  }`}>
+                    {playerColor.charAt(0).toUpperCase() + playerColor.slice(1)} Army
                   </div>
                 </div>
               </div>
@@ -1115,8 +1127,9 @@ export default function HTTPMultiplayerPage() {
                       
                       {/* Unit image */}
                       <img 
-                        src={`/units/${unit.image}_${playerID === '0' ? 'blue' : 'red'}.png`}
+                        src={getUnitSpriteProps(unit, playerID).src}
                         className="w-32 h-32 mb-1"
+                        style={{ filter: getUnitSpriteProps(unit, playerID).filter }}
                         alt={unit.name}
                       />
                       
