@@ -91,11 +91,13 @@ export default function HTTPMultiplayerPage() {
   const [hoveredHex, setHoveredHex] = useState(null)
   const [damagePreview, setDamagePreview] = useState(null)
   const [showReadyConfirm, setShowReadyConfirm] = useState(false)
+  const [forceLobbySelection, setForceLobbySelection] = useState(false)
   
   // Dynamic server URL for production
   const serverUrl = process.env.NODE_ENV === 'production' 
     ? process.env.NEXT_PUBLIC_GAME_SERVER_URL_PROD || 'https://emergent-game.vercel.app'
     : process.env.NEXT_PUBLIC_GAME_SERVER_URL || 'http://localhost:3000'
+  const shouldShowLobbySelection = forceLobbySelection || gameState?.phase === 'lobby'
 
   const fetchLobbyGames = async () => {
     if (joined) return
@@ -402,6 +404,9 @@ export default function HTTPMultiplayerPage() {
         setPlayerID(data.playerID)
         setMatchID(gameId)
         setJoined(true)
+        setForceLobbySelection(
+          data.playerID !== 'spectator' && data.gameState?.phase !== 'lobby'
+        )
         const nextSession = { matchID: gameId, playerID: data.playerID, playerName }
         setStoredSession(nextSession)
         if (typeof window !== 'undefined') {
@@ -794,7 +799,7 @@ export default function HTTPMultiplayerPage() {
     )
   }
 
-  if (gameState?.phase === 'lobby') {
+  if (shouldShowLobbySelection) {
     const lobbyPlayers = gameState?.players || {}
     const lobbyLeaderId = gameState?.leaderId
     const lobbyMap = MAPS[gameState?.mapId] || MAPS[selectedMapId]
@@ -863,13 +868,27 @@ export default function HTTPMultiplayerPage() {
                 </div>
                 <p className="mt-3 text-xs text-slate-400">{lobbyMap?.description}</p>
               </div>
-              <button
-                onClick={() => sendAction('startBattle', { playerID })}
-                disabled={!canStartMatch}
-                className="mt-5 w-full rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-700"
-              >
-                {playerID === lobbyLeaderId ? (canStartMatch ? '🚀 Start Match' : 'Waiting for players') : 'Waiting for leader'}
-              </button>
+              {forceLobbySelection ? (
+                <div className="mt-5 space-y-3">
+                  <div className="rounded-lg border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                    Rejoining a match in progress. Pick a slot, then enter the battle.
+                  </div>
+                  <button
+                    onClick={() => setForceLobbySelection(false)}
+                    className="w-full rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-400"
+                  >
+                    ✅ Join Game
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => sendAction('startBattle', { playerID })}
+                  disabled={!canStartMatch}
+                  className="mt-5 w-full rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-700"
+                >
+                  {playerID === lobbyLeaderId ? (canStartMatch ? '🚀 Start Match' : 'Waiting for players') : 'Waiting for leader'}
+                </button>
+              )}
             </div>
 
             <div className="rounded-2xl border border-slate-700/80 bg-slate-900/70 p-5 shadow-xl">
