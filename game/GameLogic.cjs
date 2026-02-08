@@ -138,9 +138,9 @@ const getUnitMoveCost = (unit, terrainData) => {
 // Check if hex is in spawn zone
 const isInSpawnZone = (q, r, playerID) => {
   if (playerID === '0') {
-    return q <= -5
+    return q <= -4
   } else {
-    return q >= 5
+    return q >= 4
   }
 }
 

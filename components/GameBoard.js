@@ -35,7 +35,7 @@ const getTerrainType = (q, r, terrainMap) => {
 
 // Determine spawn zone based on q coordinate
 const getSpawnZone = (q, r, mapWidth) => {
-  const leftSpawnMax = -mapWidth + 1
+  const leftSpawnMax = -mapWidth + 2
   const rightSpawnMin = mapWidth - 2
   if (q <= leftSpawnMax) return 0 // Player 0 (Left/Blue)
   if (q >= rightSpawnMin) return 1  // Player 1 (Right/Red)

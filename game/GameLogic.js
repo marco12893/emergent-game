@@ -266,8 +266,8 @@ export const getUnitAtHex = (q, r, units) => {
 
 // Check if hex is in spawn zone
 export const isInSpawnZone = (q, r, playerID, mapWidth, teamMode = false) => {
-  const leftSpawnMax = -mapWidth + 1
-  const rightSpawnMin = mapWidth - 1
+  const leftSpawnMax = -mapWidth + 2
+  const rightSpawnMin = mapWidth - 2
   if (teamMode) {
     const teamId = getTeamId(playerID)
     if (teamId === 'blue-green') {
