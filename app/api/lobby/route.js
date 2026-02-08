@@ -27,6 +27,11 @@ export async function GET() {
         joined: Boolean(data?.joined),
         joinTime: data?.joinTime || null,
       }))
+      const spectators = (game.spectators || []).map((spectator) => ({
+        id: spectator.id,
+        name: spectator.name || 'Spectator',
+        joinTime: spectator.joinTime || null,
+      }))
 
       const playerCount = players.filter(player => player.id !== 'spectator').length
       const status = 'open' // Always show as open to allow anyone to join
@@ -42,8 +47,12 @@ export async function GET() {
         mapId: game.mapId || 'MAP_1',
         mapName: mapNames[game.mapId] || mapNames.MAP_1,
         isWinter: Boolean(game.isWinter),
+        teamMode: Boolean(game.teamMode),
         players,
+        spectators,
         playerCount,
+        maxPlayers: game.maxPlayers || 2,
+        leaderId: game.leaderId || null,
         status,
         lastUpdate: game.lastUpdate || null,
       }
