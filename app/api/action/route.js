@@ -11,6 +11,7 @@ import {
   sanitizePlayerName,
   validatePayload 
 } from '@/lib/inputSanitization'
+import { isInSpawnZone } from '@/game/GameLogic'
 import { areAllies, getTeamId, getTeamLabel, getTeamPlayOrder } from '@/game/teamUtils'
 
 // ============================================
@@ -708,12 +709,7 @@ export async function POST(request) {
           
           // Check spawn zone restriction
           const mapWidth = game.mapSize?.width || 6
-          const leftSpawnMax = -mapWidth + 1
-          const rightSpawnMin = mapWidth - 2
-          const teamId = teamMode ? getTeamId(placePlayerID) : placePlayerID
-          const inSpawnZone = teamId === '0' || teamId === 'blue-green'
-            ? q <= leftSpawnMax
-            : q >= rightSpawnMin
+          const inSpawnZone = isInSpawnZone(q, r, placePlayerID, mapWidth, teamMode)
           if (!inSpawnZone) {
             return NextResponse.json({ 
               error: 'Units can only be placed in your spawn zone' 
