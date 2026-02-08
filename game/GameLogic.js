@@ -56,11 +56,12 @@ export const UNIT_TYPES = {
     range: 3, // Long range siege weapon
     description: 'Siege weapon with high damage but cannot move and attack in same turn.',
   },
-  WARSHIP: {
-    type: 'WARSHIP',
-    name: 'Warship',
+  WAR_GALLEY: {
+    type: 'WAR_GALLEY',
+    name: 'War Galley',
+    image: 'war_galley',
     emoji: '⛵',
-    maxHP: 120,
+    maxHP: 150,
     attackPower: 30,
     movePoints: 3,
     range: 2,

@@ -13,6 +13,12 @@ export const MAPS = {
     description: 'Larger coastal map with northern ocean and rolling hills.',
     size: { width: 8, height: 5 },
   },
+  MAP_3: {
+    id: 'MAP_3',
+    name: 'Map 3 (Open Sea)',
+    description: 'An expansive ocean map for full naval engagements.',
+    size: { width: 6, height: 4 },
+  },
 }
 
 export const getMapConfig = (mapId) => MAPS[mapId] || MAPS[DEFAULT_MAP_ID]
@@ -48,7 +54,9 @@ export const generateMapData = (mapId = DEFAULT_MAP_ID) => {
 
       let terrain = 'PLAIN'
 
-      if (mapConfig.id === 'MAP_2') {
+      if (mapConfig.id === 'MAP_3') {
+        terrain = 'WATER'
+      } else if (mapConfig.id === 'MAP_2') {
         const key = `${q},${r}`
 
         // Northern ocean with an irregular coastline

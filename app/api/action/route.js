@@ -65,11 +65,11 @@ const UNIT_TYPES = {
     range: 3,
     description: 'Siege weapon with high damage but cannot move and attack in same turn.',
   },
-  WARSHIP: {
-    type: 'WARSHIP',
-    name: 'Warship',
-    image: 'warship',
-    maxHP: 120,
+  WAR_GALLEY: {
+    type: 'WAR_GALLEY',
+    name: 'War Galley',
+    image: 'war_galley',
+    maxHP: 150,
     attackPower: 30,
     movePoints: 3,
     range: 2,

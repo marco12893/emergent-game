@@ -944,7 +944,7 @@ export default function HTTPMultiplayerPage() {
                   DEPLOY UNITS
                 </div>
                 <div className="space-y-3 pb-12">
-                  {Object.values(UNIT_TYPES).filter(unit => unit.type !== 'WARSHIP').map(unit => (
+                  {Object.values(UNIT_TYPES).map(unit => (
                     <button
                       key={unit.type}
                       onClick={() => setSelectedUnitType(unit.type)}
