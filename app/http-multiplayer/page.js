@@ -127,8 +127,8 @@ export default function HTTPMultiplayerPage() {
       if (savedSession?.playerName) {
         setPlayerName(savedSession.playerName)
       }
-      if (savedSession?.playerID) {
-        setPreferredPlayerID(savedSession.playerID)
+      if (savedSession && savedSession.playerID !== undefined && savedSession.playerID !== null) {
+        setPreferredPlayerID(String(savedSession.playerID))
       }
       if (savedSession?.matchID) {
         setStoredSession(savedSession)
