@@ -833,6 +833,7 @@ export default function HTTPMultiplayerPage() {
                 selectedUnitId={gameState?.selectedUnitId || null}
                 currentPlayerID={playerID}
                 damagePreview={damagePreview}
+                showSpawnZones={gameState?.phase === 'setup'}
               />
             </div>
           </div>

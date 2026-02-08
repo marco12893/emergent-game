@@ -343,6 +343,7 @@ export default function HTTPMultiplayerPage() {
                 terrainMap={gameState?.terrainMap || {}}
                 selectedUnitId={null}
                 currentPlayerID={playerID}
+                showSpawnZones={gameState?.phase === 'setup'}
               />
             </div>
           </div>

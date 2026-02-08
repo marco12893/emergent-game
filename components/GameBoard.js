@@ -55,6 +55,7 @@ const GameBoard = ({
   selectedUnitId = null,
   currentPlayerID = '0',
   damagePreview = null,
+  showSpawnZones = true,
 }) => {
   const mapWidth = mapSize?.width || Math.max(6, ...hexes.map(hex => Math.abs(hex.q)))
   const mapHeight = mapSize?.height || Math.max(4, ...hexes.map(hex => Math.abs(hex.r)))
@@ -391,8 +392,8 @@ const GameBoard = ({
     if (highlightedHexes.some(h => h.q === hex.q && h.r === hex.r)) {
       return { stroke: '#34D399', strokeWidth: 0.15 } // Movable (Green)
     }
-    if (hex.spawnZone === 0) return { stroke: '#3B82F6', strokeWidth: 0.2 } // P0 Spawn
-    if (hex.spawnZone === 1) return { stroke: '#EF4444', strokeWidth: 0.2 } // P1 Spawn
+    if (showSpawnZones && hex.spawnZone === 0) return { stroke: '#3B82F6', strokeWidth: 0.2 } // P0 Spawn
+    if (showSpawnZones && hex.spawnZone === 1) return { stroke: '#EF4444', strokeWidth: 0.2 } // P1 Spawn
     
     return { stroke: '#1E293B', strokeWidth: 0.06 } // Default Border
   }

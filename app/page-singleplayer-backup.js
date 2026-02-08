@@ -360,6 +360,7 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
             terrainMap={G.terrainMap}
             selectedUnitId={G.selectedUnitId}
             currentPlayerID={playerID}
+            showSpawnZones={G.phase === 'setup'}
           />
         </div>
 
