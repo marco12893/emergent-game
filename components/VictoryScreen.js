@@ -106,7 +106,7 @@ const VictoryScreen = ({
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-3 right-3 text-slate-400 hover:text-white transition-colors text-xl leading-none w-6 h-6 flex items-center justify-center"
+          className="absolute top-6 right-4 text-slate-400 hover:text-white transition-colors text-xl leading-none w-6 h-6 flex items-center justify-center sm:top-3 sm:right-3"
         >
           ×
         </button>
