@@ -11,6 +11,7 @@ import {
   sanitizePlayerName,
   validatePayload 
 } from '@/lib/inputSanitization'
+import { areAllies, getTeamId, getTeamLabel, getTeamPlayOrder } from '@/game/teamUtils'
 
 // ============================================
 // UNIT & TERRAIN DEFINITIONS
@@ -78,6 +79,20 @@ const UNIT_TYPES = {
     isNaval: true,
     description: 'Naval unit that can only move on water.',
   },
+}
+
+const isValidPlayerForGame = (playerID, game) => {
+  if (playerID === 'spectator') return true
+  const maxPlayers = game.maxPlayers || 2
+  const numericId = Number(playerID)
+  if (!Number.isInteger(numericId)) return false
+  return numericId >= 0 && numericId < maxPlayers
+}
+
+const getGamePlayOrder = (game) => {
+  const teamMode = Boolean(game.teamMode)
+  const maxPlayers = game.maxPlayers || (teamMode ? 4 : 2)
+  return teamMode ? getTeamPlayOrder(maxPlayers) : ['0', '1']
 }
 
 const TRANSPORT_STATS = {
@@ -371,10 +386,254 @@ export async function POST(request) {
         }
       })
     }
+
+    const teamMode = Boolean(game.teamMode)
+    const maxPlayers = game.maxPlayers || (teamMode ? 4 : 2)
+    game.maxPlayers = maxPlayers
+    game.attackerId = game.attackerId || (teamMode ? 'blue-green' : '0')
+    game.defenderId = game.defenderId || (teamMode ? 'red-yellow' : '1')
+    game.inactivePlayers = game.inactivePlayers || []
+    if (!game.playersReady) {
+      game.playersReady = {}
+      for (let i = 0; i < maxPlayers; i += 1) {
+        game.playersReady[String(i)] = false
+      }
+    }
+    if (!game.objectiveControl) {
+      game.objectiveControl = { [game.attackerId]: 0, [game.defenderId]: 0 }
+    }
+    if (!game.spectators) {
+      game.spectators = []
+    }
+    if (!game.leaderId && game.players?.['0']) {
+      game.leaderId = '0'
+    }
     
     // Handle different game actions
     try {
       switch (gameAction) {
+        case 'claimSlot': {
+          const claimSlotSchema = {
+            playerID: { required: true, sanitize: sanitizePlayerID },
+            desiredSlot: { required: true },
+            playerName: { required: false, sanitize: sanitizePlayerName },
+          }
+
+          const claimSlotValidation = validatePayload(payload, claimSlotSchema)
+          if (claimSlotValidation.error) {
+            return NextResponse.json({ 
+              error: 'Invalid payload for claimSlot: ' + claimSlotValidation.error 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          const { playerID: claimPlayerID, desiredSlot, playerName: claimPlayerName } = claimSlotValidation.sanitized
+          if (!claimPlayerID || claimPlayerID === 'spectator') {
+            return NextResponse.json({ 
+              error: 'Invalid playerID for claimSlot' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          const maxPlayers = game.maxPlayers || (teamMode ? 4 : 2)
+          const normalizedDesired = String(desiredSlot)
+          const desiredIsSpectator = normalizedDesired === 'spectator'
+          const desiredIndex = Number(normalizedDesired)
+
+          if (!desiredIsSpectator && (!Number.isInteger(desiredIndex) || desiredIndex < 0 || desiredIndex >= maxPlayers)) {
+            return NextResponse.json({ 
+              error: 'Desired slot is not valid for this lobby' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          const existingEntry = game.players?.[claimPlayerID]
+          if (!existingEntry) {
+            return NextResponse.json({ 
+              error: 'Player is not registered in this lobby' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          if (desiredIsSpectator) {
+            game.spectators = game.spectators || []
+            game.spectators.push({
+              id: claimPlayerID,
+              name: claimPlayerName || existingEntry.name || `Player ${claimPlayerID}`,
+              joinTime: Date.now(),
+            })
+            delete game.players[claimPlayerID]
+            if (game.leaderId === claimPlayerID) {
+              const remainingPlayers = Object.keys(game.players || {})
+              game.leaderId = remainingPlayers.length > 0 ? remainingPlayers[0] : null
+            }
+          } else {
+            const desiredSlotId = String(desiredIndex)
+            if (game.players?.[desiredSlotId] && desiredSlotId !== claimPlayerID) {
+              return NextResponse.json({ 
+                error: 'Desired slot is already occupied' 
+              }, { 
+                status: 409,
+                headers: {
+                  'Access-Control-Allow-Origin': '*',
+                  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                  'Access-Control-Allow-Headers': 'Content-Type',
+                }
+              })
+            }
+
+            if (desiredSlotId !== claimPlayerID) {
+              game.players[desiredSlotId] = {
+                ...existingEntry,
+                name: claimPlayerName || existingEntry.name || `Player ${desiredSlotId}`,
+                joinTime: existingEntry.joinTime || Date.now(),
+                joined: true,
+              }
+              delete game.players[claimPlayerID]
+              if (game.leaderId === claimPlayerID) {
+                game.leaderId = desiredSlotId
+              }
+            } else if (claimPlayerName) {
+              game.players[claimPlayerID] = {
+                ...existingEntry,
+                name: claimPlayerName,
+              }
+            }
+
+            if (!game.leaderId) {
+              game.leaderId = desiredSlotId
+            }
+          }
+
+          game.lastUpdate = Date.now()
+          break
+        }
+
+        case 'startBattle': {
+          if (!payload?.playerID) {
+            return NextResponse.json({ 
+              error: 'Missing required field for startBattle: playerID' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          const startPlayerID = sanitizePlayerID(payload.playerID)
+          if (!startPlayerID || startPlayerID === 'spectator') {
+            return NextResponse.json({ 
+              error: 'Invalid playerID for startBattle' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          if (!isValidPlayerForGame(startPlayerID, game)) {
+            return NextResponse.json({ 
+              error: 'Invalid playerID for this lobby' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          if (game.leaderId && game.leaderId !== startPlayerID) {
+            return NextResponse.json({ 
+              error: 'Only the lobby leader can start the battle' 
+            }, { 
+              status: 403,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          if (game.phase === 'lobby') {
+            const playOrder = getGamePlayOrder(game)
+            const activePlayers = playOrder.filter(id => game.players?.[id])
+            if (activePlayers.length < 2) {
+              return NextResponse.json({ 
+                error: 'At least two players must be in the lobby to start the match' 
+              }, { 
+                status: 400,
+                headers: {
+                  'Access-Control-Allow-Origin': '*',
+                  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                  'Access-Control-Allow-Headers': 'Content-Type',
+                }
+              })
+            }
+            game.phase = 'setup'
+            game.currentPlayer = activePlayers[0] || playOrder[0] || '0'
+            game.log.push('🧭 Match started! Deploy units to begin the siege.')
+            game.lastUpdate = Date.now()
+            break
+          }
+
+          const playOrder = getGamePlayOrder(game)
+          const activePlayers = playOrder.filter(id =>
+            game.units.some(unit => unit.ownerID === id)
+          )
+          if (activePlayers.length < 2) {
+            return NextResponse.json({ 
+              error: 'At least two players need units to start the battle' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          game.phase = 'battle'
+          game.inactivePlayers = playOrder.filter(id => !activePlayers.includes(id))
+          game.currentPlayer = activePlayers[0] || '0'
+          game.log.push(`⚔️ BATTLE PHASE BEGINS! Player ${game.currentPlayer} gets the first turn.`)
+          game.lastUpdate = Date.now()
+          break
+        }
+
         case 'placeUnit':
           // Validate and sanitize payload
           const placeUnitSchema = {
@@ -402,6 +661,32 @@ export async function POST(request) {
 
           if (placePlayerID === 'spectator') {
             return spectatorActionResponse()
+          }
+
+          if (game.phase !== 'setup') {
+            return NextResponse.json({ 
+              error: 'Units can only be placed during the setup phase' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          if (!isValidPlayerForGame(placePlayerID, game)) {
+            return NextResponse.json({ 
+              error: 'Invalid playerID for this lobby' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
           }
           
           // Unit placement logic
@@ -438,7 +723,8 @@ export async function POST(request) {
           const mapWidth = game.mapSize?.width || 6
           const leftSpawnMax = -mapWidth + 1
           const rightSpawnMin = mapWidth - 2
-          const inSpawnZone = placePlayerID === '0'
+          const teamId = teamMode ? getTeamId(placePlayerID) : placePlayerID
+          const inSpawnZone = teamId === '0' || teamId === 'blue-green'
             ? q <= leftSpawnMax
             : q >= rightSpawnMin
           if (!inSpawnZone) {
@@ -528,6 +814,32 @@ export async function POST(request) {
           if (removePlayerID === 'spectator') {
             return spectatorActionResponse()
           }
+
+          if (game.phase !== 'setup') {
+            return NextResponse.json({ 
+              error: 'Units can only be removed during the setup phase' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          if (!isValidPlayerForGame(removePlayerID, game)) {
+            return NextResponse.json({ 
+              error: 'Invalid playerID for this lobby' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
           
           // Find and remove the unit (only allow removing own units)
           const unitToRemove = game.units.find(u => u.id === removeUnitId)
@@ -576,16 +888,44 @@ export async function POST(request) {
             })
           }
 
-          if (sanitizePlayerID(payload?.playerID) === 'spectator') {
+          const selectPlayerID = sanitizePlayerID(payload?.playerID)
+          if (selectPlayerID === 'spectator') {
             return spectatorActionResponse()
+          }
+
+          if (!selectPlayerID || !isValidPlayerForGame(selectPlayerID, game)) {
+            return NextResponse.json({ 
+              error: 'Invalid playerID for selectUnit' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
           }
           
           game.selectedUnitId = payload.unitId
           break
           
         case 'deselectUnit':
-          if (sanitizePlayerID(payload?.playerID) === 'spectator') {
+          const deselectPlayerID = sanitizePlayerID(payload?.playerID)
+          if (deselectPlayerID === 'spectator') {
             return spectatorActionResponse()
+          }
+
+          if (!deselectPlayerID || !isValidPlayerForGame(deselectPlayerID, game)) {
+            return NextResponse.json({ 
+              error: 'Invalid playerID for deselectUnit' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
           }
 
           game.selectedUnitId = null
@@ -618,6 +958,19 @@ export async function POST(request) {
 
           if (movePlayerID === 'spectator') {
             return spectatorActionResponse()
+          }
+
+          if (!isValidPlayerForGame(movePlayerID, game)) {
+            return NextResponse.json({ 
+              error: 'Invalid playerID for this lobby' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
           }
           
           const movingUnit = game.units.find(u => u.id === unitId)
@@ -808,6 +1161,19 @@ export async function POST(request) {
           if (undoPlayerID === 'spectator') {
             return spectatorActionResponse()
           }
+
+          if (!isValidPlayerForGame(undoPlayerID, game)) {
+            return NextResponse.json({ 
+              error: 'Invalid playerID for this lobby' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
           const undoUnit = game.units.find(u => u.id === undoUnitId)
 
           if (!undoUnit || undoUnit.ownerID !== undoPlayerID) {
@@ -878,11 +1244,63 @@ export async function POST(request) {
               }
             })
           }
+
+          if (attackPlayerID && !isValidPlayerForGame(attackPlayerID, game)) {
+            return NextResponse.json({ 
+              error: 'Invalid playerID for this lobby' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
           
           const attacker = game.units.find(u => u.id === payload.attackerId)
           const target = game.units.find(u => u.id === payload.targetId)
           
-          if (attacker && target && !attacker.hasAttacked) {
+          if (!attacker || !target) {
+            return NextResponse.json({ 
+              error: 'Invalid attacker or target unit' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          if (attackPlayerID && attacker.ownerID !== attackPlayerID) {
+            return NextResponse.json({ 
+              error: 'Cannot attack with a unit you do not own' 
+            }, { 
+              status: 403,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          if (teamMode ? areAllies(attacker.ownerID, target.ownerID) : attacker.ownerID === target.ownerID) {
+            return NextResponse.json({ 
+              error: 'Cannot attack allied units' 
+            }, { 
+              status: 403,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          if (!attacker.hasAttacked) {
             // Catapult move-or-attack restriction
             if (attacker.type === 'CATAPULT' && !attacker.isTransport && attacker.hasMovedOrAttacked) {
               return NextResponse.json({ 
@@ -1101,9 +1519,37 @@ export async function POST(request) {
           if (endTurnPlayerID === 'spectator') {
             return spectatorActionResponse()
           }
+
+          if (!isValidPlayerForGame(endTurnPlayerID, game)) {
+            return NextResponse.json({ 
+              error: 'Invalid playerID for this lobby' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
           
-          // Increment turn when switching from player 1 to player 0 (new round)
-          if (game.currentPlayer === '1' && endTurnPlayerID === '1') {
+          const playOrder = getGamePlayOrder(game)
+          const activePlayers = playOrder.filter(id =>
+            game.units.some(unit => unit.ownerID === id && unit.currentHP > 0)
+          )
+          if (teamMode) {
+            game.inactivePlayers = playOrder.filter(id => !activePlayers.includes(id))
+          }
+          const effectiveOrder = teamMode
+            ? (activePlayers.length > 0 ? activePlayers : playOrder)
+            : playOrder
+          const currentIndex = Math.max(0, effectiveOrder.indexOf(game.currentPlayer))
+          const nextIndex = (currentIndex + 1) % effectiveOrder.length
+          const nextPlayer = effectiveOrder[nextIndex]
+          const roundStartPlayer = effectiveOrder[0]
+
+          // Increment turn at start of new round
+          if (game.currentPlayer === effectiveOrder[effectiveOrder.length - 1] && endTurnPlayerID === game.currentPlayer) {
             if (game.turn === undefined) {
               game.turn = 1
             } else {
@@ -1116,31 +1562,32 @@ export async function POST(request) {
               const aliveUnits = game.units.filter(u => u.currentHP > 0)
               
               // Check who controls the objective hexes
-              let p0Controls = 0
-              let p1Controls = 0
+              let attackerControls = 0
+              let defenderControls = 0
               
               game.objectiveHexes.forEach(objHex => {
                 const unitOnHex = aliveUnits.find(u => u.q === sanitizeCoordinate(objHex.q) && u.r === sanitizeCoordinate(objHex.r))
                 if (unitOnHex) {
-                  if (unitOnHex.ownerID === '0') p0Controls++
-                  if (unitOnHex.ownerID === '1') p1Controls++
+                  const teamId = teamMode ? getTeamId(unitOnHex.ownerID) : unitOnHex.ownerID
+                  if (teamId === game.attackerId) attackerControls++
+                  if (teamId === game.defenderId) defenderControls++
                 }
               })
               
               // If one player controls all objective hexes, increment their control counter
-              if (p0Controls === game.objectiveHexes.length) {
-                game.objectiveControl['0']++
-                game.log.push(`Player 0 holds Paris! (${game.objectiveControl['0']} turns)`)
-              } else if (p1Controls === game.objectiveHexes.length) {
-                game.objectiveControl['1']++
-                game.log.push(`Player 1 holds Paris! (${game.objectiveControl['1']} turns)`)
+              if (attackerControls === game.objectiveHexes.length) {
+                game.objectiveControl[game.attackerId]++
+                game.log.push(`${getTeamLabel(game.attackerId)} holds Paris! (${game.objectiveControl[game.attackerId]} turns)`)
+              } else if (defenderControls === game.objectiveHexes.length) {
+                game.objectiveControl[game.defenderId]++
+                game.log.push(`${getTeamLabel(game.defenderId)} holds Paris! (${game.objectiveControl[game.defenderId]} turns)`)
               } else {
                 game.log.push('Paris is contested!')
               }
             }
           }
           
-          game.currentPlayer = game.currentPlayer === '0' ? '1' : '0'
+          game.currentPlayer = nextPlayer || roundStartPlayer
           game.units.forEach(unit => {
             unit.hasMoved = false
             unit.hasAttacked = false
@@ -1184,17 +1631,51 @@ export async function POST(request) {
           if (readyPlayerID === 'spectator') {
             return spectatorActionResponse()
           }
+
+          if (game.phase !== 'setup') {
+            return NextResponse.json({ 
+              error: 'Players can only ready up during the setup phase' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          if (!isValidPlayerForGame(readyPlayerID, game)) {
+            return NextResponse.json({ 
+              error: 'Invalid playerID for this lobby' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
           
           game.playersReady[readyPlayerID] = true
           game.log.push(`Player ${readyPlayerID} is ready for battle!`)
-          
-          if (game.playersReady['0'] && game.playersReady['1']) {
+
+          const readyPlayOrder = getGamePlayOrder(game)
+          const readyActivePlayers = readyPlayOrder.filter(id =>
+            game.units.some(unit => unit.ownerID === id)
+          )
+          const readyPlayers = readyActivePlayers.filter(id => game.playersReady[id])
+
+          if (readyActivePlayers.length >= 2 && readyPlayers.length === readyActivePlayers.length) {
             game.phase = 'battle'
-            game.currentPlayer = '0' // Reset to player 0 for fair turn order
-            game.log.push('⚔️ BATTLE PHASE BEGINS! Player 0 gets the first turn.')
+            game.inactivePlayers = readyPlayOrder.filter(id => !readyActivePlayers.includes(id))
+            game.currentPlayer = readyActivePlayers[0] || '0' // Reset to first active player for fair turn order
+            game.log.push(`⚔️ BATTLE PHASE BEGINS! Player ${game.currentPlayer} gets the first turn.`)
           } else {
             // Auto end turn after ready for battle in setup phase
-            game.currentPlayer = game.currentPlayer === '0' ? '1' : '0'
+            const nextIndex = (readyPlayOrder.indexOf(game.currentPlayer) + 1) % readyPlayOrder.length
+            game.currentPlayer = readyPlayOrder[nextIndex]
             game.log.push(`Player ${readyPlayerID} is ready. Turn passes to Player ${game.currentPlayer}.`)
           }
           game.lastUpdate = Date.now()
@@ -1236,6 +1717,19 @@ export async function POST(request) {
 
           if (retreatPlayerID === 'spectator') {
             return spectatorActionResponse()
+          }
+
+          if (!isValidPlayerForGame(retreatPlayerID, game)) {
+            return NextResponse.json({ 
+              error: 'Invalid playerID for this lobby' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
           }
           
           const unit = game.units.find(u => u.id === retreatUnitId)
@@ -1338,77 +1832,89 @@ export async function POST(request) {
       const aliveUnits = game.units.filter(u => u.currentHP > 0)
       const p0Alive = aliveUnits.filter(u => u.ownerID === '0').length
       const p1Alive = aliveUnits.filter(u => u.ownerID === '1').length
+      const teamBlueGreenAlive = aliveUnits.filter(u => getTeamId(u.ownerID) === 'blue-green').length
+      const teamRedYellowAlive = aliveUnits.filter(u => getTeamId(u.ownerID) === 'red-yellow').length
       
       let victoryInfo = null
       
       // Attack & Defend mode victory conditions
       if (game.gameMode === 'ATTACK_DEFEND') {
         // Defender (Player 1) wins if they hold objective for required turns
-        if (game.objectiveControl['1'] >= game.turnLimit) {
+        if (game.objectiveControl[game.defenderId] >= game.turnLimit) {
           victoryInfo = {
-            winner: '1',
+            winner: game.defenderId,
+            winnerTeam: game.defenderId,
+            teamMode,
             turn: game.turn || 1,
             victoryType: 'objective_defense',
-            message: `Player 1 (Defender) wins by holding Paris for ${game.turnLimit} turns!`
+            message: `${getTeamLabel(game.defenderId)} wins by holding Paris for ${game.turnLimit} turns!`
           }
         }
         
         // Attacker (Player 0) wins if they capture all objective hexes
         const p0ControlsAll = game.objectiveHexes.every(objHex => {
           const unitOnHex = aliveUnits.find(u => u.q === sanitizeCoordinate(objHex.q) && u.r === sanitizeCoordinate(objHex.r))
-          return unitOnHex && unitOnHex.ownerID === '0'
+          if (!unitOnHex) return false
+          const teamId = teamMode ? getTeamId(unitOnHex.ownerID) : unitOnHex.ownerID
+          return teamId === game.attackerId
         })
         
-        if (p0ControlsAll && game.objectiveControl['0'] >= 3) {
+        if (p0ControlsAll && game.objectiveControl[game.attackerId] >= 3) {
           victoryInfo = {
-            winner: '0',
+            winner: game.attackerId,
+            winnerTeam: game.attackerId,
+            teamMode,
             turn: game.turn || 1,
             victoryType: 'objective_capture',
-            message: `Player 0 (Attacker) wins by capturing Paris!`
+            message: `${getTeamLabel(game.attackerId)} wins by capturing Paris!`
           }
         }
         
         // Elimination still works as alternate victory
-        if (p1Alive === 0) {
+        if (teamMode ? teamRedYellowAlive === 0 : p1Alive === 0) {
           victoryInfo = {
-            winner: '0',
+            winner: game.attackerId,
+            winnerTeam: game.attackerId,
+            teamMode,
             turn: game.turn || 1,
             victoryType: 'elimination',
-            message: `Player 0 wins by eliminating all defenders!`
+            message: `${getTeamLabel(game.attackerId)} wins by eliminating all defenders!`
           }
         }
-        if (p0Alive === 0) {
+        if (teamMode ? teamBlueGreenAlive === 0 : p0Alive === 0) {
           victoryInfo = {
-            winner: '1',
+            winner: game.defenderId,
+            winnerTeam: game.defenderId,
+            teamMode,
             turn: game.turn || 1,
             victoryType: 'elimination',
-            message: `Player 1 wins by eliminating all attackers!`
+            message: `${getTeamLabel(game.defenderId)} wins by eliminating all attackers!`
           }
         }
       } else {
         // Standard ELIMINATION mode
-        if (p0Alive === 0 && p1Alive > 0) {
+        if (!teamMode && p0Alive === 0 && p1Alive > 0) {
           victoryInfo = {
             winner: '1',
             turn: game.turn || 1,
             victoryType: 'elimination',
             message: `Player 1 wins by eliminating all enemy units in ${game.turn || 1} turns!`
           }
-        } else if (p1Alive === 0 && p0Alive > 0) {
+        } else if (!teamMode && p1Alive === 0 && p0Alive > 0) {
           victoryInfo = {
             winner: '0',
             turn: game.turn || 1,
             victoryType: 'elimination',
             message: `Player 0 wins by eliminating all enemy units in ${game.turn || 1} turns!`
           }
-        } else if (p0Alive === 0 && p1Alive === 0) {
+        } else if (!teamMode && p0Alive === 0 && p1Alive === 0) {
           victoryInfo = {
             draw: true,
             turn: game.turn || 1,
             victoryType: 'mutual_destruction',
             message: `Draw! Both players eliminated in ${game.turn || 1} turns!`
           }
-        } else if ((game.turn || 1) >= 50) {
+        } else if (!teamMode && (game.turn || 1) >= 50) {
           if (p0Alive > p1Alive) {
             victoryInfo = {
               winner: '0',
@@ -1429,6 +1935,64 @@ export async function POST(request) {
               turn: game.turn,
               victoryType: 'turn_limit_draw',
               message: `Draw! Equal units after ${game.turn} turns!`
+            }
+          }
+        }
+
+        if (teamMode) {
+          if (teamBlueGreenAlive === 0 && teamRedYellowAlive > 0) {
+            victoryInfo = {
+              winner: 'red-yellow',
+              winnerTeam: 'red-yellow',
+              teamMode,
+              turn: game.turn || 1,
+              victoryType: 'elimination',
+              message: `${getTeamLabel('red-yellow')} wins by eliminating all enemy units in ${game.turn || 1} turns!`
+            }
+          } else if (teamRedYellowAlive === 0 && teamBlueGreenAlive > 0) {
+            victoryInfo = {
+              winner: 'blue-green',
+              winnerTeam: 'blue-green',
+              teamMode,
+              turn: game.turn || 1,
+              victoryType: 'elimination',
+              message: `${getTeamLabel('blue-green')} wins by eliminating all enemy units in ${game.turn || 1} turns!`
+            }
+          } else if (teamRedYellowAlive === 0 && teamBlueGreenAlive === 0) {
+            victoryInfo = {
+              draw: true,
+              teamMode,
+              turn: game.turn || 1,
+              victoryType: 'mutual_destruction',
+              message: `Draw! Both teams eliminated in ${game.turn || 1} turns!`
+            }
+          } else if ((game.turn || 1) >= 50) {
+            if (teamBlueGreenAlive > teamRedYellowAlive) {
+              victoryInfo = {
+                winner: 'blue-green',
+                winnerTeam: 'blue-green',
+                teamMode,
+                turn: game.turn,
+                victoryType: 'turn_limit',
+                message: `${getTeamLabel('blue-green')} wins by having more units after ${game.turn} turns!`
+              }
+            } else if (teamRedYellowAlive > teamBlueGreenAlive) {
+              victoryInfo = {
+                winner: 'red-yellow',
+                winnerTeam: 'red-yellow',
+                teamMode,
+                turn: game.turn,
+                victoryType: 'turn_limit',
+                message: `${getTeamLabel('red-yellow')} wins by having more units after ${game.turn} turns!`
+              }
+            } else {
+              victoryInfo = {
+                draw: true,
+                teamMode,
+                turn: game.turn,
+                victoryType: 'turn_limit_draw',
+                message: `Draw! Equal units after ${game.turn} turns!`
+              }
             }
           }
         }

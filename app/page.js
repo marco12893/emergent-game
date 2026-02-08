@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import { UNIT_TYPES, TERRAIN_TYPES } from '@/game/GameLogic'
+import { areAllies, getPlayerColor, getUnitSpriteProps } from '@/game/teamUtils'
 import { DEFAULT_MAP_ID, MAPS } from '@/game/maps'
 import GameBoard from '@/components/GameBoard'
 import VictoryScreen from '@/components/VictoryScreen'
@@ -53,6 +54,8 @@ const UnitInfoPanel = ({ unit, isSelected }) => {
   
   const hpPercent = (unit.currentHP / unit.maxHP) * 100
   const hpColor = hpPercent > 60 ? 'bg-green-500' : hpPercent > 30 ? 'bg-yellow-500' : 'bg-red-500'
+  const { src, filter } = getUnitSpriteProps(unit, unit.ownerID)
+  const playerColor = getPlayerColor(unit.ownerID)
   
   return (
     <div className={`p-3 rounded-lg border-2 transition-all ${
@@ -60,13 +63,14 @@ const UnitInfoPanel = ({ unit, isSelected }) => {
     }`}>
       <div className="flex items-center gap-3 mb-2">
         <img 
-          src={`/units/${unit.image || 'swordsman'}_${unit.ownerID === '0' ? 'blue' : 'red'}.png`}
+          src={src}
           className="w-8 h-8"
+          style={{ filter }}
           alt={unit.name || 'Unit'}
         />
         <div>
           <div className="font-semibold text-white">{unit.name || 'Unit'}</div>
-          <div className="text-xs text-slate-400">Player {unit.ownerID}</div>
+          <div className="text-xs text-slate-400">Player {unit.ownerID} ({playerColor})</div>
         </div>
       </div>
       
@@ -121,12 +125,13 @@ export default function HTTPMultiplayerPage() {
   const [matchID, setMatchID] = useState('')
   const [joined, setJoined] = useState(false)
   const [playerName, setPlayerName] = useState('')
-  const [preferredPlayerID, setPreferredPlayerID] = useState('0')
   const [lobbyGames, setLobbyGames] = useState([])
   const [lobbyLoading, setLobbyLoading] = useState(false)
   const [selectedMapId, setSelectedMapId] = useState(DEFAULT_MAP_ID)
   const [isWinter, setIsWinter] = useState(false)
+  const [teamModeEnabled, setTeamModeEnabled] = useState(false)
   const [storedSession, setStoredSession] = useState(null)
+  const [joinAsSpectator, setJoinAsSpectator] = useState(false)
   const [selectedUnitType, setSelectedUnitType] = useState('SWORDSMAN')
   const [error, setError] = useState('')
   const errorTimeoutRef = useRef(null)
@@ -145,6 +150,9 @@ export default function HTTPMultiplayerPage() {
   const chatInputRef = useRef(null)
   const isSpectator = playerID === 'spectator'
   const isMyTurn = !isSpectator && gameState?.currentPlayer === playerID
+  const playerColor = getPlayerColor(playerID)
+  const generalSprite = getUnitSpriteProps({ image: 'General' }, playerID)
+  const teamMode = Boolean(gameState?.teamMode)
   const selectedUnitForInfo = selectedUnitForInfoId
     ? gameState?.units?.find(unit => unit.id === selectedUnitForInfoId)
     : null
@@ -230,12 +238,9 @@ export default function HTTPMultiplayerPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return
     try {
-      const savedSession = JSON.parse(localStorage.getItem('lobbySession') || 'null')
+      const savedSession = JSON.parse(sessionStorage.getItem('lobbySession') || 'null')
       if (savedSession?.playerName) {
         setPlayerName(savedSession.playerName)
-      }
-      if (savedSession?.playerID) {
-        setPreferredPlayerID(savedSession.playerID)
       }
       if (savedSession?.matchID) {
         setStoredSession(savedSession)
@@ -370,16 +375,17 @@ export default function HTTPMultiplayerPage() {
               // Calculate attackable hexes
               const attackable = []
               for (const unit of state.units) {
-                if (unit.ownerID !== playerID && unit.currentHP > 0) {
-                  const distance = Math.max(
-                    Math.abs(selectedUnit.q - unit.q),
-                    Math.abs(selectedUnit.r - unit.r),
-                    Math.abs(selectedUnit.s - unit.s)
-                  )
-                  
-                  if (distance <= selectedUnit.range && !selectedUnit.hasAttacked) {
-                    attackable.push({ q: unit.q, r: unit.r, s: unit.s })
-                  }
+                if (unit.currentHP <= 0) continue
+                if (teamMode ? areAllies(unit.ownerID, playerID) : unit.ownerID === playerID) continue
+
+                const distance = Math.max(
+                  Math.abs(selectedUnit.q - unit.q),
+                  Math.abs(selectedUnit.r - unit.r),
+                  Math.abs(selectedUnit.s - unit.s)
+                )
+                
+                if (distance <= selectedUnit.range && !selectedUnit.hasAttacked) {
+                  attackable.push({ q: unit.q, r: unit.r, s: unit.s })
                 }
               }
               
@@ -414,9 +420,10 @@ export default function HTTPMultiplayerPage() {
       return
     }
 
-    const targetUnit = gameState.units.find(
-      u => u.q === hoveredHex.q && u.r === hoveredHex.r && u.ownerID !== playerID && u.currentHP > 0
-    )
+    const targetUnit = gameState.units.find(u => {
+      if (u.q !== hoveredHex.q || u.r !== hoveredHex.r || u.currentHP <= 0) return false
+      return teamMode ? !areAllies(u.ownerID, playerID) : u.ownerID !== playerID
+    })
 
     if (!targetUnit) {
       setDamagePreview(null)
@@ -488,7 +495,7 @@ export default function HTTPMultiplayerPage() {
       attackDamage,
       counterDamage,
     })
-  }, [gameState, hoveredHex, isMyTurn, playerID])
+  }, [gameState, hoveredHex, isMyTurn, playerID, teamMode])
 
   const joinLobbyGame = async (gameId, requestedPlayerID, mapId, winter) => {
     if (!gameId) {
@@ -497,24 +504,29 @@ export default function HTTPMultiplayerPage() {
     }
 
     const fallbackPlayerID = storedSession?.matchID === gameId ? storedSession.playerID : undefined
-    const resolvedPlayerID = requestedPlayerID || fallbackPlayerID || preferredPlayerID
+    const resolvedPlayerID = requestedPlayerID ?? fallbackPlayerID
 
     setLoading(true)
     setError('')
 
     try {
+      const payload = {
+        gameId,
+        playerName: playerName || undefined,
+        mapId: mapId || undefined,
+        winter: typeof winter === 'boolean' ? winter : undefined,
+        teamMode: teamModeEnabled,
+      }
+      if (resolvedPlayerID !== undefined && resolvedPlayerID !== null) {
+        payload.playerID = resolvedPlayerID
+      }
+
       const response = await fetch(`${serverUrl}/api/join`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
-          gameId,
-          playerID: resolvedPlayerID,
-          playerName: playerName || undefined,
-          mapId: mapId || undefined,
-          winter: typeof winter === 'boolean' ? winter : undefined,
-        }),
+        body: JSON.stringify(payload),
       })
 
       if (response.ok) {
@@ -526,7 +538,7 @@ export default function HTTPMultiplayerPage() {
         const nextSession = { matchID: gameId, playerID: data.playerID, playerName }
         setStoredSession(nextSession)
         if (typeof window !== 'undefined') {
-          localStorage.setItem('lobbySession', JSON.stringify(nextSession))
+          sessionStorage.setItem('lobbySession', JSON.stringify(nextSession))
         }
       } else if (response.status === 409) {
         const data = await response.json()
@@ -546,12 +558,12 @@ export default function HTTPMultiplayerPage() {
     const newLobbyId = Array.from({ length: 4 }, () =>
       String.fromCharCode(65 + Math.floor(Math.random() * 26))
     ).join('')
-    await joinLobbyGame(newLobbyId, preferredPlayerID, selectedMapId, isWinter)
+    await joinLobbyGame(newLobbyId, joinAsSpectator ? 'spectator' : undefined, selectedMapId, isWinter)
   }
 
   const sendAction = async (action, payload) => {
     if (!joined) return
-    if (isSpectator) {
+    if (isSpectator && action !== 'claimSlot') {
       setError('Spectators cannot perform game actions.')
       return
     }
@@ -570,6 +582,7 @@ export default function HTTPMultiplayerPage() {
       if (response.ok) {
         const data = await response.json()
         setGameState(data.gameState)
+        return data
       } else {
         const errorData = await response.json()
         throw new Error(errorData.error || 'Failed to send action')
@@ -577,6 +590,7 @@ export default function HTTPMultiplayerPage() {
     } catch (err) {
       console.error('Action error:', err)
       setError(err.message || 'Failed to send action to server')
+      return null
     }
   }
 
@@ -719,7 +733,7 @@ export default function HTTPMultiplayerPage() {
         
       if (selectedUnit && selectedUnit.ownerID === playerID) {
         // Check if clicking on enemy to attack
-        if (unitOnHex && unitOnHex.ownerID !== playerID) {
+        if (unitOnHex && (teamMode ? !areAllies(unitOnHex.ownerID, playerID) : unitOnHex.ownerID !== playerID)) {
           // Simple distance check
           const distance = Math.max(
             Math.abs(selectedUnit.q - unitOnHex.q),
@@ -803,6 +817,27 @@ export default function HTTPMultiplayerPage() {
     sendAction('readyForBattle', { playerID })
   }
 
+  const claimSlot = async (slotId) => {
+    if (!joined) return
+    const result = await sendAction('claimSlot', {
+      playerID,
+      desiredSlot: slotId,
+      playerName: playerName || undefined,
+    })
+    if (result?.success) {
+      if (slotId === 'spectator') {
+        setPlayerID('spectator')
+      } else {
+        setPlayerID(String(slotId))
+      }
+    }
+  }
+
+  const startBattle = async () => {
+    if (!joined) return
+    await sendAction('startBattle', { playerID })
+  }
+
   const confirmReadyForBattle = () => {
     setShowReadyConfirm(false)
     sendAction('readyForBattle', { playerID })
@@ -810,147 +845,197 @@ export default function HTTPMultiplayerPage() {
 
   if (!joined) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-        <div className="bg-slate-800 rounded-lg border border-slate-700 p-8 max-w-md w-full">
-          <h1 className="text-2xl font-bold text-amber-400 mb-6 text-center">
-            ⚔️ Lobby Multiplayer
-          </h1>
-          
+      <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white">
+        <div className="relative mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 py-12 lg:py-16">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-300/80">Medieval Tactical Battle</p>
+              <h1 className="text-3xl font-bold text-amber-300 md:text-4xl">Pre-Game Lobby</h1>
+              <p className="mt-2 max-w-2xl text-sm text-slate-300">
+                Create a lobby, invite your squad, and jump into battle. Player slots are assigned automatically —
+                team battles unlock a slot-claim screen once you enter the lobby.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
+              <span className="rounded-full bg-slate-800/80 px-3 py-1">Mode: {teamModeEnabled ? '2v2 Team Battle' : '1v1 Duel'}</span>
+              <span className="rounded-full bg-slate-800/80 px-3 py-1">Map: {MAPS[selectedMapId]?.name}</span>
+              <span className="rounded-full bg-slate-800/80 px-3 py-1">Season: {isWinter ? 'Winter' : 'Standard'}</span>
+            </div>
+          </div>
+
           {error && (
-            <div className="mb-4 p-3 bg-red-600/20 border border-red-600 rounded text-red-400 text-sm">
+            <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
               {error}
             </div>
           )}
-          
-          <div className="space-y-5">
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Player Name (optional)
-              </label>
-              <input
-                type="text"
-                value={playerName}
-                onChange={(e) => setPlayerName(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
-                placeholder="Enter your name"
-              />
-            </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Preferred Player Slot
-              </label>
-              <select
-                value={preferredPlayerID}
-                onChange={(e) => setPreferredPlayerID(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
-              >
-                <option value="0">Player 0</option>
-                <option value="1">Player 1</option>
-                <option value="spectator">Spectator</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Map Selection
-              </label>
-              <select
-                value={selectedMapId}
-                onChange={(e) => setSelectedMapId(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
-              >
-                {Object.values(MAPS).map((map) => (
-                  <option key={map.id} value={map.id}>
-                    {map.name}
-                  </option>
-                ))}
-              </select>
+          <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+            <div className="rounded-2xl border border-slate-700/80 bg-slate-900/70 p-6 shadow-xl">
+              <h2 className="text-lg font-semibold text-amber-200">Create or Join</h2>
               <p className="mt-1 text-xs text-slate-400">
-                {MAPS[selectedMapId]?.description}
+                Customize the battlefield, choose a role, and start the lobby.
               </p>
+
+              <div className="mt-6 grid gap-4">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    Player name
+                  </label>
+                  <input
+                    type="text"
+                    value={playerName}
+                    onChange={(e) => setPlayerName(e.target.value)}
+                    className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                    placeholder="Enter your banner name (optional)"
+                  />
+                </div>
+
+                <div className="rounded-xl border border-slate-700/80 bg-slate-800/60 p-4">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">Role</div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => setJoinAsSpectator(false)}
+                      className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+                        joinAsSpectator
+                          ? 'border-slate-700 bg-slate-900 text-slate-300'
+                          : 'border-amber-400 bg-amber-400/10 text-amber-200'
+                      }`}
+                    >
+                      🛡️ Join as Player
+                      <p className="mt-1 text-xs font-normal text-slate-400">Auto-assigns you a slot.</p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setJoinAsSpectator(true)}
+                      className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+                        joinAsSpectator
+                          ? 'border-emerald-400 bg-emerald-400/10 text-emerald-200'
+                          : 'border-slate-700 bg-slate-900 text-slate-300'
+                      }`}
+                    >
+                      👁️ Watch as Spectator
+                      <p className="mt-1 text-xs font-normal text-slate-400">Observe the battle live.</p>
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    Map selection
+                  </label>
+                  <select
+                    value={selectedMapId}
+                    onChange={(e) => setSelectedMapId(e.target.value)}
+                    className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white"
+                  >
+                    {Object.values(MAPS).map((map) => (
+                      <option key={map.id} value={map.id}>
+                        {map.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-2 text-xs text-slate-400">
+                    {MAPS[selectedMapId]?.description}
+                  </p>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="flex h-full items-start gap-2 rounded-xl border border-slate-700/80 bg-slate-800/60 p-4 text-sm text-slate-200">
+                    <input
+                      type="checkbox"
+                      checked={isWinter}
+                      onChange={(e) => setIsWinter(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded border-slate-500 bg-slate-700 text-amber-400 focus:ring-amber-400"
+                    />
+                    <span>
+                      <span className="block font-semibold text-slate-100">Winter visuals</span>
+                      <span className="text-xs text-slate-400">Snowy map art only.</span>
+                    </span>
+                  </label>
+
+                  <label className="flex h-full items-start gap-2 rounded-xl border border-slate-700/80 bg-slate-800/60 p-4 text-sm text-slate-200">
+                    <input
+                      type="checkbox"
+                      checked={teamModeEnabled}
+                      onChange={(e) => setTeamModeEnabled(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded border-slate-500 bg-slate-700 text-amber-400 focus:ring-amber-400"
+                    />
+                    <span>
+                      <span className="block font-semibold text-slate-100">2v2 Team battle</span>
+                      <span className="text-xs text-slate-400">Supports up to 4 players.</span>
+                    </span>
+                  </label>
+                </div>
+
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    onClick={createLobbyGame}
+                    disabled={loading}
+                    className="flex-1 rounded-xl bg-amber-500 px-4 py-3 text-sm font-bold text-white transition hover:bg-amber-400 disabled:bg-slate-600"
+                  >
+                    {loading ? '🔄 Creating lobby...' : joinAsSpectator ? '👀 Create & Watch' : '➕ Create New Lobby'}
+                  </button>
+                  <button
+                    onClick={fetchLobbyGames}
+                    disabled={lobbyLoading}
+                    className="rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:bg-slate-700"
+                  >
+                    {lobbyLoading ? '⏳ Refreshing...' : '🔄 Refresh'}
+                  </button>
+                </div>
+              </div>
             </div>
 
-            <div>
-              <label className="flex items-center gap-2 text-sm font-medium text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={isWinter}
-                  onChange={(e) => setIsWinter(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-500 bg-slate-700 text-amber-400 focus:ring-amber-400"
-                />
-                Winter (snowy visuals)
-              </label>
-              <p className="mt-1 text-xs text-slate-400">
-                Winter only changes the map art — gameplay stays the same.
-              </p>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={createLobbyGame}
-                disabled={loading}
-                className="flex-1 py-3 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-600 text-white font-bold rounded-lg transition-all"
-              >
-                {loading ? '🔄 Creating...' : preferredPlayerID === 'spectator' ? '👀 Create & Spectate' : '➕ Create New Lobby'}
-              </button>
-              <button
-                onClick={fetchLobbyGames}
-                disabled={lobbyLoading}
-                className="px-4 py-3 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-600 text-white font-semibold rounded-lg transition-all"
-              >
-                {lobbyLoading ? '⏳' : '🔄'}
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-sm text-slate-300">
-                <span>Lobby List</span>
-                <span className="text-xs text-slate-500">
-                  {lobbyGames.length} available
-                </span>
+            <div className="rounded-2xl border border-slate-700/80 bg-slate-900/70 p-6 shadow-xl">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-amber-200">Active Lobbies</h2>
+                  <p className="text-xs text-slate-400">{lobbyGames.length} active rooms</p>
+                </div>
+                <button
+                  onClick={fetchLobbyGames}
+                  disabled={lobbyLoading}
+                  className="rounded-full border border-slate-700 bg-slate-800 px-3 py-1 text-xs font-semibold text-slate-200 transition hover:bg-slate-700 disabled:bg-slate-700"
+                >
+                  {lobbyLoading ? '⏳' : 'Refresh'}
+                </button>
               </div>
 
               {lobbyGames.length === 0 ? (
-                <div className="text-sm text-slate-400 bg-slate-700/50 border border-slate-600 rounded-lg p-4 text-center">
-                  No active lobbies yet. Create a new lobby to start playing.
+                <div className="mt-6 rounded-xl border border-dashed border-slate-700 bg-slate-800/60 p-6 text-center text-sm text-slate-400">
+                  No active lobbies yet. Create one to begin your battle.
                 </div>
               ) : (
-                <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+                <div className="mt-5 space-y-4">
                   {lobbyGames.map((game) => {
                     const isFull = game.status === 'full'
+                    const maxPlayers = game.maxPlayers || 2
                     return (
                       <div
                         key={game.id}
-                        className="border border-slate-600 rounded-lg p-3 bg-slate-700/40"
+                        className="rounded-xl border border-slate-700/70 bg-slate-800/70 p-4"
                       >
-                        <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center justify-between gap-3">
                           <div>
-                            <div className="text-sm font-semibold text-white">
-                              {game.id}
-                            </div>
+                            <div className="text-sm font-semibold text-white">{game.id}</div>
+                            <div className="text-xs text-slate-400">{game.mapName}</div>
                             <div className="text-xs text-slate-400">
-                              {game.mapName}
-                            </div>
-                            <div className="text-xs text-slate-400">
-                              Season: {game.isWinter ? 'Winter' : 'Standard'}
-                            </div>
-                            <div className="text-xs text-slate-400">
-                              Status: {game.status === 'waiting' ? 'Waiting for opponent' : game.status === 'open' ? 'Open' : 'Full'}
+                              {game.teamMode ? '2v2 Team Battle' : '1v1 Duel'} • {game.isWinter ? 'Winter' : 'Standard'}
                             </div>
                           </div>
                           <span className={`text-xs font-semibold px-2 py-1 rounded ${
                             isFull ? 'bg-red-600/60 text-red-200' : 'bg-emerald-600/50 text-emerald-200'
                           }`}>
-                            {game.playerCount}/2
+                            {game.playerCount}/{maxPlayers}
                           </span>
                         </div>
-                        <div className="flex flex-wrap gap-2 mb-3">
+                        <div className="mt-3 flex flex-wrap gap-2">
                           {game.players.length > 0 ? (
                             game.players.map((player) => (
                               <span
                                 key={player.id}
-                                className="text-xs bg-slate-800/80 border border-slate-600 rounded-full px-2 py-1 text-slate-200"
+                                className="text-xs bg-slate-900/70 border border-slate-700 rounded-full px-2 py-1 text-slate-200"
                               >
                                 {player.id === 'spectator' ? `${player.name} (Spectator)` : `${player.name} (P${player.id})`}
                               </span>
@@ -959,13 +1044,24 @@ export default function HTTPMultiplayerPage() {
                             <span className="text-xs text-slate-400">No players yet</span>
                           )}
                         </div>
-                        <button
-                          onClick={() => joinLobbyGame(game.id, preferredPlayerID)}
-                          disabled={loading || isFull}
-                          className="w-full py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 text-white font-semibold rounded-lg transition-all"
-                        >
-                          {isFull ? 'Lobby Full' : preferredPlayerID === 'spectator' ? '👀 Spectate Lobby' : game.status === 'waiting' ? '🎯 Join & Battle' : '🎮 Enter Lobby'}
-                        </button>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <button
+                            onClick={() => joinLobbyGame(game.id, joinAsSpectator ? 'spectator' : undefined)}
+                            disabled={loading || isFull}
+                            className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:bg-slate-600"
+                          >
+                            {isFull ? 'Lobby Full' : joinAsSpectator ? '👀 Watch Lobby' : '🎯 Enter Lobby'}
+                          </button>
+                          {!joinAsSpectator && (
+                            <button
+                              onClick={() => joinLobbyGame(game.id, 'spectator')}
+                              disabled={loading}
+                              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-800"
+                            >
+                              👁️ Spectate
+                            </button>
+                          )}
+                        </div>
                       </div>
                     )
                   })}
@@ -973,8 +1069,195 @@ export default function HTTPMultiplayerPage() {
               )}
             </div>
           </div>
-          
-          <div className="mt-6 text-xs text-slate-400">
+        </div>
+      </div>
+    )
+  }
+
+  if (gameState?.phase === 'lobby') {
+    const lobbyPlayers = gameState?.players || {}
+    const lobbySpectators = gameState?.spectators || []
+    const lobbyLeaderId = gameState?.leaderId
+    const lobbyMap = MAPS[gameState?.mapId] || MAPS[selectedMapId]
+    const maxPlayers = gameState?.maxPlayers || (teamMode ? 4 : 2)
+    const teamSlotConfig = teamMode
+      ? [
+          { id: '0', label: 'Blue Vanguard', team: 'TEAM 1' },
+          { id: '2', label: 'Green Vanguard', team: 'TEAM 1' },
+          { id: '1', label: 'Red Vanguard', team: 'TEAM 2' },
+          { id: '3', label: 'Yellow Vanguard', team: 'TEAM 2' },
+        ]
+      : [
+          { id: '0', label: 'Player One', team: 'TEAM 1' },
+          { id: '1', label: 'Player Two', team: 'TEAM 2' },
+        ]
+    const teamOneSlots = teamSlotConfig.filter(slot => slot.team === 'TEAM 1')
+    const teamTwoSlots = teamSlotConfig.filter(slot => slot.team === 'TEAM 2')
+    const playerCount = Object.keys(lobbyPlayers).length
+    const canStartMatch = playerID === lobbyLeaderId && playerCount >= 2
+
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-10">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-300/80">Match Lobby</p>
+              <h1 className="text-3xl font-bold text-amber-200">Choose Your Command Slot</h1>
+              <p className="mt-1 text-sm text-slate-400">
+                {teamMode ? '2v2 Team Battle' : '1v1 Duel'} • Lobby {matchID}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
+              <span className="rounded-full bg-slate-800/80 px-3 py-1">Players: {playerCount}/{maxPlayers}</span>
+              <span className="rounded-full bg-slate-800/80 px-3 py-1">Leader: {lobbyLeaderId ?? 'TBD'}</span>
+              <span className="rounded-full bg-slate-800/80 px-3 py-1">Map: {lobbyMap?.name}</span>
+            </div>
+          </div>
+
+          {error && (
+            <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
+              {error}
+            </div>
+          )}
+
+          <div className="grid gap-6 lg:grid-cols-[1fr_0.8fr_1fr]">
+            <div className="rounded-2xl border border-slate-700/80 bg-slate-900/70 p-5 shadow-xl">
+              <div className="mb-4 text-sm font-semibold text-blue-200">TEAM 1</div>
+              <div className="space-y-3">
+                {teamOneSlots.map(slot => {
+                  const occupant = lobbyPlayers[slot.id]
+                  const isCurrent = slot.id === playerID
+                  const isOccupied = Boolean(occupant)
+                  const isLeader = lobbyLeaderId === slot.id
+                  const canClaim = !isOccupied || isCurrent
+                  return (
+                    <div
+                      key={slot.id}
+                      className={`flex items-center justify-between gap-3 rounded-xl border p-4 ${
+                        isCurrent ? 'border-amber-400/70 bg-amber-400/10' : 'border-slate-700 bg-slate-800/60'
+                      }`}
+                    >
+                      <div>
+                        <div className="text-sm font-semibold text-white">{slot.label}</div>
+                        <div className="text-xs text-slate-400">
+                          {occupant ? occupant.name : 'Add the player'}
+                          {isLeader && <span className="ml-2 text-amber-300">(Leader)</span>}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => claimSlot(slot.id)}
+                        disabled={!canClaim || isSpectator}
+                        className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
+                      >
+                        {isCurrent ? 'Your Slot' : isOccupied ? 'Taken' : isSpectator ? 'Spectator' : 'Join'}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-700/80 bg-slate-900/70 p-5 shadow-xl">
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">Battlefield</div>
+              <div className="mt-4 rounded-2xl border border-slate-700/70 bg-slate-800/70 p-4 text-center">
+                <div className="text-sm font-semibold text-amber-200">{lobbyMap?.name || 'Random Map'}</div>
+                <div className="mx-auto mt-3 flex h-40 w-full max-w-[220px] items-center justify-center rounded-xl border border-slate-700 bg-slate-900/70 text-4xl text-slate-500">
+                  🗺️
+                </div>
+                <p className="mt-3 text-xs text-slate-400">{lobbyMap?.description}</p>
+              </div>
+
+              <div className="mt-5 space-y-3 text-xs text-slate-300">
+                <div className="flex items-center justify-between rounded-lg bg-slate-800/70 px-3 py-2">
+                  <span>Season</span>
+                  <span className="text-slate-200">{gameState?.isWinter ? 'Winter' : 'Standard'}</span>
+                </div>
+                <div className="flex items-center justify-between rounded-lg bg-slate-800/70 px-3 py-2">
+                  <span>Mode</span>
+                  <span className="text-slate-200">{teamMode ? 'Team Battle' : 'Duel'}</span>
+                </div>
+              </div>
+
+              <button
+                onClick={startBattle}
+                disabled={!canStartMatch}
+                className="mt-5 w-full rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-700"
+              >
+                {playerID === lobbyLeaderId ? (canStartMatch ? '🚀 Start Match' : 'Waiting for players') : 'Waiting for leader'}
+              </button>
+            </div>
+
+            <div className="rounded-2xl border border-slate-700/80 bg-slate-900/70 p-5 shadow-xl">
+              <div className="mb-4 text-sm font-semibold text-red-200">TEAM 2</div>
+              <div className="space-y-3">
+                {teamTwoSlots.map(slot => {
+                  const occupant = lobbyPlayers[slot.id]
+                  const isCurrent = slot.id === playerID
+                  const isOccupied = Boolean(occupant)
+                  const isLeader = lobbyLeaderId === slot.id
+                  const canClaim = !isOccupied || isCurrent
+                  return (
+                    <div
+                      key={slot.id}
+                      className={`flex items-center justify-between gap-3 rounded-xl border p-4 ${
+                        isCurrent ? 'border-amber-400/70 bg-amber-400/10' : 'border-slate-700 bg-slate-800/60'
+                      }`}
+                    >
+                      <div>
+                        <div className="text-sm font-semibold text-white">{slot.label}</div>
+                        <div className="text-xs text-slate-400">
+                          {occupant ? occupant.name : 'Add the player'}
+                          {isLeader && <span className="ml-2 text-amber-300">(Leader)</span>}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => claimSlot(slot.id)}
+                        disabled={!canClaim || isSpectator}
+                        className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
+                      >
+                        {isCurrent ? 'Your Slot' : isOccupied ? 'Taken' : isSpectator ? 'Spectator' : 'Join'}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-[1fr_1.5fr]">
+            <div className="rounded-2xl border border-slate-700/80 bg-slate-900/70 p-4 text-xs text-slate-300">
+              <div className="font-semibold text-slate-200">How it works</div>
+              <ul className="mt-2 space-y-1 text-slate-400">
+                <li>• Leader starts the match once at least two players are seated.</li>
+                <li>• After launch, you will place units on the map during setup.</li>
+                <li>• Team battles allow two slots per side.</li>
+              </ul>
+            </div>
+            <div className="rounded-2xl border border-slate-700/80 bg-slate-900/70 p-4 text-xs text-slate-300">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-slate-200">Spectators</span>
+                {!isSpectator && (
+                  <button
+                    onClick={() => claimSlot('spectator')}
+                    className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white"
+                  >
+                    Watch as Spectator
+                  </button>
+                )}
+              </div>
+              {lobbySpectators.length === 0 ? (
+                <div className="mt-2 text-slate-400">No spectators yet.</div>
+              ) : (
+                <ul className="mt-2 space-y-1 text-slate-400">
+                  {lobbySpectators.map(spectator => (
+                    <li key={spectator.id}>{spectator.name}</li>
+                  ))}
+                </ul>
+              )}
+              {isSpectator && (
+                <div className="mt-2 text-xs text-amber-300">You are watching as a spectator.</div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -990,7 +1273,7 @@ export default function HTTPMultiplayerPage() {
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 text-white relative">
       {/* Landscape Prompt */}
       <LandscapePrompt />
-      
+
       {/* Status Bar - Hidden when deploy panel is open */}
       {<div className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-20 transition-all duration-300
         ${(gameState?.phase === 'setup' && !isLeftPanelCollapsed) 
@@ -1009,7 +1292,10 @@ export default function HTTPMultiplayerPage() {
                 <>
                   <span className="text-amber-400 font-semibold">Current Turn:</span>
                   <span className={`px-2 py-1 rounded text-xs font-bold ${
-                    gameState?.currentPlayer === '0' ? 'bg-blue-600' : 'bg-red-600'
+                    getPlayerColor(gameState?.currentPlayer) === 'blue' ? 'bg-blue-600' :
+                    getPlayerColor(gameState?.currentPlayer) === 'green' ? 'bg-green-600' :
+                    getPlayerColor(gameState?.currentPlayer) === 'yellow' ? 'bg-yellow-500 text-slate-900' :
+                    'bg-red-600'
                   }`}>
                     Player {gameState?.currentPlayer || '?'}
                   </span>
@@ -1074,14 +1360,20 @@ export default function HTTPMultiplayerPage() {
               {/* Player Info Section */}
               <div className="bg-slate-700/50 rounded-lg p-3 flex items-center gap-3">
                 <img 
-                  src={`/units/General_${playerID === '0' ? 'blue' : 'red'}.png`}
+                  src={generalSprite.src}
                   className="w-12 h-12"
+                  style={{ filter: generalSprite.filter }}
                   alt="Player Avatar"
                 />
                 <div>
                   <div className="text-white font-bold text-sm">Player {playerID}</div>
-                  <div className={`text-xs ${playerID === '0' ? 'text-blue-400' : 'text-red-400'}`}>
-                    {playerID === '0' ? 'Blue Army' : 'Red Army'}
+                  <div className={`text-xs ${
+                    playerColor === 'blue' ? 'text-blue-400' :
+                    playerColor === 'green' ? 'text-green-400' :
+                    playerColor === 'yellow' ? 'text-yellow-400' :
+                    'text-red-400'
+                  }`}>
+                    {playerColor.charAt(0).toUpperCase() + playerColor.slice(1)} Army
                   </div>
                 </div>
               </div>
@@ -1115,8 +1407,9 @@ export default function HTTPMultiplayerPage() {
                       
                       {/* Unit image */}
                       <img 
-                        src={`/units/${unit.image}_${playerID === '0' ? 'blue' : 'red'}.png`}
+                        src={getUnitSpriteProps(unit, playerID).src}
                         className="w-32 h-32 mb-1"
+                        style={{ filter: getUnitSpriteProps(unit, playerID).filter }}
                         alt={unit.name}
                       />
                       
@@ -1149,6 +1442,7 @@ export default function HTTPMultiplayerPage() {
           damagePreview={damagePreview}
           showSpawnZones={gameState?.phase === 'setup'}
           isWinter={gameState?.isWinter}
+          teamMode={gameState?.teamMode}
         />
       </div>
       

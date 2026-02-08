@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { getTeamId, getTeamLabel, getUnitSpriteProps } from '@/game/teamUtils'
 
 const VictoryScreen = ({ 
   gameOver, 
@@ -13,7 +14,9 @@ const VictoryScreen = ({
   if (!gameOver) return null
 
   const isSpectator = playerID === 'spectator'
-  const isWinner = winner === playerID
+  const teamMode = victoryData?.teamMode
+  const winnerTeam = victoryData?.winnerTeam
+  const isWinner = teamMode ? getTeamId(playerID) === winnerTeam : winner === playerID
   const isDraw = victoryData?.draw
   const victoryType = victoryData?.victoryType || 'elimination'
   const turn = victoryData?.turn || 1
@@ -46,21 +49,27 @@ const VictoryScreen = ({
   // Group units by player
   const player0Units = units.filter(u => u.ownerID === '0' && u.currentHP > 0)
   const player1Units = units.filter(u => u.ownerID === '1' && u.currentHP > 0)
+  const teamBlueUnits = units.filter(u => getTeamId(u.ownerID) === 'blue-green' && u.currentHP > 0)
+  const teamRedUnits = units.filter(u => getTeamId(u.ownerID) === 'red-yellow' && u.currentHP > 0)
 
-  const UnitList = ({ playerUnits, playerNumber, label }) => (
-    <div className={`p-3 rounded-lg border ${
-      playerNumber === '0' 
-        ? isWinner && winner === '0' && !isDraw
-          ? 'bg-blue-600/20 border-blue-500' 
-          : isDraw 
-          ? 'bg-yellow-600/20 border-yellow-500'
-          : 'bg-red-600/20 border-red-500'
-        : isWinner && winner === '1' && !isDraw
-          ? 'bg-red-600/20 border-red-500'
-          : isDraw 
-          ? 'bg-yellow-600/20 border-yellow-500'
-          : 'bg-blue-600/20 border-blue-500'
-    }`}>
+  const UnitList = ({ playerUnits, playerNumber, label, teamId }) => {
+    const isWinningSide = !isDraw && (teamMode ? winnerTeam === teamId : winner === playerNumber)
+    const isTeamZero = teamMode ? teamId === 'blue-green' : playerNumber === '0'
+
+    const baseStyle = isTeamZero
+      ? isWinningSide
+        ? 'bg-blue-600/20 border-blue-500'
+        : isDraw
+        ? 'bg-yellow-600/20 border-yellow-500'
+        : 'bg-red-600/20 border-red-500'
+      : isWinningSide
+      ? 'bg-red-600/20 border-red-500'
+      : isDraw
+      ? 'bg-yellow-600/20 border-yellow-500'
+      : 'bg-blue-600/20 border-blue-500'
+
+    return (
+      <div className={`p-3 rounded-lg border ${baseStyle}`}>
       <div className="text-sm font-semibold text-slate-300 mb-2">
         {label} ({playerUnits.length} units)
       </div>
@@ -68,12 +77,15 @@ const VictoryScreen = ({
         <div className="text-xs text-slate-500 italic">No units remaining</div>
       ) : (
         <div className="space-y-1">
-          {playerUnits.map(unit => (
-            <div key={unit.id} className="flex items-center justify-between text-xs">
+          {playerUnits.map(unit => {
+            const { src, filter } = getUnitSpriteProps(unit, unit.ownerID)
+            return (
+              <div key={unit.id} className="flex items-center justify-between text-xs">
               <div className="flex items-center gap-2">
                 <img 
-                  src={`/units/${unit.image}_${unit.ownerID === '0' ? 'blue' : 'red'}.png`}
+                  src={src}
                   className="w-4 h-4"
+                  style={{ filter }}
                   alt={unit.name}
                 />
                 <span className="text-slate-300">{unit.name}</span>
@@ -92,12 +104,14 @@ const VictoryScreen = ({
                   {unit.currentHP}/{unit.maxHP}
                 </span>
               </div>
-            </div>
-          ))}
+              </div>
+            )
+          })}
         </div>
       )}
-    </div>
-  )
+      </div>
+    )
+  }
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-40 p-4">
@@ -127,9 +141,11 @@ const VictoryScreen = ({
           <div className="text-center space-y-1">
             <div className="text-xl font-semibold text-white">
               {isDraw
-                ? 'Both Players'
+                ? teamMode ? 'Both Teams' : 'Both Players'
                 : isSpectator
-                ? `Winner: Player ${winner}`
+                ? `Winner: ${teamMode ? getTeamLabel(winnerTeam) : `Player ${winner}`}`
+                : teamMode
+                ? getTeamLabel(winnerTeam)
                 : `Player ${winner}`}
             </div>
             <div className="text-slate-300 text-sm">
@@ -146,18 +162,35 @@ const VictoryScreen = ({
         {/* Remaining Units */}
         <div className="mb-4">
           <h3 className="text-lg font-semibold text-amber-400 mb-3 text-center">⚔️ Remaining Forces</h3>
-          <div className="grid grid-cols-2 gap-3">
-            <UnitList 
-              playerUnits={player0Units} 
-              playerNumber="0" 
-              label="Player 0 (Blue)"
-            />
-            <UnitList 
-              playerUnits={player1Units} 
-              playerNumber="1" 
-              label="Player 1 (Red)"
-            />
-          </div>
+          {teamMode ? (
+            <div className="grid grid-cols-2 gap-3">
+              <UnitList
+                playerUnits={teamBlueUnits}
+                playerNumber="0"
+                teamId="blue-green"
+                label="Team Blue & Green"
+              />
+              <UnitList
+                playerUnits={teamRedUnits}
+                playerNumber="1"
+                teamId="red-yellow"
+                label="Team Red & Yellow"
+              />
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <UnitList 
+                playerUnits={player0Units} 
+                playerNumber="0" 
+                label="Player 0 (Blue)"
+              />
+              <UnitList 
+                playerUnits={player1Units} 
+                playerNumber="1" 
+                label="Player 1 (Red)"
+              />
+            </div>
+          )}
         </div>
 
         {/* Action Buttons */}

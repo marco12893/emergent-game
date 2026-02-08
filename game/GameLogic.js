@@ -1,6 +1,7 @@
 import { INVALID_MOVE } from 'boardgame.io/dist/cjs/core.js'
 import { v4 as uuidv4 } from 'uuid'
 import { DEFAULT_MAP_ID, generateMapData, getMapConfig } from './maps'
+import { areAllies, getTeamId, getTeamLabel, getTeamPlayOrder } from './teamUtils'
 
 // ============================================
 // UNIT DEFINITIONS - Medieval Roster
@@ -264,13 +265,19 @@ export const getUnitAtHex = (q, r, units) => {
 }
 
 // Check if hex is in spawn zone
-export const isInSpawnZone = (q, r, playerID, mapWidth) => {
+export const isInSpawnZone = (q, r, playerID, mapWidth, teamMode = false) => {
   const leftSpawnMax = -mapWidth + 1
   const rightSpawnMin = mapWidth - 1
-  if (playerID === '0') {
-    return q <= leftSpawnMax
+  if (teamMode) {
+    const teamId = getTeamId(playerID)
+    if (teamId === 'blue-green') {
+      return q <= leftSpawnMax
+    }
+    if (teamId === 'red-yellow') {
+      return q >= rightSpawnMin
+    }
   }
-  return q >= rightSpawnMin
+  return playerID === '0' ? q <= leftSpawnMax : q >= rightSpawnMin
 }
 
 // Calculate reachable hexes for a unit (BFS with move points)
@@ -324,12 +331,14 @@ export const getReachableHexes = (unit, allHexes, units, terrainMap) => {
 }
 
 // Get attackable hexes for a unit
-export const getAttackableHexes = (unit, allHexes, units) => {
+export const getAttackableHexes = (unit, allHexes, units, { teamMode = false } = {}) => {
   const hexesInRange = getHexesInRange(unit, unit.range, allHexes)
   
   return hexesInRange.filter(hex => {
     const targetUnit = getUnitAtHex(hex.q, hex.r, units)
-    return targetUnit && targetUnit.ownerID !== unit.ownerID
+    if (!targetUnit) return false
+    if (!teamMode) return targetUnit.ownerID !== unit.ownerID
+    return !areAllies(targetUnit.ownerID, unit.ownerID)
   })
 }
 
@@ -352,7 +361,7 @@ const setupPhase = {
       }
       
       // Check spawn zone
-      if (!isInSpawnZone(q, r, playerID, G.mapSize?.width || GAME_MODES[G.gameMode]?.mapSize?.width || 6)) {
+      if (!isInSpawnZone(q, r, playerID, G.mapSize?.width || GAME_MODES[G.gameMode]?.mapSize?.width || 6, G.teamMode)) {
         return INVALID_MOVE
       }
       
@@ -580,7 +589,15 @@ const battlePhase = {
         return INVALID_MOVE
       }
       
-      if (attacker.ownerID !== playerID || target.ownerID === playerID) {
+      if (attacker.ownerID !== playerID) {
+        return INVALID_MOVE
+      }
+
+      if (G.teamMode) {
+        if (areAllies(attacker.ownerID, target.ownerID)) {
+          return INVALID_MOVE
+        }
+      } else if (target.ownerID === playerID) {
         return INVALID_MOVE
       }
       
@@ -688,12 +705,7 @@ const battlePhase = {
   turn: {
     minMoves: 0,
     maxMoves: 100, // Allow multiple actions per turn
-    onBegin: ({ G, ctx }) => {
-      // Ensure player 0 always starts the battle phase
-      if (ctx.turn === 0) {
-        G.log.push('⚔️ BATTLE PHASE BEGINS! Player 0 gets the first turn.')
-      }
-    },
+    onBegin: () => {},
   },
 }
 
@@ -707,6 +719,9 @@ export const MedievalBattleGame = {
     // Get game mode from setup data or default to ELIMINATION
     const gameMode = setupData?.gameMode || 'ELIMINATION'
     const modeConfig = GAME_MODES[gameMode]
+    const teamMode = setupData?.teamMode ?? ctx.numPlayers > 2
+    const attackerId = teamMode ? 'blue-green' : '0'
+    const defenderId = teamMode ? 'red-yellow' : '1'
     
     const mapId = setupData?.mapId || DEFAULT_MAP_ID
     let hexes = []
@@ -762,33 +777,67 @@ export const MedievalBattleGame = {
       }
     })
     
+    const playersReady = {}
+    for (let i = 0; i < ctx.numPlayers; i += 1) {
+      playersReady[String(i)] = false
+    }
+
     return {
       hexes,
       terrainMap,
       units: [],
       selectedUnitId: null,
-      playersReady: { '0': false, '1': false },
+      playersReady,
       turn: 1,
       phase: 'setup',
       log: ['Game started! Place your units in your spawn zone.'],
       gameMode: gameMode,
       mapId,
+      teamMode,
+      attackerId,
+      defenderId,
       mapSize: { width: MAP_WIDTH, height: MAP_HEIGHT },
       retreatModeActive: false,
       extractionHexes: extractionHexes,
       objectiveHexes: modeConfig.objectiveHexes || [],
       turnLimit: modeConfig.turnLimit || null,
-      objectiveControl: { '0': 0, '1': 0 }, // Track turns controlling objective
+      objectiveControl: { [attackerId]: 0, [defenderId]: 0 }, // Track turns controlling objective
     }
   },
   
   phases: {
-    setup: setupPhase,
+    setup: {
+      ...setupPhase,
+      endIf: ({ G, ctx }) => {
+        const activePlayers = ctx.playOrder.filter(id =>
+          G.units.some(u => u.ownerID === id)
+        )
+        if (activePlayers.length < 2) return false
+        return activePlayers.every(id => G.playersReady[id])
+      },
+      onEnd: ({ G, ctx }) => {
+        const inactivePlayers = ctx.playOrder.filter(id =>
+          !G.units.some(u => u.ownerID === id)
+        )
+        if (inactivePlayers.length > 0) {
+          G.log.push(`Skipping inactive players: ${inactivePlayers.join(', ')}`)
+        }
+        G.inactivePlayers = inactivePlayers
+      },
+    },
     battle: {
       ...battlePhase,
       onPhaseBegin: ({ G, ctx }) => {
-        // Reset currentPlayer to 0 when entering battle phase
-        G.log.push('⚔️ BATTLE PHASE BEGINS! Player 0 gets the first turn.')
+        const order = G.teamMode ? getTeamPlayOrder(ctx.numPlayers) : ctx.playOrder
+        const firstPlayer = order[0] || '0'
+        const inactivePlayers = ctx.playOrder.filter(id =>
+          !G.units.some(u => u.ownerID === id)
+        )
+        G.inactivePlayers = inactivePlayers
+        if (inactivePlayers.length > 0) {
+          G.log.push(`Inactive players this match: ${inactivePlayers.join(', ')}`)
+        }
+        G.log.push(`⚔️ BATTLE PHASE BEGINS! Player ${firstPlayer} gets the first turn.`)
       },
     },
   },
@@ -796,9 +845,32 @@ export const MedievalBattleGame = {
   turn: {
     minMoves: 0,
     maxMoves: 100, // Allow multiple actions per turn
-    onBegin: ({ G, ctx }) => {
-      // Increment turn at the start of each round (when player 0's turn begins)
-      if (ctx.currentPlayer === '0' && ctx.phase === 'battle') {
+    order: {
+      playOrder: ({ G, ctx }) => {
+        if (!G.teamMode) return ctx.playOrder
+        const baseOrder = getTeamPlayOrder(ctx.numPlayers)
+        const inactive = new Set(G.inactivePlayers || [])
+        const activeOrder = baseOrder.filter(id => !inactive.has(id))
+        return activeOrder.length > 0 ? activeOrder : baseOrder
+      },
+      first: () => 0,
+      next: ({ ctx }) => (ctx.playOrderPos + 1) % ctx.playOrder.length,
+    },
+    onBegin: ({ G, ctx, events }) => {
+      if (ctx.phase === 'battle') {
+        const hasUnits = G.units.some(
+          u => u.ownerID === ctx.currentPlayer && u.currentHP > 0
+        )
+        if (!hasUnits && G.teamMode && events?.endTurn) {
+          G.log.push(`Player ${ctx.currentPlayer} has no units and skips their turn.`)
+          events.endTurn()
+          return
+        }
+      }
+
+      const roundStartPlayer = ctx.playOrder[0]
+      // Increment turn at the start of each round (when first player in order begins)
+      if (ctx.currentPlayer === roundStartPlayer && ctx.phase === 'battle') {
         if (G.turn === undefined) {
           G.turn = 1
         } else {
@@ -811,24 +883,25 @@ export const MedievalBattleGame = {
           const aliveUnits = G.units.filter(u => u.currentHP > 0)
           
           // Check who controls the objective hexes
-          let p0Controls = 0
-          let p1Controls = 0
+          let attackerControls = 0
+          let defenderControls = 0
           
           G.objectiveHexes.forEach(objHex => {
             const unitOnHex = aliveUnits.find(u => u.q === objHex.q && u.r === objHex.r)
             if (unitOnHex) {
-              if (unitOnHex.ownerID === '0') p0Controls++
-              if (unitOnHex.ownerID === '1') p1Controls++
+              const teamId = G.teamMode ? getTeamId(unitOnHex.ownerID) : unitOnHex.ownerID
+              if (teamId === G.attackerId) attackerControls++
+              if (teamId === G.defenderId) defenderControls++
             }
           })
           
           // If one player controls all objective hexes, increment their control counter
-          if (p0Controls === G.objectiveHexes.length) {
-            G.objectiveControl['0']++
-            G.log.push(`Player 0 holds Paris! (${G.objectiveControl['0']} turns)`)
-          } else if (p1Controls === G.objectiveHexes.length) {
-            G.objectiveControl['1']++
-            G.log.push(`Player 1 holds Paris! (${G.objectiveControl['1']} turns)`)
+          if (attackerControls === G.objectiveHexes.length) {
+            G.objectiveControl[G.attackerId]++
+            G.log.push(`${getTeamLabel(G.attackerId)} holds Paris! (${G.objectiveControl[G.attackerId]} turns)`)
+          } else if (defenderControls === G.objectiveHexes.length) {
+            G.objectiveControl[G.defenderId]++
+            G.log.push(`${getTeamLabel(G.defenderId)} holds Paris! (${G.objectiveControl[G.defenderId]} turns)`)
           } else {
             G.log.push('Paris is contested!')
           }
@@ -846,54 +919,66 @@ export const MedievalBattleGame = {
     
     const p0Alive = aliveUnits.filter(u => u.ownerID === '0').length
     const p1Alive = aliveUnits.filter(u => u.ownerID === '1').length
+    const teamBlueGreenAlive = aliveUnits.filter(u => getTeamId(u.ownerID) === 'blue-green').length
+    const teamRedYellowAlive = aliveUnits.filter(u => getTeamId(u.ownerID) === 'red-yellow').length
     
     // Attack & Defend mode victory conditions
     if (G.gameMode === 'ATTACK_DEFEND') {
       // Defender (Player 1) wins if they hold objective for required turns
-      if (G.objectiveControl['1'] >= G.turnLimit) {
+      if (G.objectiveControl[G.defenderId] >= G.turnLimit) {
         return {
-          winner: '1',
+          winner: G.defenderId,
+          winnerTeam: G.defenderId,
+          teamMode: G.teamMode,
           turn: G.turn,
           victoryType: 'objective_defense',
-          message: `Player 1 (Defender) wins by holding Paris for ${G.turnLimit} turns!`
+          message: `${getTeamLabel(G.defenderId)} wins by holding Paris for ${G.turnLimit} turns!`
         }
       }
       
       // Attacker (Player 0) wins if they capture all objective hexes
       const p0ControlsAll = G.objectiveHexes.every(objHex => {
         const unitOnHex = aliveUnits.find(u => u.q === objHex.q && u.r === objHex.r)
-        return unitOnHex && unitOnHex.ownerID === '0'
+        if (!unitOnHex) return false
+        const teamId = G.teamMode ? getTeamId(unitOnHex.ownerID) : unitOnHex.ownerID
+        return teamId === G.attackerId
       })
       
-      if (p0ControlsAll && G.objectiveControl['0'] >= 3) {
+      if (p0ControlsAll && G.objectiveControl[G.attackerId] >= 3) {
         return {
-          winner: '0',
+          winner: G.attackerId,
+          winnerTeam: G.attackerId,
+          teamMode: G.teamMode,
           turn: G.turn,
           victoryType: 'objective_capture',
-          message: `Player 0 (Attacker) wins by capturing Paris!`
+          message: `${getTeamLabel(G.attackerId)} wins by capturing Paris!`
         }
       }
       
       // Elimination still works as alternate victory
-      if (p1Alive === 0) {
+      if (G.teamMode ? teamRedYellowAlive === 0 : p1Alive === 0) {
         return {
-          winner: '0',
+          winner: G.attackerId,
+          winnerTeam: G.attackerId,
+          teamMode: G.teamMode,
           turn: G.turn,
           victoryType: 'elimination',
-          message: `Player 0 wins by eliminating all defenders!`
+          message: `${getTeamLabel(G.attackerId)} wins by eliminating all defenders!`
         }
       }
-      if (p0Alive === 0) {
+      if (G.teamMode ? teamBlueGreenAlive === 0 : p0Alive === 0) {
         return {
-          winner: '1',
+          winner: G.defenderId,
+          winnerTeam: G.defenderId,
+          teamMode: G.teamMode,
           turn: G.turn,
           victoryType: 'elimination',
-          message: `Player 1 wins by eliminating all attackers!`
+          message: `${getTeamLabel(G.defenderId)} wins by eliminating all attackers!`
         }
       }
     } else {
       // Standard ELIMINATION mode
-      if (p0Alive === 0 && p1Alive > 0) {
+      if (!G.teamMode && p0Alive === 0 && p1Alive > 0) {
         return { 
           winner: '1', 
           turn: G.turn,
@@ -901,7 +986,7 @@ export const MedievalBattleGame = {
           message: `Player 1 wins by eliminating all enemy units in ${G.turn} turns!`
         }
       }
-      if (p1Alive === 0 && p0Alive > 0) {
+      if (!G.teamMode && p1Alive === 0 && p0Alive > 0) {
         return { 
           winner: '0', 
           turn: G.turn,
@@ -909,7 +994,7 @@ export const MedievalBattleGame = {
           message: `Player 0 wins by eliminating all enemy units in ${G.turn} turns!`
         }
       }
-      if (p0Alive === 0 && p1Alive === 0) {
+      if (!G.teamMode && p0Alive === 0 && p1Alive === 0) {
         return { 
           draw: true, 
           turn: G.turn,
@@ -917,24 +1002,56 @@ export const MedievalBattleGame = {
           message: `Draw! Both players eliminated in ${G.turn} turns!`
         }
       }
+
+      if (G.teamMode) {
+        if (teamBlueGreenAlive === 0 && teamRedYellowAlive > 0) {
+          return {
+            winner: 'red-yellow',
+            winnerTeam: 'red-yellow',
+            teamMode: true,
+            turn: G.turn,
+            victoryType: 'elimination',
+            message: `${getTeamLabel('red-yellow')} wins by eliminating all enemy units in ${G.turn} turns!`,
+          }
+        }
+        if (teamRedYellowAlive === 0 && teamBlueGreenAlive > 0) {
+          return {
+            winner: 'blue-green',
+            winnerTeam: 'blue-green',
+            teamMode: true,
+            turn: G.turn,
+            victoryType: 'elimination',
+            message: `${getTeamLabel('blue-green')} wins by eliminating all enemy units in ${G.turn} turns!`,
+          }
+        }
+        if (teamRedYellowAlive === 0 && teamBlueGreenAlive === 0) {
+          return {
+            draw: true,
+            teamMode: true,
+            turn: G.turn,
+            victoryType: 'mutual_destruction',
+            message: `Draw! Both teams eliminated in ${G.turn} turns!`,
+          }
+        }
+      }
       
       // Optional: Turn limit victory (e.g., after 50 turns, player with more units wins)
       if (G.turn >= 50) {
-        if (p0Alive > p1Alive) {
+        if (!G.teamMode && p0Alive > p1Alive) {
           return { 
             winner: '0', 
             turn: G.turn,
             victoryType: 'turn_limit',
             message: `Player 0 wins by having more units after ${G.turn} turns!`
           }
-        } else if (p1Alive > p0Alive) {
+        } else if (!G.teamMode && p1Alive > p0Alive) {
           return { 
             winner: '1', 
             turn: G.turn,
             victoryType: 'turn_limit',
             message: `Player 1 wins by having more units after ${G.turn} turns!`
           }
-        } else {
+        } else if (!G.teamMode) {
           return { 
             draw: true, 
             turn: G.turn,
@@ -942,12 +1059,42 @@ export const MedievalBattleGame = {
             message: `Draw! Equal units after ${G.turn} turns!`
           }
         }
+
+        if (G.teamMode) {
+          if (teamBlueGreenAlive > teamRedYellowAlive) {
+            return {
+              winner: 'blue-green',
+              winnerTeam: 'blue-green',
+              teamMode: true,
+              turn: G.turn,
+              victoryType: 'turn_limit',
+              message: `${getTeamLabel('blue-green')} wins by having more units after ${G.turn} turns!`,
+            }
+          }
+          if (teamRedYellowAlive > teamBlueGreenAlive) {
+            return {
+              winner: 'red-yellow',
+              winnerTeam: 'red-yellow',
+              teamMode: true,
+              turn: G.turn,
+              victoryType: 'turn_limit',
+              message: `${getTeamLabel('red-yellow')} wins by having more units after ${G.turn} turns!`,
+            }
+          }
+          return {
+            draw: true,
+            teamMode: true,
+            turn: G.turn,
+            victoryType: 'turn_limit_draw',
+            message: `Draw! Equal units after ${G.turn} turns!`,
+          }
+        }
       }
     }
   },
   
   minPlayers: 2,
-  maxPlayers: 2,
+  maxPlayers: 4,
 }
 
 export default MedievalBattleGame

@@ -1,11 +1,12 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Client } from 'boardgame.io/react'
 import { SocketIO } from 'boardgame.io/multiplayer'
-import { MedievalBattleGame, UNIT_TYPES, TERRAIN_TYPES, getReachableHexes, getAttackableHexes, hexDistance } from '@/game/GameLogic'
+import { MedievalBattleGame, UNIT_TYPES, TERRAIN_TYPES, getReachableHexes, getAttackableHexes, hexDistance, isInSpawnZone } from '@/game/GameLogic'
 import GameBoard from '@/components/GameBoard'
 import VictoryScreen from '@/components/VictoryScreen'
+import { areAllies, getPlayerColor, getTeamId, getTeamLabel } from '@/game/teamUtils'
 
 // Unit Info Panel Component
 const UnitInfoPanel = ({ unit, isSelected }) => {
@@ -13,6 +14,7 @@ const UnitInfoPanel = ({ unit, isSelected }) => {
   
   const hpPercent = (unit.currentHP / unit.maxHP) * 100
   const hpColor = hpPercent > 60 ? 'bg-green-500' : hpPercent > 30 ? 'bg-yellow-500' : 'bg-red-500'
+  const playerColor = getPlayerColor(unit.ownerID)
   
   return (
     <div className={`p-3 rounded-lg border-2 transition-all ${
@@ -22,7 +24,7 @@ const UnitInfoPanel = ({ unit, isSelected }) => {
         <span className="text-2xl">{unit.emoji}</span>
         <div>
           <div className="font-semibold text-white">{unit.name}</div>
-          <div className="text-xs text-slate-400">Player {unit.ownerID}</div>
+          <div className="text-xs text-slate-400">Player {unit.ownerID} ({playerColor})</div>
         </div>
       </div>
       
@@ -80,6 +82,8 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
   const currentPlayer = ctx.currentPlayer
   const phase = ctx.phase
   const isMyTurn = playerID === currentPlayer
+  const teamMode = G.teamMode
+  const playerColor = getPlayerColor(playerID)
   
   // Get selected unit
   const selectedUnit = G.selectedUnitId 
@@ -92,7 +96,7 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
       const reachable = getReachableHexes(selectedUnit, G.hexes, G.units, G.terrainMap)
       setHighlightedHexes(reachable)
       
-      const attackable = getAttackableHexes(selectedUnit, G.hexes, G.units)
+      const attackable = getAttackableHexes(selectedUnit, G.hexes, G.units, { teamMode })
       setAttackableHexes(attackable)
     } else {
       setHighlightedHexes([])
@@ -112,9 +116,11 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
       return
     }
 
-    const targetUnit = G.units.find(
-      u => u.q === hoveredHex.q && u.r === hoveredHex.r && u.ownerID !== playerID && u.currentHP > 0
-    )
+    const targetUnit = G.units.find(u => {
+      if (u.q !== hoveredHex.q || u.r !== hoveredHex.r || u.currentHP <= 0) return false
+      if (!teamMode) return u.ownerID !== playerID
+      return !areAllies(u.ownerID, playerID)
+    })
 
     if (!targetUnit) {
       setDamagePreview(null)
@@ -175,9 +181,7 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
       
       // Otherwise, try to place a unit
       const mapWidth = G.mapSize?.width || 6
-      const leftSpawnMax = -mapWidth + 1
-      const rightSpawnMin = mapWidth - 1
-      const isSpawnZone = playerID === '0' ? hex.q <= leftSpawnMax : hex.q >= rightSpawnMin
+      const isSpawnZone = isInSpawnZone(hex.q, hex.r, playerID, mapWidth, teamMode)
       if (isSpawnZone && hex.terrain !== 'MOUNTAIN') {
         // Check if hex is occupied
         const occupied = G.units.some(u => u.q === hex.q && u.r === hex.r)
@@ -202,7 +206,7 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
       // If we have a selected unit
       if (selectedUnit) {
         // Check if clicking on enemy to attack
-        if (unitOnHex && unitOnHex.ownerID !== playerID) {
+        if (unitOnHex && (!teamMode ? unitOnHex.ownerID !== playerID : !areAllies(unitOnHex.ownerID, playerID))) {
           const distance = hexDistance(selectedUnit, unitOnHex)
           if (distance <= selectedUnit.range && !selectedUnit.hasAttacked) {
             moves.attackUnit(selectedUnit.id, unitOnHex.id)
@@ -240,7 +244,11 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
   
   // Get units for current player display
   const myUnits = G.units.filter(u => u.ownerID === playerID && u.currentHP > 0)
-  const enemyUnits = G.units.filter(u => u.ownerID !== playerID && u.currentHP > 0)
+  const enemyUnits = G.units.filter(u => {
+    if (u.currentHP <= 0) return false
+    if (!teamMode) return u.ownerID !== playerID
+    return !areAllies(u.ownerID, playerID)
+  })
   
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 text-white">
@@ -251,12 +259,22 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
             ⚔️ Medieval Tactical Battle - Multiplayer
           </h1>
           <div className="flex items-center gap-4">
-            <div className={`px-3 py-1 rounded ${playerID === '0' ? 'bg-blue-600' : 'bg-red-600'}`}>
-              You: Player {playerID}
+            <div className={`px-3 py-1 rounded ${
+              playerColor === 'blue' ? 'bg-blue-600' :
+              playerColor === 'green' ? 'bg-green-600' :
+              playerColor === 'yellow' ? 'bg-yellow-500 text-slate-900' :
+              'bg-red-600'
+            }`}>
+              You: Player {playerID} ({playerColor})
             </div>
             <div className="text-sm text-slate-400">
               Phase: {phase?.toUpperCase() || 'SETUP'}
             </div>
+            {teamMode && (
+              <div className="px-3 py-1 bg-emerald-700 rounded text-sm font-semibold">
+                🧩 Team Battle: {getTeamLabel(getTeamId(playerID))}
+              </div>
+            )}
             {phase === 'battle' && (
               <div className="px-3 py-1 bg-purple-600 rounded text-sm font-semibold">
                 🔄 Turn {G.turn || 1}
@@ -273,7 +291,9 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
       <div className={`py-2 text-center font-bold text-lg ${
         isMyTurn ? 'bg-green-600/80' : 'bg-slate-700/80'
       }`}>
-        {isMyTurn ? "🎯 YOUR TURN!" : `⏳ Waiting for Player ${currentPlayer}...`}
+        {isMyTurn
+          ? "🎯 YOUR TURN!"
+          : `⏳ Waiting for Player ${currentPlayer} (${getPlayerColor(currentPlayer)})...`}
       </div>
 
       {/* Main Game Area */}
@@ -291,8 +311,8 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
                   {isMyTurn ? (
                     <>
                       <span className="text-green-400 font-semibold">Your turn!</span> Select a unit type, then click on your spawn zone (
-                      <span className={playerID === '0' ? 'text-blue-400' : 'text-red-400'}>
-                        {playerID === '0' ? 'Blue' : 'Red'}
+                      <span className={playerColor === 'blue' ? 'text-blue-400' : playerColor === 'green' ? 'text-green-400' : playerColor === 'yellow' ? 'text-yellow-400' : 'text-red-400'}>
+                        {playerColor.charAt(0).toUpperCase() + playerColor.slice(1)}
                       </span> border) to place.
                     </>
                   ) : (
@@ -356,10 +376,10 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
           {/* Center - Game Board */}
           <div className="lg:col-span-2">
             <div className="bg-slate-800/80 rounded-lg border border-slate-700 p-4">
-              <GameBoard
-                onHexClick={handleHexClick}
-                onHexHover={setHoveredHex}
-                onHexHoverEnd={() => setHoveredHex(null)}
+                <GameBoard
+                  onHexClick={handleHexClick}
+                  onHexHover={setHoveredHex}
+                  onHexHoverEnd={() => setHoveredHex(null)}
                 selectedHex={selectedHex}
                 highlightedHexes={highlightedHexes}
                 attackableHexes={attackableHexes}
@@ -368,11 +388,12 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
                 mapSize={G.mapSize || null}
                 terrainMap={G.terrainMap}
                 selectedUnitId={G.selectedUnitId}
-                currentPlayerID={playerID}
-                damagePreview={damagePreview}
-                showSpawnZones={G.phase === 'setup'}
-                isWinter={G.isWinter}
-              />
+                  currentPlayerID={playerID}
+                  damagePreview={damagePreview}
+                  showSpawnZones={G.phase === 'setup'}
+                  isWinter={G.isWinter}
+                  teamMode={teamMode}
+                />
             </div>
           </div>
           
@@ -465,19 +486,19 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
   )
 }
 
-// Create the network boardgame.io client
-const MedievalBattleClient = Client({
-  game: MedievalBattleGame,
-  board: BattleBoard,
-  multiplayer: SocketIO({ server: 'http://localhost:8000' }),
-  debug: false,
-})
-
-// Multiplayer Game Page
 export default function MultiplayerPage() {
   const [playerID, setPlayerID] = useState('0')
   const [matchID, setMatchID] = useState('default')
   const [joined, setJoined] = useState(false)
+  const [teamModeEnabled, setTeamModeEnabled] = useState(false)
+
+  const MedievalBattleClient = useMemo(() => Client({
+    game: MedievalBattleGame,
+    board: BattleBoard,
+    multiplayer: SocketIO({ server: 'http://localhost:8000' }),
+    debug: false,
+    numPlayers: teamModeEnabled ? 4 : 2,
+  }), [teamModeEnabled])
   
   return (
     <div className="min-h-screen bg-slate-900">
@@ -491,14 +512,14 @@ export default function MultiplayerPage() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-2">
-                  Player ID (0 or 1)
+                  Player ID ({teamModeEnabled ? '0-3' : '0-1'})
                 </label>
                 <input
                   type="text"
                   value={playerID}
                   onChange={(e) => setPlayerID(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white"
-                  placeholder="Enter 0 or 1"
+                  placeholder={teamModeEnabled ? 'Enter 0, 1, 2, or 3' : 'Enter 0 or 1'}
                 />
               </div>
               
@@ -514,6 +535,16 @@ export default function MultiplayerPage() {
                   placeholder="Leave empty for random match"
                 />
               </div>
+
+              <label className="flex items-center gap-3 text-sm text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={teamModeEnabled}
+                  onChange={(e) => setTeamModeEnabled(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-500 bg-slate-700 text-amber-400"
+                />
+                Enable 2v2 team battles (Blue/Green vs Red/Yellow)
+              </label>
               
               <button
                 onClick={() => setJoined(true)}
@@ -524,7 +555,11 @@ export default function MultiplayerPage() {
             </div>
             
             <div className="mt-6 text-xs text-slate-400">
-              <p>💡 Two players need to join the same match ID to play together.</p>
+              <p>
+                💡 {teamModeEnabled
+                  ? 'Up to four players can join the same match ID. Games can still start with 3 players.'
+                  : 'Two players need to join the same match ID to play together.'}
+              </p>
               <p>🌐 Make sure the game server is running on localhost:8000</p>
             </div>
           </div>
