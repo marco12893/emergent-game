@@ -116,6 +116,19 @@ export async function POST(request) {
       })
     }
 
+    if (assignedPlayerID !== 'spectator' && Number(assignedPlayerID) >= maxPlayers) {
+      return NextResponse.json({ 
+        error: `Player slot ${assignedPlayerID} is not available for this lobby.` 
+      }, { 
+        status: 400,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
+        }
+      })
+    }
+
     // Always allow joining - no restrictions
     const defaultName = assignedPlayerID === 'spectator'
       ? 'Spectator'
