@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Client } from 'boardgame.io/react'
 import { SocketIO } from 'boardgame.io/multiplayer'
-import { MedievalBattleGame, UNIT_TYPES, TERRAIN_TYPES, getReachableHexes, getAttackableHexes, hexDistance, isInSpawnZone } from '@/game/GameLogic'
+import { MedievalBattleGame, UNIT_TYPES, TERRAIN_TYPES, getReachableHexes, getAttackableHexes, getDeployableHexes, hexDistance } from '@/game/GameLogic'
 import GameBoard from '@/components/GameBoard'
 import VictoryScreen from '@/components/VictoryScreen'
 import { areAllies, getPlayerColor, getTeamId, getTeamLabel } from '@/game/teamUtils'
@@ -92,6 +92,27 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
   
   // Update highlighted hexes when unit is selected
   useEffect(() => {
+    if (phase === 'setup') {
+      if (!isMyTurn) {
+        setHighlightedHexes([])
+        setAttackableHexes([])
+        return
+      }
+      const mapWidth = G.mapSize?.width || 6
+      const deployableHexes = getDeployableHexes({
+        unitType: selectedUnitType,
+        hexes: G.hexes,
+        units: G.units,
+        terrainMap: G.terrainMap,
+        playerID,
+        mapWidth,
+        teamMode,
+      })
+      setHighlightedHexes(deployableHexes)
+      setAttackableHexes([])
+      return
+    }
+
     if (selectedUnit && phase === 'battle') {
       const reachable = getReachableHexes(selectedUnit, G.hexes, G.units, G.terrainMap)
       setHighlightedHexes(reachable)
@@ -102,7 +123,7 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
       setHighlightedHexes([])
       setAttackableHexes([])
     }
-  }, [selectedUnit, G.hexes, G.units, G.terrainMap, phase])
+  }, [selectedUnit, G.hexes, G.units, G.terrainMap, phase, isMyTurn, playerID, selectedUnitType, teamMode])
 
   useEffect(() => {
     if (
@@ -181,13 +202,18 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
       
       // Otherwise, try to place a unit
       const mapWidth = G.mapSize?.width || 6
-      const isSpawnZone = isInSpawnZone(hex.q, hex.r, playerID, mapWidth, teamMode)
-      if (isSpawnZone && hex.terrain !== 'MOUNTAIN') {
-        // Check if hex is occupied
-        const occupied = G.units.some(u => u.q === hex.q && u.r === hex.r)
-        if (!occupied) {
-          moves.placeUnit(selectedUnitType, hex.q, hex.r)
-        }
+      const deployableHexes = getDeployableHexes({
+        unitType: selectedUnitType,
+        hexes: G.hexes,
+        units: G.units,
+        terrainMap: G.terrainMap,
+        playerID,
+        mapWidth,
+        teamMode,
+      })
+      const isDeployable = deployableHexes.some(h => h.q === hex.q && h.r === hex.r)
+      if (isDeployable) {
+        moves.placeUnit(selectedUnitType, hex.q, hex.r)
       }
       return
     }

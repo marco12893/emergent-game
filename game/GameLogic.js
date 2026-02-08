@@ -281,6 +281,36 @@ export const isInSpawnZone = (q, r, playerID, mapWidth, teamMode = false) => {
   return playerID === '0' ? column <= leftSpawnMax : column >= rightSpawnMin
 }
 
+export const getDeployableHexes = ({
+  unitType,
+  hexes = [],
+  units = [],
+  terrainMap = {},
+  playerID,
+  mapWidth,
+  teamMode = false,
+}) => {
+  if (!unitType || !UNIT_TYPES[unitType]) return []
+  const template = UNIT_TYPES[unitType]
+  const requiresWater = Boolean(template.isNaval)
+
+  return hexes
+    .filter(hex => {
+      if (!isInSpawnZone(hex.q, hex.r, playerID, mapWidth, teamMode)) {
+        return false
+      }
+      if (isHexOccupied(hex.q, hex.r, units)) {
+        return false
+      }
+      if (requiresWater) {
+        const terrainData = getTerrainData(terrainMap, hex.q, hex.r)
+        return terrainData?.waterOnly
+      }
+      return true
+    })
+    .map(hex => ({ q: hex.q, r: hex.r, s: hex.s }))
+}
+
 // Calculate reachable hexes for a unit (BFS with move points)
 export const getReachableHexes = (unit, allHexes, units, terrainMap) => {
   const reachable = []
