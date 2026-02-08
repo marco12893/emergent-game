@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useRef } from 'react'
-import { UNIT_TYPES, TERRAIN_TYPES } from '@/game/GameLogic'
+import { UNIT_TYPES, TERRAIN_TYPES, isInSpawnZone } from '@/game/GameLogic'
 import { areAllies, getPlayerColor, getUnitSpriteProps } from '@/game/teamUtils'
 import { DEFAULT_MAP_ID, MAPS } from '@/game/maps'
 import GameBoard from '@/components/GameBoard'
@@ -699,9 +699,7 @@ export default function HTTPMultiplayerPage() {
 
       // Try to place a new unit
       const mapWidth = gameState?.mapSize?.width || 6
-      const leftSpawnMax = -mapWidth + 1
-      const rightSpawnMin = mapWidth - 2
-      const isSpawnZone = playerID === '0' ? hex.q <= leftSpawnMax : hex.q >= rightSpawnMin
+      const isSpawnZone = isInSpawnZone(hex.q, hex.r, playerID, mapWidth, teamMode)
       if (isSpawnZone) {
         sendAction('placeUnit', {
           unitType: selectedUnitType,
