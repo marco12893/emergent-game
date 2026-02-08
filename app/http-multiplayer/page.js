@@ -639,7 +639,7 @@ export default function HTTPMultiplayerPage() {
                       }`}
                     >
                       🛡️ Join as Player
-                      <p className="mt-1 text-xs font-normal text-slate-400">Auto-assigns you a slot.</p>
+                      <p className="mt-1 text-xs font-normal text-slate-400">Pick any slot once you enter the lobby.</p>
                     </button>
                     <button
                       type="button"
@@ -767,10 +767,10 @@ export default function HTTPMultiplayerPage() {
                         <div className="mt-4 flex flex-wrap gap-2">
                           <button
                             onClick={() => joinLobbyGame(game.id, joinAsSpectator ? 'spectator' : undefined)}
-                            disabled={loading || isFull}
+                            disabled={loading}
                             className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:bg-slate-600"
                           >
-                            {isFull ? 'Lobby Full' : joinAsSpectator ? '👀 Watch Lobby' : '🎯 Enter Lobby'}
+                            {joinAsSpectator ? '👀 Watch Lobby' : '🎯 Enter Lobby'}
                           </button>
                           {!joinAsSpectator && (
                             <button
@@ -845,10 +845,9 @@ export default function HTTPMultiplayerPage() {
                     </div>
                     <button
                       onClick={() => sendAction('claimSlot', { playerID, desiredSlot: slot.id, playerName: playerName || undefined })}
-                      disabled={isOccupied && !isCurrent}
                       className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
                     >
-                      {isCurrent ? 'Your Slot' : isOccupied ? 'Taken' : 'Join'}
+                      {isCurrent ? 'Your Slot' : isOccupied ? 'Claim' : 'Join'}
                     </button>
                   </div>
                 )
@@ -890,10 +889,9 @@ export default function HTTPMultiplayerPage() {
                     </div>
                     <button
                       onClick={() => sendAction('claimSlot', { playerID, desiredSlot: slot.id, playerName: playerName || undefined })}
-                      disabled={isOccupied && !isCurrent}
                       className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
                     >
-                      {isCurrent ? 'Your Slot' : isOccupied ? 'Taken' : 'Join'}
+                      {isCurrent ? 'Your Slot' : isOccupied ? 'Claim' : 'Join'}
                     </button>
                   </div>
                 )
