@@ -101,15 +101,16 @@ const VictoryScreen = ({
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-40">
-      <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl border-2 border-slate-600 p-6 max-w-2xl w-full mx-4 shadow-2xl relative">
-        
-        {/* Close Button */}
-        <button
-          onClick={onClose}
-          className="absolute top-3 right-3 text-slate-400 hover:text-white transition-colors text-xl leading-none w-6 h-6 flex items-center justify-center"
-        >
-          ×
-        </button>
+      <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl border-2 border-slate-600 p-6 max-w-2xl w-full mx-4 shadow-2xl">
+        <div className="flex justify-end">
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-white transition-colors text-xl leading-none w-8 h-8 flex items-center justify-center"
+            aria-label="Close victory screen"
+          >
+            ×
+          </button>
+        </div>
         
         {/* Victory Header */}
         <div className={`text-center mb-4 bg-gradient-to-r ${getVictoryColor()} bg-clip-text text-transparent`}>
