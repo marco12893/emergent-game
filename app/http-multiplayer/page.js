@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { UNIT_TYPES, TERRAIN_TYPES } from '@/game/GameLogic'
 import { DEFAULT_MAP_ID, MAPS } from '@/game/maps'
 import GameBoard from '@/components/GameBoard'
@@ -83,6 +83,7 @@ export default function HTTPMultiplayerPage() {
   const [storedSession, setStoredSession] = useState(null)
   const [selectedUnitType, setSelectedUnitType] = useState('SWORDSMAN')
   const [error, setError] = useState('')
+  const errorTimeoutRef = useRef(null)
   const [loading, setLoading] = useState(false)
   const [highlightedHexes, setHighlightedHexes] = useState([])
   const [attackableHexes, setAttackableHexes] = useState([])
@@ -135,6 +136,22 @@ export default function HTTPMultiplayerPage() {
       console.error('Failed to read lobby session:', error)
     }
   }, [])
+
+  useEffect(() => {
+    if (!error) return undefined
+    if (errorTimeoutRef.current) {
+      clearTimeout(errorTimeoutRef.current)
+    }
+    errorTimeoutRef.current = setTimeout(() => {
+      setError('')
+      errorTimeoutRef.current = null
+    }, 3000)
+    return () => {
+      if (errorTimeoutRef.current) {
+        clearTimeout(errorTimeoutRef.current)
+      }
+    }
+  }, [error])
 
   // Poll for game state updates
   useEffect(() => {

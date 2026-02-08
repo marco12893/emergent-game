@@ -73,7 +73,21 @@ const GameBoard = ({
   const [touchStartPos, setTouchStartPos] = useState({ x: 0, y: 0 })
   const [isTouch, setIsTouch] = useState(false) // Track if this is a touch interaction
   const dragTimeoutRef = useRef(null)
+  const suppressClickRef = useRef(false)
+  const suppressClickTimeoutRef = useRef(null)
   const containerRef = useRef(null)
+
+  const getClampedOffset = useCallback((offset) => {
+    const padding = 120
+    const baseX = (mapWidth + 2) * HEX_SIZE * 3
+    const baseY = (mapHeight + 2) * HEX_SIZE * 3
+    const maxX = baseX * zoom + padding
+    const maxY = baseY * zoom + padding
+    return {
+      x: Math.max(-maxX, Math.min(maxX, offset.x)),
+      y: Math.max(-maxY, Math.min(maxY, offset.y)),
+    }
+  }, [mapHeight, mapWidth, HEX_SIZE, zoom])
 
   // Handle mouse wheel zoom
   const handleWheel = useCallback((e) => {
@@ -114,12 +128,12 @@ const GameBoard = ({
     const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY)
     if (distance > dragThreshold) {
       setHasDragged(true)
-      setCameraOffset({
+      setCameraOffset(getClampedOffset({
         x: e.clientX - dragStart.x,
         y: e.clientY - dragStart.y
-      })
+      }))
     }
-  }, [isDragging, dragStart, dragThreshold])
+  }, [isDragging, dragStart, dragThreshold, getClampedOffset])
 
   // Handle mouse up
   const handleMouseUp = useCallback((e) => {
@@ -174,6 +188,9 @@ const GameBoard = ({
       if (dragTimeoutRef.current) {
         clearTimeout(dragTimeoutRef.current)
       }
+      if (suppressClickTimeoutRef.current) {
+        clearTimeout(suppressClickTimeoutRef.current)
+      }
     }
   }, [])
 
@@ -225,10 +242,10 @@ const GameBoard = ({
         }
         
         // Continue panning
-        setCameraOffset({
+        setCameraOffset(getClampedOffset({
           x: touch.clientX - dragStart.x,
           y: touch.clientY - dragStart.y
-        })
+        }))
       }
     } else if (e.touches.length === 2 && lastTouchDistance !== null) {
       // Two touches - pinch zoom
@@ -248,7 +265,7 @@ const GameBoard = ({
       
       setLastTouchDistance(currentDistance)
     }
-  }, [isDragging, dragStart, lastTouchDistance, touchStartTime, touchStartPos, dragThreshold])
+  }, [isDragging, dragStart, lastTouchDistance, touchStartTime, touchStartPos, dragThreshold, getClampedOffset])
 
   // Add event listeners
   useEffect(() => {
@@ -256,9 +273,16 @@ const GameBoard = ({
     if (!container) return
 
     container.addEventListener('wheel', handleWheel, { passive: false })
+    const handleBrowserZoom = (event) => {
+      if ((event.ctrlKey || event.metaKey) && container.contains(event.target)) {
+        event.preventDefault()
+      }
+    }
+    document.addEventListener('wheel', handleBrowserZoom, { passive: false })
     
     return () => {
       container.removeEventListener('wheel', handleWheel)
+      document.removeEventListener('wheel', handleBrowserZoom)
     }
   }, [handleWheel])
 
@@ -277,6 +301,10 @@ const GameBoard = ({
     }
   }, [isDragging, handleMouseMove, handleMouseUp]) 
 
+  useEffect(() => {
+    setCameraOffset((prev) => getClampedOffset(prev))
+  }, [getClampedOffset])
+
   // Generate the hex map data
   const hexData = useMemo(() => {
     const sourceHexes = hexes.length ? hexes : generateHexMap(mapWidth, mapHeight)
@@ -288,7 +316,11 @@ const GameBoard = ({
   }, [terrainMap, hexes, mapWidth, mapHeight])
 
   // Handle hex click
-  const handleHexClick = useCallback((hex) => {
+  const handleHexClick = useCallback((hex, event) => {
+    if (suppressClickRef.current && event?.type === 'click') {
+      suppressClickRef.current = false
+      return
+    }
     // Prevent hex clicks if we were dragging
     if (hasDragged) {
       return
@@ -338,6 +370,14 @@ const GameBoard = ({
             const hexDataFound = hexData.find(h => h.q === q && h.r === r)
             if (hexDataFound && onHexClick) {
               handleHexClick(hexDataFound)
+              suppressClickRef.current = true
+              if (suppressClickTimeoutRef.current) {
+                clearTimeout(suppressClickTimeoutRef.current)
+              }
+              suppressClickTimeoutRef.current = setTimeout(() => {
+                suppressClickRef.current = false
+                suppressClickTimeoutRef.current = null
+              }, 400)
             }
           }
         }
@@ -407,7 +447,7 @@ const GameBoard = ({
       className="w-screen h-screen flex items-center justify-center overflow-hidden relative select-none"
       style={{ 
         cursor: isDragging ? 'grabbing' : 'grab',
-        touchAction: 'manipulation', // Allow taps but disable double-tap zoom and other gestures
+        touchAction: 'none', // Disable browser zoom/scroll gestures; handle with custom touch logic
         userSelect: 'none',
         WebkitUserSelect: 'none',
         MozUserSelect: 'none',
@@ -452,7 +492,7 @@ const GameBoard = ({
                     q={hex.q}
                     r={hex.r}
                     s={hex.s}
-                    onClick={() => handleHexClick(hex)}
+                    onClick={(event) => handleHexClick(hex, event)}
                     onMouseEnter={() => handleHexHover(hex)}
                     onMouseLeave={handleHexHoverEnd}
                     cellStyle={{
