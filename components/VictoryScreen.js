@@ -12,6 +12,7 @@ const VictoryScreen = ({
 }) => {
   if (!gameOver) return null
 
+  const isSpectator = playerID === 'spectator'
   const isWinner = winner === playerID
   const isDraw = victoryData?.draw
   const victoryType = victoryData?.victoryType || 'elimination'
@@ -30,11 +31,13 @@ const VictoryScreen = ({
 
   const getVictoryTitle = () => {
     if (isDraw) return 'Draw!'
+    if (isSpectator) return 'Game Over'
     if (isWinner) return 'Victory!'
     return 'Defeat!'
   }
 
   const getVictoryColor = () => {
+    if (isSpectator) return 'from-slate-400 to-slate-200'
     if (isDraw) return 'from-yellow-600 to-orange-600'
     if (isWinner) return 'from-green-600 to-emerald-600'
     return 'from-red-600 to-rose-600'
@@ -122,10 +125,14 @@ const VictoryScreen = ({
         <div className="bg-slate-800/50 rounded-lg p-3 mb-4 border border-slate-700">
           <div className="text-center space-y-1">
             <div className="text-xl font-semibold text-white">
-              {isDraw ? 'Both Players' : `Player ${winner}`}
+              {isDraw
+                ? 'Both Players'
+                : isSpectator
+                ? `Winner: Player ${winner}`
+                : `Player ${winner}`}
             </div>
             <div className="text-slate-300 text-sm">
-              {message}
+              {isSpectator && !message ? 'Final results' : message}
             </div>
             <div className="flex items-center justify-center gap-3 text-xs text-slate-400">
               <span>🎮 Turn {turn}</span>

@@ -91,8 +91,12 @@ export async function POST(request) {
     }
 
     // Always allow joining - no restrictions
+    const defaultName = assignedPlayerID === 'spectator'
+      ? 'Spectator'
+      : `Player ${assignedPlayerID}`
+
     game.players[assignedPlayerID] = {
-      name: sanitizedPlayerName || `Player ${assignedPlayerID}`,
+      name: sanitizedPlayerName || defaultName,
       joinTime: Date.now(),
       joined: true,
     }
