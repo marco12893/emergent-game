@@ -139,11 +139,15 @@ export default function HTTPMultiplayerPage() {
   const [showUnitInfoPopup, setShowUnitInfoPopup] = useState(null) // New state for unit info popup
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false) // State for collapsible left panel
   const [showReadyConfirm, setShowReadyConfirm] = useState(false)
+  const [chatInput, setChatInput] = useState('')
+  const [isChatOpen, setIsChatOpen] = useState(false)
+  const chatInputRef = useRef(null)
   const isSpectator = playerID === 'spectator'
   const isMyTurn = !isSpectator && gameState?.currentPlayer === playerID
   const selectedUnitForInfo = selectedUnitForInfoId
     ? gameState?.units?.find(unit => unit.id === selectedUnitForInfoId)
     : null
+  const chatMessages = gameState?.chatMessages || []
   
   // Dynamic server URL for production
   const getServerUrl = () => {
@@ -163,6 +167,33 @@ export default function HTTPMultiplayerPage() {
       setServerUrl(getServerUrl())
     }
   }, [])
+
+  useEffect(() => {
+    if (isChatOpen) {
+      chatInputRef.current?.focus()
+    }
+  }, [isChatOpen])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handleKeyDown = (event) => {
+      if (!joined) return
+      if (event.key === 'Enter' && !event.shiftKey) {
+        const activeTag = document.activeElement?.tagName
+        if (activeTag === 'INPUT' || activeTag === 'TEXTAREA') {
+          return
+        }
+        event.preventDefault()
+        setIsChatOpen(true)
+      }
+      if (event.key === 'Escape' && isChatOpen) {
+        setIsChatOpen(false)
+        setChatInput('')
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [joined, isChatOpen])
 
   useEffect(() => {
     if (!selectedUnitForInfoId || !gameState?.units) return
@@ -530,6 +561,50 @@ export default function HTTPMultiplayerPage() {
       console.error('Action error:', err)
       setError(err.message || 'Failed to send action to server')
     }
+  }
+
+  const sendChat = async (message) => {
+    if (!joined) return
+    const normalizedMessage = message.replace(/\s+/g, ' ').trim().slice(0, 120)
+    if (!normalizedMessage) return
+
+    try {
+      const requestBody = {
+        gameId: matchID,
+        action: 'sendChat',
+        payload: {
+          message: normalizedMessage,
+          playerID,
+          playerName: playerName || undefined,
+        }
+      }
+
+      const response = await fetch(`${serverUrl}/api/action`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setGameState(data.gameState)
+      } else {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to send chat message')
+      }
+    } catch (err) {
+      console.error('Chat error:', err)
+      setError(err.message || 'Failed to send chat message')
+    }
+  }
+
+  const handleChatSubmit = async (event) => {
+    event.preventDefault()
+    await sendChat(chatInput)
+    setChatInput('')
+    setIsChatOpen(false)
   }
 
   const handleHexClick = (hex) => {
@@ -1043,35 +1118,104 @@ export default function HTTPMultiplayerPage() {
       
       {/* Action Buttons - Bottom Right Corner */}
       <div className="fixed bottom-4 right-4 z-30">
-        {gameState?.phase === 'setup' && !isSpectator && (
-          <button
-            onClick={readyForBattle}
-            disabled={!isMyTurn}
-            className="px-6 py-3 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-600 text-white font-bold rounded-lg shadow-lg transition-all transform hover:scale-105"
-          >
-            Ready For Battle
-          </button>
+        {gameState?.phase === 'setup' && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsChatOpen(true)}
+              className="w-12 h-12 bg-slate-700 hover:bg-slate-600 text-white rounded-lg shadow-lg transition-all transform hover:scale-105 flex items-center justify-center"
+              aria-label="Open chat"
+            >
+              <img src="/icons/chat%20icon.png" alt="Chat" className="w-7 h-7" />
+            </button>
+            {!isSpectator && (
+              <button
+                onClick={readyForBattle}
+                disabled={!isMyTurn}
+                className="px-6 py-3 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-600 text-white font-bold rounded-lg shadow-lg transition-all transform hover:scale-105"
+              >
+                Ready For Battle
+              </button>
+            )}
+          </div>
         )}
         
-        {gameState?.phase === 'battle' && !isSpectator && (
-          <div className="flex flex-col gap-2">
+        {gameState?.phase === 'battle' && (
+          <div className="flex items-center gap-2">
             <button
-              onClick={undoMove}
-              disabled={!isMyTurn || !selectedUnit?.lastMove || selectedUnit?.hasAttacked}
-              className="px-6 py-2.5 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-500 text-white font-bold rounded-lg shadow-lg transition-all transform hover:scale-105"
+              onClick={() => setIsChatOpen(true)}
+              className="w-12 h-12 bg-slate-700 hover:bg-slate-600 text-white rounded-lg shadow-lg transition-all transform hover:scale-105 flex items-center justify-center"
+              aria-label="Open chat"
             >
-              Undo Move
+              <img src="/icons/chat%20icon.png" alt="Chat" className="w-7 h-7" />
             </button>
-            <button
-              onClick={endTurn}
-              disabled={!isMyTurn}
-              className="px-6 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 text-white font-bold rounded-lg shadow-lg transition-all transform hover:scale-105"
-            >
-              End Turn
-            </button>
+            {!isSpectator && (
+              <>
+                <button
+                  onClick={undoMove}
+                  disabled={!isMyTurn || !selectedUnit?.lastMove || selectedUnit?.hasAttacked}
+                  className="w-12 h-12 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:opacity-60 text-white rounded-lg shadow-lg transition-all transform hover:scale-105 flex items-center justify-center"
+                  aria-label="Undo move"
+                >
+                  <img src="/icons/Undo%20Button.png" alt="Undo move" className="w-7 h-7" />
+                </button>
+                <button
+                  onClick={endTurn}
+                  disabled={!isMyTurn}
+                  className="px-5 h-12 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 text-white font-bold rounded-lg shadow-lg transition-all transform hover:scale-105"
+                >
+                  End Turn
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>
+
+      {/* Chat Messages */}
+      {joined && (
+        <div className="fixed bottom-4 left-4 z-30 w-72 max-w-[70vw]">
+          <div className="bg-slate-900/70 border border-slate-700 rounded-lg p-2 space-y-1 text-xs text-slate-100 shadow-lg backdrop-blur">
+            {chatMessages.length === 0 && (
+              <div className="text-slate-400">No chat messages yet.</div>
+            )}
+            {chatMessages.map(message => (
+              <div key={message.id} className="flex gap-1">
+                <span className="text-amber-300 font-semibold">{message.sender}:</span>
+                <span className="text-slate-100 break-words">{message.message}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Chat Input */}
+      {isChatOpen && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-40 w-[min(90vw,420px)]">
+          <form
+            onSubmit={handleChatSubmit}
+            className="flex items-center gap-2 bg-slate-900/90 border border-slate-700 rounded-lg p-2 shadow-lg backdrop-blur"
+          >
+            <input
+              ref={chatInputRef}
+              type="text"
+              value={chatInput}
+              onChange={(event) => setChatInput(event.target.value)}
+              placeholder="Type a message..."
+              maxLength={120}
+              className="flex-1 bg-transparent text-white text-sm outline-none placeholder:text-slate-400"
+            />
+            <button
+              type="submit"
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-md"
+            >
+              Send
+            </button>
+          </form>
+          <div className="mt-1 text-[10px] text-slate-400 text-center">
+            Press Enter to send • Esc to cancel
+          </div>
+        </div>
+      )}
       
       {/* Unit Info Box - Right Side */}
       {selectedUnitForInfo && (

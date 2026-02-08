@@ -7,6 +7,8 @@ import {
   sanitizeUnitType, 
   sanitizeCoordinate, 
   sanitizeAction,
+  sanitizeChatMessage,
+  sanitizePlayerName,
   validatePayload 
 } from '@/lib/inputSanitization'
 
@@ -995,6 +997,63 @@ export async function POST(request) {
           }
           break
           
+        case 'sendChat':
+          const chatSchema = {
+            message: { required: true, sanitize: sanitizeChatMessage },
+            playerID: { required: true, sanitize: sanitizePlayerID },
+            playerName: { required: false, sanitize: sanitizePlayerName }
+          }
+
+          const chatValidation = validatePayload(payload, chatSchema)
+          if (chatValidation.error) {
+            return NextResponse.json({
+              error: 'Invalid payload for sendChat: ' + chatValidation.error
+            }, {
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          const {
+            message: sanitizedMessage,
+            playerID: chatPlayerID,
+            playerName: chatPlayerName
+          } = chatValidation.sanitized
+
+          if (!sanitizedMessage) {
+            return NextResponse.json({
+              error: 'Chat message cannot be empty'
+            }, {
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          const senderLabel = chatPlayerName
+            ? chatPlayerName
+            : chatPlayerID === 'spectator'
+              ? 'Spectator'
+              : `Player ${chatPlayerID}`
+
+          const chatEntry = {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            sender: senderLabel,
+            message: sanitizedMessage,
+            timestamp: Date.now()
+          }
+
+          game.chatMessages = [...(game.chatMessages || []), chatEntry].slice(-6)
+          game.lastUpdate = Date.now()
+          break
+
         case 'endTurn':
           if (!payload?.playerID) {
             return NextResponse.json({ 
