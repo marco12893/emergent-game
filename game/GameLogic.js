@@ -266,18 +266,19 @@ export const getUnitAtHex = (q, r, units) => {
 
 // Check if hex is in spawn zone
 export const isInSpawnZone = (q, r, playerID, mapWidth, teamMode = false) => {
+  const column = q + Math.floor(r / 2)
   const leftSpawnMax = -mapWidth + 2
   const rightSpawnMin = mapWidth - 2
   if (teamMode) {
     const teamId = getTeamId(playerID)
     if (teamId === 'blue-green') {
-      return q <= leftSpawnMax
+      return column <= leftSpawnMax
     }
     if (teamId === 'red-yellow') {
-      return q >= rightSpawnMin
+      return column >= rightSpawnMin
     }
   }
-  return playerID === '0' ? q <= leftSpawnMax : q >= rightSpawnMin
+  return playerID === '0' ? column <= leftSpawnMax : column >= rightSpawnMin
 }
 
 // Calculate reachable hexes for a unit (BFS with move points)

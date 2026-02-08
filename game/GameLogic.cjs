@@ -137,11 +137,13 @@ const getUnitMoveCost = (unit, terrainData) => {
 
 // Check if hex is in spawn zone
 const isInSpawnZone = (q, r, playerID) => {
+  const column = q + Math.floor(r / 2)
+  const leftSpawnMax = -4
+  const rightSpawnMin = 4
   if (playerID === '0') {
-    return q <= -4
-  } else {
-    return q >= 4
+    return column <= leftSpawnMax
   }
+  return column >= rightSpawnMin
 }
 
 // Calculate reachable hexes for a unit (BFS with move points)
