@@ -77,6 +77,18 @@ const GameBoard = ({
   const suppressClickTimeoutRef = useRef(null)
   const containerRef = useRef(null)
 
+  const getClampedOffset = useCallback((offset) => {
+    const padding = 120
+    const baseX = (mapWidth + 2) * HEX_SIZE * 3
+    const baseY = (mapHeight + 2) * HEX_SIZE * 3
+    const maxX = baseX * zoom + padding
+    const maxY = baseY * zoom + padding
+    return {
+      x: Math.max(-maxX, Math.min(maxX, offset.x)),
+      y: Math.max(-maxY, Math.min(maxY, offset.y)),
+    }
+  }, [mapHeight, mapWidth, HEX_SIZE, zoom])
+
   // Handle mouse wheel zoom
   const handleWheel = useCallback((e) => {
     e.preventDefault()
@@ -116,12 +128,12 @@ const GameBoard = ({
     const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY)
     if (distance > dragThreshold) {
       setHasDragged(true)
-      setCameraOffset({
+      setCameraOffset(getClampedOffset({
         x: e.clientX - dragStart.x,
         y: e.clientY - dragStart.y
-      })
+      }))
     }
-  }, [isDragging, dragStart, dragThreshold])
+  }, [isDragging, dragStart, dragThreshold, getClampedOffset])
 
   // Handle mouse up
   const handleMouseUp = useCallback((e) => {
@@ -230,10 +242,10 @@ const GameBoard = ({
         }
         
         // Continue panning
-        setCameraOffset({
+        setCameraOffset(getClampedOffset({
           x: touch.clientX - dragStart.x,
           y: touch.clientY - dragStart.y
-        })
+        }))
       }
     } else if (e.touches.length === 2 && lastTouchDistance !== null) {
       // Two touches - pinch zoom
@@ -253,7 +265,7 @@ const GameBoard = ({
       
       setLastTouchDistance(currentDistance)
     }
-  }, [isDragging, dragStart, lastTouchDistance, touchStartTime, touchStartPos, dragThreshold])
+  }, [isDragging, dragStart, lastTouchDistance, touchStartTime, touchStartPos, dragThreshold, getClampedOffset])
 
   // Add event listeners
   useEffect(() => {
@@ -288,6 +300,10 @@ const GameBoard = ({
       document.removeEventListener('mouseup', handleGlobalMouseUp)
     }
   }, [isDragging, handleMouseMove, handleMouseUp]) 
+
+  useEffect(() => {
+    setCameraOffset((prev) => getClampedOffset(prev))
+  }, [getClampedOffset])
 
   // Generate the hex map data
   const hexData = useMemo(() => {
