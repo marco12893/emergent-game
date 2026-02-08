@@ -341,9 +341,17 @@ export default function HTTPMultiplayerPage() {
                     if (disembarking && !canDisembark) continue
                     if (!terrainData.passable) continue
                     
-                    const moveCost = embarking || disembarking
+                    let moveCost = embarking || disembarking
                       ? selectedUnit.maxMovePoints
                       : terrainData.moveCost
+                    if (
+                      !embarking &&
+                      !disembarking &&
+                      (selectedUnit.baseType === 'CATAPULT' || selectedUnit.type === 'CATAPULT') &&
+                      terrain === 'HILLS'
+                    ) {
+                      moveCost = 1
+                    }
                     const remainingAfterMove = current.remainingMove - moveCost
                     
                     if (remainingAfterMove >= 0) {

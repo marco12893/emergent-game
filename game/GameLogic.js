@@ -125,6 +125,21 @@ const getTerrainData = (terrainMap, q, r) => {
   return TERRAIN_TYPES[terrain]
 }
 
+const getUnitMoveCost = (unit, terrainData, { embarking, disembarking } = {}) => {
+  if (embarking || disembarking) {
+    return unit.maxMovePoints
+  }
+
+  const catapultType = UNIT_TYPES.CATAPULT?.type || 'CATAPULT'
+  const hillsName = TERRAIN_TYPES.HILLS?.name || 'Hills'
+  const isCatapult = unit.baseType === catapultType || unit.type === catapultType
+  if (isCatapult && terrainData.name === hillsName) {
+    return 1
+  }
+
+  return terrainData.moveCost
+}
+
 const canEmbark = unit => {
   return !unit.isNaval && !unit.isTransport && unit.movePoints >= unit.maxMovePoints
 }
@@ -288,7 +303,7 @@ export const getReachableHexes = (unit, allHexes, units, terrainMap) => {
 
       if (!terrainData.passable) continue
       
-      const moveCost = embarking || disembarking ? unit.maxMovePoints : terrainData.moveCost
+      const moveCost = getUnitMoveCost(unit, terrainData, { embarking, disembarking })
       const remainingAfterMove = current.remainingMove - moveCost
       
       if (remainingAfterMove < 0) continue
@@ -494,7 +509,7 @@ const battlePhase = {
             if (isHexOccupied(neighbor.q, neighbor.r, units.filter(u => u.id !== unit.id))) continue
             
             visited.add(key)
-            const moveCost = embarking || disembarking ? unit.maxMovePoints : terrainData.moveCost
+            const moveCost = getUnitMoveCost(unit, terrainData, { embarking, disembarking })
             queue.push({ ...neighbor, cost: current.cost + moveCost })
           }
         }
