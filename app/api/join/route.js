@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getGame, setGame, createNewGame } from '@/lib/gameState'
-import { sanitizeGameId, sanitizeMapId, sanitizePlayerID, sanitizePlayerName, sanitizeWinterFlag } from '@/lib/inputSanitization'
+import { sanitizeGameId, sanitizeMapId, sanitizePlayerID, sanitizePlayerName, sanitizeWinterFlag, sanitizeTeamModeFlag } from '@/lib/inputSanitization'
+import { getTeamPlayOrder } from '@/game/teamUtils'
 
 // Handle OPTIONS requests for CORS preflight
 export async function OPTIONS() {
@@ -17,7 +18,7 @@ export async function OPTIONS() {
 export async function POST(request) {
   try {
     const body = await request.json()
-    const { gameId, playerID, playerName, mapId, winter } = body
+    const { gameId, playerID, playerName, mapId, winter, teamMode } = body
     
     // Sanitize and validate inputs
     const sanitizedGameId = sanitizeGameId(gameId)
@@ -25,6 +26,7 @@ export async function POST(request) {
     const sanitizedPlayerName = sanitizePlayerName(playerName)
     const sanitizedMapId = sanitizeMapId(mapId)
     const sanitizedWinter = sanitizeWinterFlag(winter)
+    const sanitizedTeamMode = sanitizeTeamModeFlag(teamMode)
     
     if (!sanitizedGameId || (playerID !== undefined && sanitizedPlayerID === null)) {
       return NextResponse.json({ 
@@ -62,7 +64,7 @@ export async function POST(request) {
     if (!game) {
       console.log('🆕 Creating new game')
       try {
-        game = await createNewGame(gameId, sanitizedMapId || undefined, sanitizedWinter)
+        game = await createNewGame(gameId, sanitizedMapId || undefined, sanitizedWinter, sanitizedTeamMode)
       } catch (createError) {
         console.error('❌ KV createGame failed:', createError)
         return NextResponse.json({ 
@@ -80,15 +82,30 @@ export async function POST(request) {
     }
     
     const takenPlayers = new Set(Object.keys(game.players || {}))
+    const maxPlayers = game.maxPlayers || 2
     let assignedPlayerID = sanitizedPlayerID
 
     if (!assignedPlayerID) {
-      assignedPlayerID = ['0', '1'].find((id) => !takenPlayers.has(id))
+      const playOrder = game.teamMode ? getTeamPlayOrder(maxPlayers) : ['0', '1']
+      assignedPlayerID = playOrder.find((id) => !takenPlayers.has(id))
     }
 
     // If no slots available, just assign the first available slot (always allow joining)
     if (!assignedPlayerID) {
       assignedPlayerID = '0' // Always allow joining as player 0, will overwrite existing
+    }
+
+    if (assignedPlayerID !== 'spectator' && Number(assignedPlayerID) >= maxPlayers) {
+      return NextResponse.json({ 
+        error: `Player slot ${assignedPlayerID} is not available for this lobby.` 
+      }, { 
+        status: 400,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
+        }
+      })
     }
 
     // Always allow joining - no restrictions

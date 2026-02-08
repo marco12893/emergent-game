@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import { UNIT_TYPES, TERRAIN_TYPES } from '@/game/GameLogic'
-import { getPlayerColor, getUnitSpriteProps } from '@/game/teamUtils'
+import { areAllies, getPlayerColor, getUnitSpriteProps } from '@/game/teamUtils'
 import { DEFAULT_MAP_ID, MAPS } from '@/game/maps'
 import GameBoard from '@/components/GameBoard'
 import VictoryScreen from '@/components/VictoryScreen'
@@ -130,6 +130,7 @@ export default function HTTPMultiplayerPage() {
   const [lobbyLoading, setLobbyLoading] = useState(false)
   const [selectedMapId, setSelectedMapId] = useState(DEFAULT_MAP_ID)
   const [isWinter, setIsWinter] = useState(false)
+  const [teamModeEnabled, setTeamModeEnabled] = useState(false)
   const [storedSession, setStoredSession] = useState(null)
   const [selectedUnitType, setSelectedUnitType] = useState('SWORDSMAN')
   const [error, setError] = useState('')
@@ -151,6 +152,7 @@ export default function HTTPMultiplayerPage() {
   const isMyTurn = !isSpectator && gameState?.currentPlayer === playerID
   const playerColor = getPlayerColor(playerID)
   const generalSprite = getUnitSpriteProps({ image: 'General' }, playerID)
+  const teamMode = Boolean(gameState?.teamMode)
   const selectedUnitForInfo = selectedUnitForInfoId
     ? gameState?.units?.find(unit => unit.id === selectedUnitForInfoId)
     : null
@@ -376,16 +378,17 @@ export default function HTTPMultiplayerPage() {
               // Calculate attackable hexes
               const attackable = []
               for (const unit of state.units) {
-                if (unit.ownerID !== playerID && unit.currentHP > 0) {
-                  const distance = Math.max(
-                    Math.abs(selectedUnit.q - unit.q),
-                    Math.abs(selectedUnit.r - unit.r),
-                    Math.abs(selectedUnit.s - unit.s)
-                  )
-                  
-                  if (distance <= selectedUnit.range && !selectedUnit.hasAttacked) {
-                    attackable.push({ q: unit.q, r: unit.r, s: unit.s })
-                  }
+                if (unit.currentHP <= 0) continue
+                if (teamMode ? areAllies(unit.ownerID, playerID) : unit.ownerID === playerID) continue
+
+                const distance = Math.max(
+                  Math.abs(selectedUnit.q - unit.q),
+                  Math.abs(selectedUnit.r - unit.r),
+                  Math.abs(selectedUnit.s - unit.s)
+                )
+                
+                if (distance <= selectedUnit.range && !selectedUnit.hasAttacked) {
+                  attackable.push({ q: unit.q, r: unit.r, s: unit.s })
                 }
               }
               
@@ -420,9 +423,10 @@ export default function HTTPMultiplayerPage() {
       return
     }
 
-    const targetUnit = gameState.units.find(
-      u => u.q === hoveredHex.q && u.r === hoveredHex.r && u.ownerID !== playerID && u.currentHP > 0
-    )
+    const targetUnit = gameState.units.find(u => {
+      if (u.q !== hoveredHex.q || u.r !== hoveredHex.r || u.currentHP <= 0) return false
+      return teamMode ? !areAllies(u.ownerID, playerID) : u.ownerID !== playerID
+    })
 
     if (!targetUnit) {
       setDamagePreview(null)
@@ -494,7 +498,7 @@ export default function HTTPMultiplayerPage() {
       attackDamage,
       counterDamage,
     })
-  }, [gameState, hoveredHex, isMyTurn, playerID])
+  }, [gameState, hoveredHex, isMyTurn, playerID, teamMode])
 
   const joinLobbyGame = async (gameId, requestedPlayerID, mapId, winter) => {
     if (!gameId) {
@@ -520,6 +524,7 @@ export default function HTTPMultiplayerPage() {
           playerName: playerName || undefined,
           mapId: mapId || undefined,
           winter: typeof winter === 'boolean' ? winter : undefined,
+          teamMode: teamModeEnabled,
         }),
       })
 
@@ -725,7 +730,7 @@ export default function HTTPMultiplayerPage() {
         
       if (selectedUnit && selectedUnit.ownerID === playerID) {
         // Check if clicking on enemy to attack
-        if (unitOnHex && unitOnHex.ownerID !== playerID) {
+        if (unitOnHex && (teamMode ? !areAllies(unitOnHex.ownerID, playerID) : unitOnHex.ownerID !== playerID)) {
           // Simple distance check
           const distance = Math.max(
             Math.abs(selectedUnit.q - unitOnHex.q),
@@ -892,6 +897,21 @@ export default function HTTPMultiplayerPage() {
               </p>
             </div>
 
+            <div>
+              <label className="flex items-center gap-2 text-sm font-medium text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={teamModeEnabled}
+                  onChange={(e) => setTeamModeEnabled(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-500 bg-slate-700 text-amber-400 focus:ring-amber-400"
+                />
+                Enable 2v2 team battle (Blue/Green vs Red/Yellow)
+              </label>
+              <p className="mt-1 text-xs text-slate-400">
+                Team mode supports up to 4 players and allows 2v1 if a slot is empty.
+              </p>
+            </div>
+
             <div className="flex gap-3">
               <button
                 onClick={createLobbyGame}
@@ -925,6 +945,7 @@ export default function HTTPMultiplayerPage() {
                 <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
                   {lobbyGames.map((game) => {
                     const isFull = game.status === 'full'
+                    const maxPlayers = game.maxPlayers || 2
                     return (
                       <div
                         key={game.id}
@@ -942,13 +963,16 @@ export default function HTTPMultiplayerPage() {
                               Season: {game.isWinter ? 'Winter' : 'Standard'}
                             </div>
                             <div className="text-xs text-slate-400">
+                              Mode: {game.teamMode ? 'Team Battle (2v2)' : 'Standard (1v1)'}
+                            </div>
+                            <div className="text-xs text-slate-400">
                               Status: {game.status === 'waiting' ? 'Waiting for opponent' : game.status === 'open' ? 'Open' : 'Full'}
                             </div>
                           </div>
                           <span className={`text-xs font-semibold px-2 py-1 rounded ${
                             isFull ? 'bg-red-600/60 text-red-200' : 'bg-emerald-600/50 text-emerald-200'
                           }`}>
-                            {game.playerCount}/2
+                            {game.playerCount}/{maxPlayers}
                           </span>
                         </div>
                         <div className="flex flex-wrap gap-2 mb-3">
@@ -1015,7 +1039,10 @@ export default function HTTPMultiplayerPage() {
                 <>
                   <span className="text-amber-400 font-semibold">Current Turn:</span>
                   <span className={`px-2 py-1 rounded text-xs font-bold ${
-                    gameState?.currentPlayer === '0' ? 'bg-blue-600' : 'bg-red-600'
+                    getPlayerColor(gameState?.currentPlayer) === 'blue' ? 'bg-blue-600' :
+                    getPlayerColor(gameState?.currentPlayer) === 'green' ? 'bg-green-600' :
+                    getPlayerColor(gameState?.currentPlayer) === 'yellow' ? 'bg-yellow-500 text-slate-900' :
+                    'bg-red-600'
                   }`}>
                     Player {gameState?.currentPlayer || '?'}
                   </span>
@@ -1162,6 +1189,7 @@ export default function HTTPMultiplayerPage() {
           damagePreview={damagePreview}
           showSpawnZones={gameState?.phase === 'setup'}
           isWinter={gameState?.isWinter}
+          teamMode={gameState?.teamMode}
         />
       </div>
       
