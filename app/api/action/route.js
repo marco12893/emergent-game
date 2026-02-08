@@ -1046,6 +1046,7 @@ export async function POST(request) {
           const chatEntry = {
             id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             sender: senderLabel,
+            playerID: chatPlayerID,
             message: sanitizedMessage,
             timestamp: Date.now()
           }

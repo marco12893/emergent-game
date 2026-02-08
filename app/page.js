@@ -148,6 +148,13 @@ export default function HTTPMultiplayerPage() {
     ? gameState?.units?.find(unit => unit.id === selectedUnitForInfoId)
     : null
   const chatMessages = gameState?.chatMessages || []
+
+  const getChatSenderClass = (message) => {
+    if (message?.playerID === '0') return 'text-blue-400'
+    if (message?.playerID === '1') return 'text-red-400'
+    if (message?.playerID === 'spectator') return 'text-slate-300'
+    return 'text-amber-300'
+  }
   
   // Dynamic server URL for production
   const getServerUrl = () => {
@@ -1180,7 +1187,9 @@ export default function HTTPMultiplayerPage() {
             )}
             {chatMessages.map(message => (
               <div key={message.id} className="flex gap-1">
-                <span className="text-amber-300 font-semibold">{message.sender}:</span>
+                <span className={`${getChatSenderClass(message)} font-semibold`}>
+                  {message.sender}:
+                </span>
                 <span className="text-slate-100 break-words">{message.message}</span>
               </div>
             ))}
