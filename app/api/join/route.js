@@ -90,9 +90,30 @@ export async function POST(request) {
       assignedPlayerID = playOrder.find((id) => !takenPlayers.has(id))
     }
 
-    // If no slots available, just assign the first available slot (always allow joining)
     if (!assignedPlayerID) {
-      assignedPlayerID = '0' // Always allow joining as player 0, will overwrite existing
+      return NextResponse.json({ 
+        error: 'Lobby is full.' 
+      }, { 
+        status: 409,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
+        }
+      })
+    }
+
+    if (assignedPlayerID !== 'spectator' && Number(assignedPlayerID) >= maxPlayers) {
+      return NextResponse.json({ 
+        error: `Player slot ${assignedPlayerID} is not available for this lobby.` 
+      }, { 
+        status: 400,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
+        }
+      })
     }
 
     if (assignedPlayerID !== 'spectator' && Number(assignedPlayerID) >= maxPlayers) {
@@ -122,6 +143,18 @@ export async function POST(request) {
         joinTime: Date.now(),
       })
     } else {
+      if (takenPlayers.has(assignedPlayerID)) {
+        return NextResponse.json({ 
+          error: `Player slot ${assignedPlayerID} is already taken.` 
+        }, { 
+          status: 409,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type',
+          }
+        })
+      }
       game.players[assignedPlayerID] = {
         name: sanitizedPlayerName || defaultName,
         joinTime: Date.now(),
