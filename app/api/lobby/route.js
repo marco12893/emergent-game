@@ -41,6 +41,7 @@ export async function GET() {
         id: game.id,
         mapId: game.mapId || 'MAP_1',
         mapName: mapNames[game.mapId] || mapNames.MAP_1,
+        isWinter: Boolean(game.isWinter),
         players,
         playerCount,
         status,

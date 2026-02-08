@@ -56,6 +56,7 @@ const GameBoard = ({
   currentPlayerID = '0',
   damagePreview = null,
   showSpawnZones = true,
+  isWinter = false,
 }) => {
   const mapWidth = mapSize?.width || Math.max(6, ...hexes.map(hex => Math.abs(hex.q)))
   const mapHeight = mapSize?.height || Math.max(4, ...hexes.map(hex => Math.abs(hex.r)))
@@ -402,23 +403,29 @@ const GameBoard = ({
 
   // Get tile image based on terrain type
   const getTileImage = (hex) => {
-    switch(hex.terrain) {
-      case 'PLAIN':
-        return '/tiles/Grass_5.png'
-      case 'FOREST':
-        // Use Forest texture (combining forest_3 and forest_4 variants)
-        const forestVariants = ['/tiles/Forest.png']
-        const seed = Math.abs(hex.q + hex.r * 7)
-        return forestVariants[seed % forestVariants.length]
-      case 'MOUNTAIN':
-        return '/tiles/Mountain_3.png'
-      case 'HILLS':
-        return '/tiles/Hills.png'
-      case 'WATER':
-        return '/tiles/Ocean.png'
-      default:
-        return null
+    const tiles = isWinter
+      ? {
+          PLAIN: '/tiles/Winter_Grass.png',
+          FOREST: '/tiles/Winter_Forest.png',
+          MOUNTAIN: '/tiles/Winter_Mountain.png',
+          HILLS: '/tiles/Winter_Hills.png',
+          WATER: '/tiles/Winter_Ocean.png',
+        }
+      : {
+          PLAIN: '/tiles/Grass_5.png',
+          FOREST: '/tiles/Forest.png',
+          MOUNTAIN: '/tiles/Mountain_3.png',
+          HILLS: '/tiles/Hills.png',
+          WATER: '/tiles/Ocean.png',
+        }
+
+    if (hex.terrain === 'FOREST' && !isWinter) {
+      const forestVariants = ['/tiles/Forest.png']
+      const seed = Math.abs(hex.q + hex.r * 7)
+      return forestVariants[seed % forestVariants.length]
     }
+
+    return tiles[hex.terrain] || null
   }
 
   // Get hex stroke/border based on state
