@@ -1173,7 +1173,7 @@ export default function HTTPMultiplayerPage() {
 
       {/* Chat Messages */}
       {joined && (
-        <div className="fixed right-4 top-[18%] z-30 w-72 max-w-[70vw]">
+        <div className="fixed right-4 top-[12%] z-30 w-72 max-w-[70vw]">
           <div className="bg-slate-900/70 border border-slate-700 rounded-lg p-2 space-y-1 text-xs text-slate-100 shadow-lg backdrop-blur">
             {chatMessages.length === 0 && (
               <div className="text-slate-400">No chat messages yet.</div>
