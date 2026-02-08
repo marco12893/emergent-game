@@ -1534,15 +1534,18 @@ export async function POST(request) {
           }
           
           const playOrder = getGamePlayOrder(game)
-          const activePlayers = playOrder.filter(id =>
-            game.units.some(unit => unit.ownerID === id && unit.currentHP > 0)
-          )
+          const setupPlayers = playOrder.filter(id => game.players?.[id])
+          const activePlayers = game.phase === 'setup'
+            ? setupPlayers
+            : playOrder.filter(id =>
+                game.units.some(unit => unit.ownerID === id && unit.currentHP > 0)
+              )
           if (teamMode) {
             game.inactivePlayers = playOrder.filter(id => !activePlayers.includes(id))
           }
           const effectiveOrder = teamMode
             ? (activePlayers.length > 0 ? activePlayers : playOrder)
-            : playOrder
+            : (activePlayers.length > 0 ? activePlayers : playOrder)
           const currentIndex = Math.max(0, effectiveOrder.indexOf(game.currentPlayer))
           const nextIndex = (currentIndex + 1) % effectiveOrder.length
           const nextPlayer = effectiveOrder[nextIndex]
@@ -1662,20 +1665,28 @@ export async function POST(request) {
           game.log.push(`Player ${readyPlayerID} is ready for battle!`)
 
           const readyPlayOrder = getGamePlayOrder(game)
-          const readyActivePlayers = readyPlayOrder.filter(id =>
-            game.units.some(unit => unit.ownerID === id)
+          const readyLobbyPlayers = readyPlayOrder.filter(id => game.players?.[id])
+          const readyEligiblePlayers = readyLobbyPlayers.length > 0 ? readyLobbyPlayers : readyPlayOrder
+          const readyActivePlayers = readyEligiblePlayers.filter(id =>
+            game.units.some(unit => unit.ownerID === id && unit.currentHP > 0)
           )
-          const readyPlayers = readyActivePlayers.filter(id => game.playersReady[id])
+          const readyPlayers = readyEligiblePlayers.filter(id => game.playersReady[id])
 
-          if (readyActivePlayers.length >= 2 && readyPlayers.length === readyActivePlayers.length) {
+          if (
+            readyEligiblePlayers.length >= 2 &&
+            readyPlayers.length === readyEligiblePlayers.length &&
+            readyActivePlayers.length === readyEligiblePlayers.length
+          ) {
             game.phase = 'battle'
             game.inactivePlayers = readyPlayOrder.filter(id => !readyActivePlayers.includes(id))
-            game.currentPlayer = readyActivePlayers[0] || '0' // Reset to first active player for fair turn order
+            game.currentPlayer = readyActivePlayers[0] || readyEligiblePlayers[0] || '0'
             game.log.push(`⚔️ BATTLE PHASE BEGINS! Player ${game.currentPlayer} gets the first turn.`)
           } else {
             // Auto end turn after ready for battle in setup phase
-            const nextIndex = (readyPlayOrder.indexOf(game.currentPlayer) + 1) % readyPlayOrder.length
-            game.currentPlayer = readyPlayOrder[nextIndex]
+            const turnOrder = readyEligiblePlayers.length > 0 ? readyEligiblePlayers : readyPlayOrder
+            const currentIndex = Math.max(0, turnOrder.indexOf(game.currentPlayer))
+            const nextIndex = (currentIndex + 1) % turnOrder.length
+            game.currentPlayer = turnOrder[nextIndex]
             game.log.push(`Player ${readyPlayerID} is ready. Turn passes to Player ${game.currentPlayer}.`)
           }
           game.lastUpdate = Date.now()
