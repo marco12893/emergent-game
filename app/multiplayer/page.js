@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Client } from 'boardgame.io/react'
 import { SocketIO } from 'boardgame.io/multiplayer'
-import { MedievalBattleGame, UNIT_TYPES, TERRAIN_TYPES, getReachableHexes, getAttackableHexes, getDeployableHexes, hexDistance } from '@/game/GameLogic'
+import { MedievalBattleGame, UNIT_TYPES, TERRAIN_TYPES, getReachableHexes, getAttackableHexes, getDeployableHexes, getVisibleHexesForPlayer, getVisibleUnitsForPlayer, hexDistance } from '@/game/GameLogic'
 import GameBoard from '@/components/GameBoard'
 import VictoryScreen from '@/components/VictoryScreen'
 import { areAllies, getPlayerColor, getTeamId, getTeamLabel } from '@/game/teamUtils'
@@ -84,6 +84,29 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
   const isMyTurn = playerID === currentPlayer
   const teamMode = G.teamMode
   const playerColor = getPlayerColor(playerID)
+  const fogActive = Boolean(G.fogOfWarEnabled) && phase === 'battle'
+
+  const visibleHexes = useMemo(() => {
+    if (!fogActive) return null
+    return getVisibleHexesForPlayer({
+      units: G.units,
+      hexes: G.hexes,
+      terrainMap: G.terrainMap,
+      playerID,
+      teamMode,
+    })
+  }, [fogActive, G.hexes, G.units, G.terrainMap, playerID, teamMode])
+
+  const visibleUnits = useMemo(() => {
+    if (!fogActive) return G.units
+    return getVisibleUnitsForPlayer({
+      units: G.units,
+      hexes: G.hexes,
+      terrainMap: G.terrainMap,
+      playerID,
+      teamMode,
+    })
+  }, [fogActive, G.hexes, G.units, G.terrainMap, playerID, teamMode])
   
   // Get selected unit
   const selectedUnit = G.selectedUnitId 
@@ -117,13 +140,13 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
       const reachable = getReachableHexes(selectedUnit, G.hexes, G.units, G.terrainMap)
       setHighlightedHexes(reachable)
       
-      const attackable = getAttackableHexes(selectedUnit, G.hexes, G.units, { teamMode })
+      const attackable = getAttackableHexes(selectedUnit, G.hexes, visibleUnits, { teamMode })
       setAttackableHexes(attackable)
     } else {
       setHighlightedHexes([])
       setAttackableHexes([])
     }
-  }, [selectedUnit, G.hexes, G.units, G.terrainMap, phase, isMyTurn, playerID, selectedUnitType, teamMode])
+  }, [selectedUnit, G.hexes, G.units, G.terrainMap, phase, isMyTurn, playerID, selectedUnitType, teamMode, visibleUnits])
 
   useEffect(() => {
     if (
@@ -137,7 +160,7 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
       return
     }
 
-    const targetUnit = G.units.find(u => {
+    const targetUnit = visibleUnits.find(u => {
       if (u.q !== hoveredHex.q || u.r !== hoveredHex.r || u.currentHP <= 0) return false
       if (!teamMode) return u.ownerID !== playerID
       return !areAllies(u.ownerID, playerID)
@@ -174,7 +197,7 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
       attackDamage,
       counterDamage,
     })
-  }, [selectedUnit, hoveredHex, phase, isMyTurn, G.units, G.terrainMap, playerID])
+  }, [selectedUnit, hoveredHex, phase, isMyTurn, G.units, G.terrainMap, playerID, visibleUnits])
 
   useEffect(() => {
     if (!G.selectedUnitId) {
@@ -221,7 +244,7 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
     // Battle Phase
     if (phase === 'battle') {
       // Check if clicking on own unit to select
-      const unitOnHex = G.units.find(u => u.q === hex.q && u.r === hex.r && u.currentHP > 0)
+      const unitOnHex = visibleUnits.find(u => u.q === hex.q && u.r === hex.r && u.currentHP > 0)
       
       if (unitOnHex && unitOnHex.ownerID === playerID) {
         // Select this unit
@@ -269,8 +292,8 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
   }
   
   // Get units for current player display
-  const myUnits = G.units.filter(u => u.ownerID === playerID && u.currentHP > 0)
-  const enemyUnits = G.units.filter(u => {
+  const myUnits = visibleUnits.filter(u => u.ownerID === playerID && u.currentHP > 0)
+  const enemyUnits = visibleUnits.filter(u => {
     if (u.currentHP <= 0) return false
     if (!teamMode) return u.ownerID !== playerID
     return !areAllies(u.ownerID, playerID)
@@ -402,24 +425,26 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
           {/* Center - Game Board */}
           <div className="lg:col-span-2">
             <div className="bg-slate-800/80 rounded-lg border border-slate-700 p-4">
-                <GameBoard
-                  onHexClick={handleHexClick}
-                  onHexHover={setHoveredHex}
-                  onHexHoverEnd={() => setHoveredHex(null)}
+              <GameBoard
+                onHexClick={handleHexClick}
+                onHexHover={setHoveredHex}
+                onHexHoverEnd={() => setHoveredHex(null)}
                 selectedHex={selectedHex}
                 highlightedHexes={highlightedHexes}
                 attackableHexes={attackableHexes}
-                units={G.units}
+                units={visibleUnits}
                 hexes={G.hexes || []}
                 mapSize={G.mapSize || null}
                 terrainMap={G.terrainMap}
                 selectedUnitId={G.selectedUnitId}
-                  currentPlayerID={playerID}
-                  damagePreview={damagePreview}
-                  showSpawnZones={G.phase === 'setup'}
-                  isWinter={G.isWinter}
-                  teamMode={teamMode}
-                />
+                currentPlayerID={playerID}
+                damagePreview={damagePreview}
+                showSpawnZones={G.phase === 'setup'}
+                isWinter={G.isWinter}
+                teamMode={teamMode}
+                fogOfWarEnabled={fogActive}
+                visibleHexes={visibleHexes}
+              />
             </div>
           </div>
           

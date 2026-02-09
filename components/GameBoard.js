@@ -60,6 +60,8 @@ const GameBoard = ({
   showSpawnZones = true,
   isWinter = false,
   teamMode = false,
+  fogOfWarEnabled = false,
+  visibleHexes = null,
 }) => {
   const DAMAGE_DISPLAY_DURATION = 3000
   const mapWidth = mapSize?.width || Math.max(6, ...hexes.map(hex => Math.abs(hex.q)))
@@ -161,6 +163,17 @@ const GameBoard = ({
     })
     return Array.from(activeMap.values())
   }, [damageEvents, now, DAMAGE_DISPLAY_DURATION])
+
+  const visibleHexSet = useMemo(() => {
+    if (!fogOfWarEnabled || !visibleHexes) return null
+    if (visibleHexes instanceof Set) return visibleHexes
+    return new Set(visibleHexes.map((hex) => `${hex.q},${hex.r}`))
+  }, [fogOfWarEnabled, visibleHexes])
+
+  const isHexVisible = useCallback((hex) => {
+    if (!fogOfWarEnabled || !visibleHexSet) return true
+    return visibleHexSet.has(`${hex.q},${hex.r}`)
+  }, [fogOfWarEnabled, visibleHexSet])
 
   const getClampedOffset = useCallback((offset) => {
     const padding = 120
@@ -576,6 +589,8 @@ const GameBoard = ({
               const strokeStyle = getHexStroke(hex)
               const isAttackable = attackableHexes.some(h => h.q === hex.q && h.r === hex.r)
               const isReachable = highlightedHexes.some(h => h.q === hex.q && h.r === hex.r)
+              const isVisible = isHexVisible(hex)
+              const highlightFilter = isReachable ? 'brightness(1.3)' : isAttackable ? 'brightness(1.2)' : 'none'
               
               return (
                 <g key={`${hex.q}-${hex.r}-${hex.s}`} data-hex-q={hex.q} data-hex-r={hex.r}>
@@ -592,7 +607,7 @@ const GameBoard = ({
                       strokeWidth: strokeStyle.strokeWidth,
                       cursor: 'pointer',
                       transition: 'all 0.15s ease',
-                      filter: isReachable ? 'brightness(1.3)' : isAttackable ? 'brightness(1.2)' : 'none',
+                      filter: isVisible ? highlightFilter : 'brightness(0.35)',
                     }}
                   >
                     {/* 1. TERRAIN IMAGE (Layer 0) */}
@@ -607,8 +622,15 @@ const GameBoard = ({
                         preserveAspectRatio="xMidYMid slice"
                         style={{ 
                           pointerEvents: 'none', 
-                          opacity: 0.8
+                          opacity: isVisible ? 0.8 : 0.2
                         }}
+                      />
+                    )}
+                    {fogOfWarEnabled && !isVisible && (
+                      <polygon
+                        points="0,-5.5 4.76,-2.75 4.76,2.75 0,5.5 -4.76,2.75 -4.76,-2.75"
+                        fill="rgba(2, 6, 23, 0.75)"
+                        style={{ pointerEvents: 'none' }}
                       />
                     )}
                   </Hexagon>

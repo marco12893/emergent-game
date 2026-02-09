@@ -1,7 +1,7 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react'
-import { UNIT_TYPES, TERRAIN_TYPES, getDeployableHexes } from '@/game/GameLogic'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
+import { UNIT_TYPES, TERRAIN_TYPES, getDeployableHexes, getVisibleHexesForPlayer, getVisibleUnitsForPlayer } from '@/game/GameLogic'
 import { areAllies, getPlayerColor, getUnitSpriteProps } from '@/game/teamUtils'
 import { DEFAULT_MAP_ID, MAPS } from '@/game/maps'
 import GameBoard from '@/components/GameBoard'
@@ -154,11 +154,37 @@ export default function HTTPMultiplayerPage() {
   const playerColor = getPlayerColor(playerID)
   const generalSprite = getUnitSpriteProps({ image: 'General' }, playerID)
   const teamMode = Boolean(gameState?.teamMode)
-  const selectedUnitForInfo = selectedUnitForInfoId
-    ? gameState?.units?.find(unit => unit.id === selectedUnitForInfoId)
-    : null
   const chatMessages = gameState?.chatMessages || []
   const shouldShowLobbySelection = forceLobbySelection || gameState?.phase === 'lobby'
+  const fogOfWarEnabled = Boolean(gameState?.fogOfWarEnabled)
+  const fogActive = fogOfWarEnabled && gameState?.phase === 'battle' && !isSpectator
+
+  const visibleHexes = useMemo(() => {
+    if (!fogActive || !gameState) return null
+    return getVisibleHexesForPlayer({
+      units: gameState.units,
+      hexes: gameState.hexes,
+      terrainMap: gameState.terrainMap,
+      playerID,
+      teamMode,
+    })
+  }, [fogActive, gameState, playerID, teamMode])
+
+  const visibleUnits = useMemo(() => {
+    if (!gameState) return []
+    if (!fogActive) return gameState.units || []
+    return getVisibleUnitsForPlayer({
+      units: gameState.units,
+      hexes: gameState.hexes,
+      terrainMap: gameState.terrainMap,
+      playerID,
+      teamMode,
+    })
+  }, [fogActive, gameState, playerID, teamMode])
+
+  const selectedUnitForInfo = selectedUnitForInfoId
+    ? visibleUnits.find(unit => unit.id === selectedUnitForInfoId)
+    : null
 
   const getChatSenderClass = (message) => {
     if (message?.playerID === '0') return 'text-blue-400'
@@ -215,11 +241,11 @@ export default function HTTPMultiplayerPage() {
 
   useEffect(() => {
     if (!selectedUnitForInfoId || !gameState?.units) return
-    const latestUnit = gameState.units.find(unit => unit.id === selectedUnitForInfoId)
+    const latestUnit = visibleUnits.find(unit => unit.id === selectedUnitForInfoId)
     if (!latestUnit || latestUnit.currentHP <= 0) {
       setSelectedUnitForInfoId(null)
     }
-  }, [gameState, selectedUnitForInfoId])
+  }, [gameState, selectedUnitForInfoId, visibleUnits])
 
   useEffect(() => {
     if (!error) return undefined
@@ -375,8 +401,18 @@ export default function HTTPMultiplayerPage() {
               }
               
               // Calculate attackable hexes
+              const isFogActive = Boolean(state.fogOfWarEnabled) && state.phase === 'battle' && playerID !== 'spectator'
+              const currentVisibleUnits = isFogActive
+                ? getVisibleUnitsForPlayer({
+                    units: state.units,
+                    hexes: state.hexes,
+                    terrainMap: state.terrainMap,
+                    playerID,
+                    teamMode,
+                  })
+                : state.units
               const attackable = []
-              for (const unit of state.units) {
+              for (const unit of currentVisibleUnits) {
                 if (unit.currentHP <= 0) continue
                 if (teamMode ? areAllies(unit.ownerID, playerID) : unit.ownerID === playerID) continue
 
@@ -443,7 +479,7 @@ export default function HTTPMultiplayerPage() {
       return
     }
 
-    const targetUnit = gameState.units.find(u => {
+    const targetUnit = visibleUnits.find(u => {
       if (u.q !== hoveredHex.q || u.r !== hoveredHex.r || u.currentHP <= 0) return false
       return teamMode ? !areAllies(u.ownerID, playerID) : u.ownerID !== playerID
     })
@@ -518,7 +554,7 @@ export default function HTTPMultiplayerPage() {
       attackDamage,
       counterDamage,
     })
-  }, [gameState, hoveredHex, isMyTurn, playerID, teamMode])
+  }, [gameState, hoveredHex, isMyTurn, playerID, teamMode, visibleUnits])
 
   const joinLobbyGame = async (gameId, requestedPlayerID, mapId, winter) => {
     if (!gameId) {
@@ -667,7 +703,7 @@ export default function HTTPMultiplayerPage() {
   const handleHexClick = (hex) => {
     if (!joined || !gameState) return
     if (isSpectator) {
-      const unitOnHex = gameState.units.find(u => u.q === hex.q && u.r === hex.r && u.currentHP > 0)
+      const unitOnHex = visibleUnits.find(u => u.q === hex.q && u.r === hex.r && u.currentHP > 0)
       if (unitOnHex) {
         if (selectedUnitForInfo && selectedUnitForInfo.id === unitOnHex.id) {
           setSelectedUnitForInfoId(null)
@@ -683,7 +719,7 @@ export default function HTTPMultiplayerPage() {
     // Check if it's the current player's turn for game actions
     if (gameState.currentPlayer !== playerID) {
       // Only allow unit info display when not player's turn
-      const unitOnHex = gameState.units.find(u => u.q === hex.q && u.r === hex.r && u.currentHP > 0)
+      const unitOnHex = visibleUnits.find(u => u.q === hex.q && u.r === hex.r && u.currentHP > 0)
       if (unitOnHex) {
         // Toggle unit info selection
         if (selectedUnitForInfo && selectedUnitForInfo.id === unitOnHex.id) {
@@ -704,7 +740,7 @@ export default function HTTPMultiplayerPage() {
     // Setup Phase: Place or Remove units
     if (phase === 'setup') {
       // Check if clicking on any unit to show info
-      const unitOnHex = gameState.units.find(u => u.q === hex.q && u.r === hex.r && u.currentHP > 0)
+      const unitOnHex = visibleUnits.find(u => u.q === hex.q && u.r === hex.r && u.currentHP > 0)
       if (unitOnHex) {
         // Toggle unit info for any unit during setup
         if (selectedUnitForInfo && selectedUnitForInfo.id === unitOnHex.id) {
@@ -752,7 +788,7 @@ export default function HTTPMultiplayerPage() {
     // Battle Phase: Select, Move, or Attack
     if (phase === 'battle') {
       // Check if clicking on own unit to select it for action
-      const unitOnHex = gameState.units.find(u => u.q === hex.q && u.r === hex.r && u.currentHP > 0)
+      const unitOnHex = visibleUnits.find(u => u.q === hex.q && u.r === hex.r && u.currentHP > 0)
       if (unitOnHex && unitOnHex.ownerID === playerID) {
         sendAction('selectUnit', { unitId: unitOnHex.id, playerID })
         // Automatically show unit info when selecting own unit
@@ -805,7 +841,7 @@ export default function HTTPMultiplayerPage() {
     }
     
     // Unit info display for any remaining clicks (when it's your turn but no action was taken)
-    const unitOnHex = gameState.units.find(u => u.q === hex.q && u.r === hex.r && u.currentHP > 0)
+    const unitOnHex = visibleUnits.find(u => u.q === hex.q && u.r === hex.r && u.currentHP > 0)
     if (unitOnHex) {
       // Toggle unit info selection
       if (selectedUnitForInfo && selectedUnitForInfo.id === unitOnHex.id) {
@@ -1054,7 +1090,7 @@ export default function HTTPMultiplayerPage() {
                             <div className="text-sm font-semibold text-white">{game.id}</div>
                             <div className="text-xs text-slate-400">{game.mapName}</div>
                             <div className="text-xs text-slate-400">
-                              {game.teamMode ? '2v2 Team Battle' : '1v1 Duel'} • {game.isWinter ? 'Winter' : 'Standard'}
+                              {game.teamMode ? '2v2 Team Battle' : '1v1 Duel'} • {game.isWinter ? 'Winter' : 'Standard'} • {game.fogOfWarEnabled ? 'Fog On' : 'Fog Off'}
                             </div>
                           </div>
                           <span className={`text-xs font-semibold px-2 py-1 rounded ${
@@ -1128,6 +1164,8 @@ export default function HTTPMultiplayerPage() {
     const teamTwoSlots = teamSlotConfig.filter(slot => slot.team === 'TEAM 2')
     const playerCount = Object.keys(lobbyPlayers).length
     const canStartMatch = playerID === lobbyLeaderId && playerCount >= 2
+    const canToggleFog = playerID === lobbyLeaderId && playerID !== 'spectator'
+    const lobbyFogEnabled = Boolean(gameState?.fogOfWarEnabled)
 
     return (
       <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white">
@@ -1208,6 +1246,29 @@ export default function HTTPMultiplayerPage() {
                   <span>Mode</span>
                   <span className="text-slate-200">{teamMode ? 'Team Battle' : 'Duel'}</span>
                 </div>
+                <div className="flex items-center justify-between rounded-lg bg-slate-800/70 px-3 py-2">
+                  <div>
+                    <div className="text-slate-200">Fog of war</div>
+                    <div className="text-[11px] text-slate-400">Shared team vision + concealment.</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => sendAction('setFogOfWar', { playerID, enabled: !lobbyFogEnabled })}
+                    disabled={!canToggleFog}
+                    className={`rounded-full px-3 py-1 text-[11px] font-semibold transition ${
+                      lobbyFogEnabled
+                        ? 'bg-emerald-500/20 text-emerald-200'
+                        : 'bg-slate-700 text-slate-200'
+                    } ${canToggleFog ? 'hover:bg-emerald-500/30' : 'opacity-60 cursor-not-allowed'}`}
+                  >
+                    {lobbyFogEnabled ? 'Enabled' : 'Disabled'}
+                  </button>
+                </div>
+                {!canToggleFog && (
+                  <div className="text-[11px] text-slate-500">
+                    Only the lobby leader can change fog settings.
+                  </div>
+                )}
               </div>
 
               {forceLobbySelection ? (
@@ -1478,7 +1539,7 @@ export default function HTTPMultiplayerPage() {
           selectedHex={null}
           highlightedHexes={highlightedHexes}
           attackableHexes={attackableHexes}
-          units={gameState?.units || []}
+          units={visibleUnits}
           hexes={gameState?.hexes || []}
           mapSize={gameState?.mapSize || null}
           terrainMap={gameState?.terrainMap || {}}
@@ -1488,6 +1549,8 @@ export default function HTTPMultiplayerPage() {
           showSpawnZones={gameState?.phase === 'setup'}
           isWinter={gameState?.isWinter}
           teamMode={gameState?.teamMode}
+          fogOfWarEnabled={fogActive}
+          visibleHexes={visibleHexes}
         />
       </div>
       

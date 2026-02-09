@@ -244,6 +244,13 @@ const hexDistance = (hex1, hex2) => {
   )
 }
 
+const getHexesInRange = (centerHex, range, allHexes) => {
+  return allHexes.filter(hex => {
+    const dist = hexDistance(centerHex, hex)
+    return dist > 0 && dist <= range
+  })
+}
+
 // Get neighboring hexes (distance 1)
 const getNeighbors = (hex, allHexes) => {
   const directions = [
@@ -326,6 +333,47 @@ const getReachableHexes = (unit, allHexes, units, terrainMap) => {
   }
   
   return reachable
+}
+
+const getUnitVisionRange = (unit, terrainMap = {}) => {
+  if (!unit) return 0
+  const terrainKey = `${sanitizeCoordinate(unit.q)},${sanitizeCoordinate(unit.r)}`
+  const terrain = terrainMap[terrainKey] || 'PLAIN'
+  if (terrain === 'HILLS') return 5
+  if (terrain === 'FOREST') return 2
+  return 3
+}
+
+const getVisibleHexesForPlayer = (units, hexes, terrainMap, playerID, teamMode) => {
+  const visible = new Set()
+  const alliedUnits = units.filter(unit => {
+    if (!unit || unit.currentHP <= 0) return false
+    if (!teamMode) return unit.ownerID === playerID
+    return areAllies(unit.ownerID, playerID)
+  })
+
+  alliedUnits.forEach(unit => {
+    visible.add(`${sanitizeCoordinate(unit.q)},${sanitizeCoordinate(unit.r)}`)
+    const range = getUnitVisionRange(unit, terrainMap)
+    getHexesInRange(unit, range, hexes).forEach(hex => {
+      visible.add(`${sanitizeCoordinate(hex.q)},${sanitizeCoordinate(hex.r)}`)
+    })
+  })
+
+  return { visible, alliedUnits }
+}
+
+const isUnitVisibleToPlayer = (unit, alliedUnits, visibleHexes, terrainMap = {}) => {
+  if (!unit || unit.currentHP <= 0) return false
+  const unitKey = `${sanitizeCoordinate(unit.q)},${sanitizeCoordinate(unit.r)}`
+  if (!visibleHexes.has(unitKey)) return false
+
+  const terrainKey = `${sanitizeCoordinate(unit.q)},${sanitizeCoordinate(unit.r)}`
+  const terrain = terrainMap[terrainKey] || 'PLAIN'
+  if (terrain !== 'FOREST') return true
+
+  const detectionRange = 2
+  return alliedUnits.some(alliedUnit => hexDistance(alliedUnit, unit) <= detectionRange)
 }
 
 // Handle OPTIONS requests for CORS preflight
@@ -421,10 +469,77 @@ export async function POST(request) {
     if (!game.leaderId && game.players?.['0']) {
       game.leaderId = '0'
     }
+    if (typeof game.fogOfWarEnabled !== 'boolean') {
+      game.fogOfWarEnabled = false
+    }
     
     // Handle different game actions
     try {
       switch (gameAction) {
+        case 'setFogOfWar': {
+          const fogSchema = {
+            playerID: { required: true, sanitize: sanitizePlayerID },
+          }
+          const fogValidation = validatePayload(payload, fogSchema)
+          if (fogValidation.error) {
+            return NextResponse.json({
+              error: 'Invalid payload for setFogOfWar: ' + fogValidation.error
+            }, {
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          const { playerID: fogPlayerID } = fogValidation.sanitized
+          if (!fogPlayerID || fogPlayerID === 'spectator' || !isValidPlayerForGame(fogPlayerID, game)) {
+            return NextResponse.json({
+              error: 'Invalid playerID for setFogOfWar'
+            }, {
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          if (game.phase !== 'lobby') {
+            return NextResponse.json({
+              error: 'Fog of war can only be updated in the lobby'
+            }, {
+              status: 409,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          if (game.leaderId && game.leaderId !== fogPlayerID) {
+            return NextResponse.json({
+              error: 'Only the lobby leader can update fog of war settings'
+            }, {
+              status: 403,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          const enabled = payload?.enabled === true || payload?.enabled === 'true'
+          game.fogOfWarEnabled = enabled
+          game.log.push(`Fog of war ${enabled ? 'enabled' : 'disabled'} in the lobby.`)
+          game.lastUpdate = Date.now()
+          break
+        }
         case 'claimSlot': {
           const claimSlotSchema = {
             playerID: { required: true, sanitize: sanitizePlayerID },
@@ -1333,6 +1448,28 @@ export async function POST(request) {
                 'Access-Control-Allow-Headers': 'Content-Type',
               }
             })
+          }
+
+          if (game.fogOfWarEnabled) {
+            const { visible, alliedUnits } = getVisibleHexesForPlayer(
+              game.units,
+              game.hexes,
+              game.terrainMap,
+              attackPlayerID,
+              teamMode
+            )
+            if (!isUnitVisibleToPlayer(target, alliedUnits, visible, game.terrainMap)) {
+              return NextResponse.json({
+                error: 'Target is not visible due to fog of war'
+              }, {
+                status: 409,
+                headers: {
+                  'Access-Control-Allow-Origin': '*',
+                  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                  'Access-Control-Allow-Headers': 'Content-Type',
+                }
+              })
+            }
           }
 
           if (!attacker.hasAttacked) {

@@ -48,6 +48,7 @@ export async function GET() {
         mapName: mapNames[game.mapId] || mapNames.MAP_1,
         isWinter: Boolean(game.isWinter),
         teamMode: Boolean(game.teamMode),
+        fogOfWarEnabled: Boolean(game.fogOfWarEnabled),
         players,
         spectators,
         playerCount,

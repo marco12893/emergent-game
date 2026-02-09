@@ -92,6 +92,82 @@ const getHexesInRange = (centerHex, range, allHexes) => {
   })
 }
 
+const getUnitVisionRange = (unit, terrainMap = {}) => {
+  if (!unit) return 0
+  const terrainKey = `${unit.q},${unit.r}`
+  const terrain = terrainMap[terrainKey] || 'PLAIN'
+  if (terrain === 'HILLS') return 5
+  if (terrain === 'FOREST') return 2
+  return 3
+}
+
+const getVisibleHexesForPlayer = ({
+  units = [],
+  hexes = [],
+  terrainMap = {},
+  playerID,
+  teamMode = false,
+}) => {
+  const visible = new Set()
+  const alliedUnits = units.filter(unit => {
+    if (!unit || unit.currentHP <= 0) return false
+    if (!teamMode) return unit.ownerID === playerID
+    return areAllies(unit.ownerID, playerID)
+  })
+
+  alliedUnits.forEach(unit => {
+    visible.add(`${unit.q},${unit.r}`)
+    const range = getUnitVisionRange(unit, terrainMap)
+    getHexesInRange(unit, range, hexes).forEach(hex => {
+      visible.add(`${hex.q},${hex.r}`)
+    })
+  })
+
+  return visible
+}
+
+const getVisibleUnitsForPlayer = ({
+  units = [],
+  hexes = [],
+  terrainMap = {},
+  playerID,
+  teamMode = false,
+}) => {
+  const visibleHexes = getVisibleHexesForPlayer({
+    units,
+    hexes,
+    terrainMap,
+    playerID,
+    teamMode,
+  })
+  const alliedUnits = units.filter(unit => {
+    if (!unit || unit.currentHP <= 0) return false
+    if (!teamMode) return unit.ownerID === playerID
+    return areAllies(unit.ownerID, playerID)
+  })
+
+  const isUnitHiddenInForest = (unit) => {
+    const terrainKey = `${unit.q},${unit.r}`
+    return (terrainMap[terrainKey] || 'PLAIN') === 'FOREST'
+  }
+
+  return units.filter(unit => {
+    if (!unit || unit.currentHP <= 0) return false
+    if (!teamMode && unit.ownerID === playerID) return true
+    if (teamMode && areAllies(unit.ownerID, playerID)) return true
+
+    const unitKey = `${unit.q},${unit.r}`
+    if (!visibleHexes.has(unitKey)) return false
+
+    if (!isUnitHiddenInForest(unit)) {
+      return true
+    }
+
+    const detectionRange = 2
+    return alliedUnits.some(alliedUnit => hexDistance(alliedUnit, unit) <= detectionRange)
+  })
+}
+
 // Get neighboring hexes (distance 1)
 const getNeighbors = (hex, allHexes) => {
   const directions = [
@@ -366,6 +442,20 @@ const battlePhase = {
       if (attacker.hasAttacked) {
         return INVALID_MOVE
       }
+
+      if (G.fogOfWarEnabled) {
+        const visibleUnits = getVisibleUnitsForPlayer({
+          units: G.units,
+          hexes: G.hexes,
+          terrainMap: G.terrainMap,
+          playerID,
+          teamMode: false,
+        })
+        const isTargetVisible = visibleUnits.some(unit => unit.id === targetId)
+        if (!isTargetVisible) {
+          return INVALID_MOVE
+        }
+      }
       
       // Check range
       const distance = hexDistance(attacker, target)
@@ -479,6 +569,7 @@ const MedievalBattleGame = {
       selectedUnitId: null,
       playersReady: { '0': false, '1': false },
       log: ['Game started! Place your units in your spawn zone.'],
+      fogOfWarEnabled: false,
     }
   },
   
@@ -530,4 +621,7 @@ module.exports = {
   isInSpawnZone,
   getReachableHexes,
   getAttackableHexes,
+  getUnitVisionRange,
+  getVisibleHexesForPlayer,
+  getVisibleUnitsForPlayer,
 }
