@@ -38,6 +38,10 @@ import {
   getHexesInRange,
   getNeighbors,
   getReachableHexes,
+  getUnitVisionRange,
+  getVisibleHexesForPlayer,
+  getVisibleUnitsForPlayer,
+  shouldEmitDamageOnRemoval,
   hexDistance,
   isHexOccupied,
   isInSpawnZone,
@@ -115,6 +119,7 @@ test('sanitizeCoordinate enforces numeric bounds', () => {
 test('sanitizeAction validates allowed action names', () => {
   assert.equal(sanitizeAction('placeUnit'), 'placeUnit')
   assert.equal(sanitizeAction('attackUnit'), 'attackUnit')
+  assert.equal(sanitizeAction('setFogOfWar'), 'setFogOfWar')
   assert.equal(sanitizeAction('invalidAction'), null)
 })
 
@@ -576,4 +581,93 @@ test('turn order playOrder skips inactive players in team mode', () => {
   game.inactivePlayers = ['2']
   const playOrder = MedievalBattleGame.turn.order.playOrder({ G: game, ctx })
   assert.deepEqual(playOrder, ['0', '1', '3'])
+})
+
+test('getUnitVisionRange adjusts for hills and forests', () => {
+  const unit = createUnit('SWORDSMAN', '0', 0, 0)
+  const hexes = makeHexGrid(3)
+  const terrainMap = makeTerrainMap(hexes, {
+    '0,0': 'PLAIN',
+    '1,0': 'FOREST',
+    '2,0': 'HILLS',
+  })
+
+  assert.equal(getUnitVisionRange(unit, terrainMap), 3)
+  assert.equal(getUnitVisionRange({ ...unit, q: 1, r: 0, s: -1 }, terrainMap), 2)
+  assert.equal(getUnitVisionRange({ ...unit, q: 2, r: 0, s: -2 }, terrainMap), 5)
+})
+
+test('getVisibleHexesForPlayer shares ally vision in team mode', () => {
+  const hexes = makeHexGrid(4)
+  const terrainMap = makeTerrainMap(hexes)
+  const units = [
+    { id: 'u1', ownerID: '0', q: 0, r: 0, s: 0, currentHP: 10 },
+    { id: 'u2', ownerID: '2', q: 2, r: 0, s: -2, currentHP: 10 },
+  ]
+
+  const visible = getVisibleHexesForPlayer({
+    units,
+    hexes,
+    terrainMap,
+    playerID: '0',
+    teamMode: true,
+  })
+
+  assert.equal(visible.has('2,0'), true)
+  assert.equal(visible.has('4,0'), true)
+})
+
+test('getVisibleUnitsForPlayer respects forest concealment', () => {
+  const hexes = makeHexGrid(4)
+  const terrainMap = makeTerrainMap(hexes, {
+    '3,0': 'FOREST',
+    '2,0': 'FOREST',
+  })
+  const units = [
+    { id: 'ally', ownerID: '0', q: 0, r: 0, s: 0, currentHP: 10 },
+    { id: 'enemyFar', ownerID: '1', q: 3, r: 0, s: -3, currentHP: 10 },
+    { id: 'enemyNear', ownerID: '1', q: 2, r: 0, s: -2, currentHP: 10 },
+  ]
+
+  const visibleUnits = getVisibleUnitsForPlayer({
+    units,
+    hexes,
+    terrainMap,
+    playerID: '0',
+    teamMode: false,
+  })
+
+  const visibleIds = visibleUnits.map(unit => unit.id)
+  assert.equal(visibleIds.includes('enemyFar'), false)
+  assert.equal(visibleIds.includes('enemyNear'), true)
+})
+
+test('getVisibleUnitsForPlayer limits visibility outside vision range', () => {
+  const hexes = makeHexGrid(5)
+  const terrainMap = makeTerrainMap(hexes, {
+    '0,0': 'PLAIN',
+  })
+  const units = [
+    { id: 'ally', ownerID: '0', q: 0, r: 0, s: 0, currentHP: 10 },
+    { id: 'enemyNear', ownerID: '1', q: 2, r: 0, s: -2, currentHP: 10 },
+    { id: 'enemyFar', ownerID: '1', q: 4, r: 0, s: -4, currentHP: 10 },
+  ]
+
+  const visibleUnits = getVisibleUnitsForPlayer({
+    units,
+    hexes,
+    terrainMap,
+    playerID: '0',
+    teamMode: false,
+  })
+
+  const visibleIds = visibleUnits.map(unit => unit.id)
+  assert.equal(visibleIds.includes('enemyNear'), true)
+  assert.equal(visibleIds.includes('enemyFar'), false)
+})
+
+test('shouldEmitDamageOnRemoval skips setup phase removals', () => {
+  assert.equal(shouldEmitDamageOnRemoval('setup'), false)
+  assert.equal(shouldEmitDamageOnRemoval('battle'), true)
+  assert.equal(shouldEmitDamageOnRemoval(null), true)
 })
