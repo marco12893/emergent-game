@@ -61,6 +61,7 @@ const GameBoard = ({
   isWinter = false,
   teamMode = false,
 }) => {
+  const DAMAGE_DISPLAY_DURATION = 3000
   const mapWidth = mapSize?.width || Math.max(6, ...hexes.map(hex => Math.abs(hex.q)))
   const mapHeight = mapSize?.height || Math.max(4, ...hexes.map(hex => Math.abs(hex.r)))
   const HEX_SIZE = 5.5 
@@ -81,6 +82,85 @@ const GameBoard = ({
   const suppressClickRef = useRef(false)
   const suppressClickTimeoutRef = useRef(null)
   const containerRef = useRef(null)
+  const previousUnitsRef = useRef(new Map())
+  const [damageEvents, setDamageEvents] = useState([])
+  const [now, setNow] = useState(Date.now())
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setNow(Date.now())
+    }, 100)
+    return () => clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    if (damageEvents.length === 0) return
+    const timeout = setTimeout(() => {
+      setDamageEvents((current) =>
+        current.filter((event) => Date.now() - event.createdAt < DAMAGE_DISPLAY_DURATION)
+      )
+    }, 500)
+    return () => clearTimeout(timeout)
+  }, [damageEvents])
+
+  useEffect(() => {
+    const previousUnits = previousUnitsRef.current
+    const nextUnits = new Map(units.map(unit => [unit.id, unit]))
+
+    if (previousUnits.size === 0) {
+      previousUnitsRef.current = nextUnits
+      return
+    }
+
+    const newEvents = []
+    const createdAt = Date.now()
+
+    previousUnits.forEach((prevUnit, unitId) => {
+      const nextUnit = nextUnits.get(unitId)
+      if (nextUnit) {
+        const damageTaken = prevUnit.currentHP - nextUnit.currentHP
+        if (damageTaken > 0) {
+          newEvents.push({
+            id: `${unitId}-${createdAt}-${Math.random()}`,
+            unitId,
+            amount: damageTaken,
+            createdAt,
+            q: nextUnit.q,
+            r: nextUnit.r,
+            s: nextUnit.s,
+          })
+        }
+      } else if (prevUnit.currentHP > 0) {
+        newEvents.push({
+          id: `${unitId}-${createdAt}-${Math.random()}`,
+          unitId,
+          amount: prevUnit.currentHP,
+          createdAt,
+          q: prevUnit.q,
+          r: prevUnit.r,
+          s: prevUnit.s,
+        })
+      }
+    })
+
+    if (newEvents.length > 0) {
+      setDamageEvents((current) => [...current, ...newEvents])
+    }
+
+    previousUnitsRef.current = nextUnits
+  }, [units])
+
+  const activeDamageEvents = useMemo(() => {
+    const activeMap = new Map()
+    damageEvents.forEach((event) => {
+      if (now - event.createdAt >= DAMAGE_DISPLAY_DURATION) return
+      const existing = activeMap.get(event.unitId)
+      if (!existing || existing.createdAt < event.createdAt) {
+        activeMap.set(event.unitId, event)
+      }
+    })
+    return Array.from(activeMap.values())
+  }, [damageEvents, now, DAMAGE_DISPLAY_DURATION])
 
   const getClampedOffset = useCallback((offset) => {
     const padding = 120
@@ -628,6 +708,36 @@ const GameBoard = ({
                         rx="0.3" 
                       />
                     </g>
+                  </Hexagon>
+                </g>
+              )
+            })}
+
+            {activeDamageEvents.map((event) => {
+              const elapsed = now - event.createdAt
+              const opacity = Math.max(0, 1 - elapsed / DAMAGE_DISPLAY_DURATION)
+              return (
+                <g key={`damage-${event.id}`} style={{ pointerEvents: 'none' }}>
+                  <Hexagon
+                    q={event.q}
+                    r={event.r}
+                    s={event.s}
+                    cellStyle={{
+                      fill: 'none',
+                      stroke: 'none',
+                    }}
+                  >
+                    <text
+                      x="0"
+                      y="-9.5"
+                      textAnchor="middle"
+                      fontSize="3"
+                      fill="#FCA5A5"
+                      opacity={opacity}
+                      style={{ pointerEvents: 'none', fontWeight: '700' }}
+                    >
+                      -{event.amount}
+                    </text>
                   </Hexagon>
                 </g>
               )
