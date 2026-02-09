@@ -118,6 +118,7 @@ test('sanitizeCoordinate enforces numeric bounds', () => {
 test('sanitizeAction validates allowed action names', () => {
   assert.equal(sanitizeAction('placeUnit'), 'placeUnit')
   assert.equal(sanitizeAction('attackUnit'), 'attackUnit')
+  assert.equal(sanitizeAction('setFogOfWar'), 'setFogOfWar')
   assert.equal(sanitizeAction('invalidAction'), null)
 })
 
