@@ -43,6 +43,7 @@ import {
   isInSpawnZone,
   getUnitAtHex,
   MedievalBattleGame,
+  TERRAIN_TYPES,
 } from '../game/GameLogic.js'
 
 const makeHexGrid = (radius) => {
@@ -481,4 +482,98 @@ test('battle phase attackUnit enforces range and ownership', () => {
   moves.attackUnit({ G: game, ctx, playerID: '0' }, attacker.id, target.id)
   assert.equal(attacker.currentHP, attacker.maxHP)
   assert.equal(target.currentHP, target.maxHP)
+})
+
+test('battle phase attackUnit applies terrain defense bonus', () => {
+  const ctx = { numPlayers: 2, playOrder: ['0', '1'], phase: 'battle' }
+  const game = MedievalBattleGame.setup({ ctx, setupData: {} })
+  game.phase = 'battle'
+  const attacker = createUnit('SWORDSMAN', '0', 0, 0)
+  const target = createUnit('SWORDSMAN', '1', 1, 0)
+  const targetKey = `${target.q},${target.r}`
+  game.terrainMap[targetKey] = 'FOREST'
+  game.units.push(attacker, target)
+  const moves = MedievalBattleGame.phases.battle.moves
+  moves.attackUnit({ G: game, ctx, playerID: '0' }, attacker.id, target.id)
+  const expectedDamage = Math.max(
+    1,
+    attacker.attackPower - TERRAIN_TYPES.FOREST.defenseBonus
+  )
+  assert.equal(target.currentHP, target.maxHP - expectedDamage)
+})
+
+test('battle phase attackUnit applies hill bonus for archers', () => {
+  const ctx = { numPlayers: 2, playOrder: ['0', '1'], phase: 'battle' }
+  const game = MedievalBattleGame.setup({ ctx, setupData: {} })
+  game.phase = 'battle'
+  const attacker = createUnit('ARCHER', '0', 0, 0)
+  const target = createUnit('SWORDSMAN', '1', 1, 0)
+  game.terrainMap['0,0'] = 'HILLS'
+  game.units.push(attacker, target)
+  const moves = MedievalBattleGame.phases.battle.moves
+  moves.attackUnit({ G: game, ctx, playerID: '0' }, attacker.id, target.id)
+  const expectedDamage = Math.max(
+    1,
+    attacker.attackPower + 5 - TERRAIN_TYPES.PLAIN.defenseBonus
+  )
+  assert.equal(target.currentHP, target.maxHP - expectedDamage)
+})
+
+test('battle phase endTurn resets unit actions', () => {
+  const ctx = { numPlayers: 2, playOrder: ['0', '1'], phase: 'battle' }
+  const game = MedievalBattleGame.setup({ ctx, setupData: {} })
+  game.phase = 'battle'
+  const unit = createUnit('SWORDSMAN', '0', 0, 0)
+  unit.hasMoved = true
+  unit.hasAttacked = true
+  unit.movePoints = 0
+  game.units.push(unit)
+  const moves = MedievalBattleGame.phases.battle.moves
+  moves.endTurn({ G: game, ctx, playerID: '0', events: { endTurn() {} } })
+  assert.equal(unit.hasMoved, false)
+  assert.equal(unit.hasAttacked, false)
+  assert.equal(unit.movePoints, unit.maxMovePoints)
+  assert.equal(unit.lastMove, null)
+})
+
+test('setup phase readyForBattle marks players ready', () => {
+  const ctx = { numPlayers: 2, playOrder: ['0', '1'], phase: 'setup' }
+  const game = MedievalBattleGame.setup({ ctx, setupData: {} })
+  const moves = MedievalBattleGame.phases.setup.moves
+  moves.readyForBattle({
+    G: game,
+    ctx,
+    playerID: '0',
+    events: { endTurn() {} },
+  })
+  assert.equal(game.playersReady['0'], true)
+})
+
+test('setup phase endIf requires active players to be ready', () => {
+  const ctx = { numPlayers: 2, playOrder: ['0', '1'], phase: 'setup' }
+  const game = MedievalBattleGame.setup({ ctx, setupData: {} })
+  const moves = MedievalBattleGame.phases.setup.moves
+  const mapWidth = game.mapSize.width
+  const leftSpawnQ = -mapWidth + 2
+  const rightSpawnQ = mapWidth - 2
+  moves.placeUnit({ G: game, ctx, playerID: '0' }, 'SWORDSMAN', leftSpawnQ, 0)
+  moves.placeUnit({ G: game, ctx, playerID: '1' }, 'SWORDSMAN', rightSpawnQ, 0)
+  assert.equal(
+    MedievalBattleGame.phases.setup.endIf({ G: game, ctx }),
+    false
+  )
+  game.playersReady['0'] = true
+  game.playersReady['1'] = true
+  assert.equal(
+    MedievalBattleGame.phases.setup.endIf({ G: game, ctx }),
+    true
+  )
+})
+
+test('turn order playOrder skips inactive players in team mode', () => {
+  const ctx = { numPlayers: 4, playOrder: ['0', '1', '2', '3'] }
+  const game = MedievalBattleGame.setup({ ctx, setupData: { teamMode: true } })
+  game.inactivePlayers = ['2']
+  const playOrder = MedievalBattleGame.turn.order.playOrder({ G: game, ctx })
+  assert.deepEqual(playOrder, ['0', '1', '3'])
 })
