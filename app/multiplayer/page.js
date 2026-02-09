@@ -84,7 +84,7 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
   const isMyTurn = playerID === currentPlayer
   const teamMode = G.teamMode
   const playerColor = getPlayerColor(playerID)
-  const fogActive = Boolean(G.fogOfWarEnabled) && phase === 'battle'
+  const fogActive = Boolean(G.fogOfWarEnabled) && phase !== 'lobby'
 
   const visibleHexes = useMemo(() => {
     if (!fogActive) return null
@@ -433,6 +433,7 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
                 highlightedHexes={highlightedHexes}
                 attackableHexes={attackableHexes}
                 units={visibleUnits}
+                allUnitsForDamageEvents={G.units}
                 hexes={G.hexes || []}
                 mapSize={G.mapSize || null}
                 terrainMap={G.terrainMap}

@@ -51,6 +51,7 @@ const GameBoard = ({
   highlightedHexes = [], 
   attackableHexes = [],
   units = [],
+  allUnitsForDamageEvents = null,
   hexes = [],
   mapSize = null,
   terrainMap = {},
@@ -107,7 +108,8 @@ const GameBoard = ({
 
   useEffect(() => {
     const previousUnits = previousUnitsRef.current
-    const nextUnits = new Map(units.map(unit => [unit.id, unit]))
+    const damageUnits = allUnitsForDamageEvents || units
+    const nextUnits = new Map(damageUnits.map(unit => [unit.id, unit]))
 
     if (previousUnits.size === 0) {
       previousUnitsRef.current = nextUnits
@@ -150,7 +152,7 @@ const GameBoard = ({
     }
 
     previousUnitsRef.current = nextUnits
-  }, [units])
+  }, [allUnitsForDamageEvents, units])
 
   const activeDamageEvents = useMemo(() => {
     const activeMap = new Map()
@@ -607,7 +609,7 @@ const GameBoard = ({
                       strokeWidth: strokeStyle.strokeWidth,
                       cursor: 'pointer',
                       transition: 'all 0.15s ease',
-                      filter: isVisible ? highlightFilter : 'brightness(0.35)',
+                      filter: isVisible ? highlightFilter : 'brightness(0.7)',
                     }}
                   >
                     {/* 1. TERRAIN IMAGE (Layer 0) */}
@@ -622,14 +624,14 @@ const GameBoard = ({
                         preserveAspectRatio="xMidYMid slice"
                         style={{ 
                           pointerEvents: 'none', 
-                          opacity: isVisible ? 0.8 : 0.2
+                          opacity: isVisible ? 0.8 : 0.45
                         }}
                       />
                     )}
                     {fogOfWarEnabled && !isVisible && (
                       <polygon
                         points="0,-5.5 4.76,-2.75 4.76,2.75 0,5.5 -4.76,2.75 -4.76,-2.75"
-                        fill="rgba(2, 6, 23, 0.75)"
+                        fill="rgba(2, 6, 23, 0.35)"
                         style={{ pointerEvents: 'none' }}
                       />
                     )}

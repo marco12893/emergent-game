@@ -101,7 +101,7 @@ export default function HTTPMultiplayerPage() {
   const isMyTurn = gameState?.currentPlayer === playerID
   const teamMode = gameState?.teamMode ?? false
   const fogOfWarEnabled = Boolean(gameState?.fogOfWarEnabled)
-  const fogActive = fogOfWarEnabled && gameState?.phase === 'battle' && playerID !== 'spectator'
+  const fogActive = fogOfWarEnabled && gameState?.phase !== 'lobby' && playerID !== 'spectator'
 
   const visibleHexes = useMemo(() => {
     if (!fogActive || !gameState) return null
@@ -1129,6 +1129,7 @@ export default function HTTPMultiplayerPage() {
                 highlightedHexes={highlightedHexes}
                 attackableHexes={attackableHexes}
                 units={visibleUnits}
+                allUnitsForDamageEvents={gameState?.units || []}
                 hexes={gameState?.hexes || []}
                 mapSize={gameState?.mapSize || null}
                 terrainMap={gameState?.terrainMap || {}}

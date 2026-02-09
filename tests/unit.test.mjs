@@ -640,3 +640,27 @@ test('getVisibleUnitsForPlayer respects forest concealment', () => {
   assert.equal(visibleIds.includes('enemyFar'), false)
   assert.equal(visibleIds.includes('enemyNear'), true)
 })
+
+test('getVisibleUnitsForPlayer limits visibility outside vision range', () => {
+  const hexes = makeHexGrid(5)
+  const terrainMap = makeTerrainMap(hexes, {
+    '0,0': 'PLAIN',
+  })
+  const units = [
+    { id: 'ally', ownerID: '0', q: 0, r: 0, s: 0, currentHP: 10 },
+    { id: 'enemyNear', ownerID: '1', q: 2, r: 0, s: -2, currentHP: 10 },
+    { id: 'enemyFar', ownerID: '1', q: 4, r: 0, s: -4, currentHP: 10 },
+  ]
+
+  const visibleUnits = getVisibleUnitsForPlayer({
+    units,
+    hexes,
+    terrainMap,
+    playerID: '0',
+    teamMode: false,
+  })
+
+  const visibleIds = visibleUnits.map(unit => unit.id)
+  assert.equal(visibleIds.includes('enemyNear'), true)
+  assert.equal(visibleIds.includes('enemyFar'), false)
+})

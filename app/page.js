@@ -157,7 +157,7 @@ export default function HTTPMultiplayerPage() {
   const chatMessages = gameState?.chatMessages || []
   const shouldShowLobbySelection = forceLobbySelection || gameState?.phase === 'lobby'
   const fogOfWarEnabled = Boolean(gameState?.fogOfWarEnabled)
-  const fogActive = fogOfWarEnabled && gameState?.phase === 'battle' && !isSpectator
+  const fogActive = fogOfWarEnabled && gameState?.phase !== 'lobby' && !isSpectator
 
   const visibleHexes = useMemo(() => {
     if (!fogActive || !gameState) return null
@@ -1540,6 +1540,7 @@ export default function HTTPMultiplayerPage() {
           highlightedHexes={highlightedHexes}
           attackableHexes={attackableHexes}
           units={visibleUnits}
+          allUnitsForDamageEvents={gameState?.units || []}
           hexes={gameState?.hexes || []}
           mapSize={gameState?.mapSize || null}
           terrainMap={gameState?.terrainMap || {}}
