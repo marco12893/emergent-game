@@ -141,6 +141,18 @@ const ACTION_CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type',
 }
 
+const ensurePlayersTurn = (playerID, game, actionLabel) => {
+  if (playerID !== game.currentPlayer) {
+    return NextResponse.json(
+      {
+        error: `Not Player ${playerID}'s turn to ${actionLabel}. Current player is ${game.currentPlayer}.`
+      },
+      { status: 409, headers: ACTION_CORS_HEADERS }
+    )
+  }
+  return null
+}
+
 // ============================================
 // HELPER FUNCTIONS
 // ============================================
@@ -955,8 +967,25 @@ export async function POST(request) {
               }
             })
           }
+
+          const moveTurnError = ensurePlayersTurn(movePlayerID, game, 'move')
+          if (moveTurnError) {
+            return moveTurnError
+          }
           
           const movingUnit = game.units.find(u => u.id === unitId)
+          if (movingUnit && movingUnit.ownerID !== movePlayerID) {
+            return NextResponse.json({ 
+              error: 'Cannot move a unit you do not own' 
+            }, { 
+              status: 403,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
           if (movingUnit && movingUnit.movePoints > 0) {
             // Catapult move-or-attack restriction
             if (movingUnit.type === 'CATAPULT' && !movingUnit.isTransport && movingUnit.hasMovedOrAttacked) {
@@ -1157,6 +1186,11 @@ export async function POST(request) {
               }
             })
           }
+
+          const undoTurnError = ensurePlayersTurn(undoPlayerID, game, 'undo a move')
+          if (undoTurnError) {
+            return undoTurnError
+          }
           const undoUnit = game.units.find(u => u.id === undoUnitId)
 
           if (!undoUnit || undoUnit.ownerID !== undoPlayerID) {
@@ -1211,6 +1245,19 @@ export async function POST(request) {
             })
           }
 
+          if (!payload?.playerID) {
+            return NextResponse.json({ 
+              error: 'Missing required field for attackUnit: playerID' 
+            }, { 
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
           const attackPlayerID = sanitizePlayerID(payload?.playerID)
           if (attackPlayerID === 'spectator') {
             return spectatorActionResponse()
@@ -1239,6 +1286,11 @@ export async function POST(request) {
                 'Access-Control-Allow-Headers': 'Content-Type',
               }
             })
+          }
+
+          const attackTurnError = ensurePlayersTurn(attackPlayerID, game, 'attack')
+          if (attackTurnError) {
+            return attackTurnError
           }
           
           const attacker = game.units.find(u => u.id === payload.attackerId)
@@ -1514,6 +1566,11 @@ export async function POST(request) {
                 'Access-Control-Allow-Headers': 'Content-Type',
               }
             })
+          }
+
+          const endTurnError = ensurePlayersTurn(endTurnPlayerID, game, 'end their turn')
+          if (endTurnError) {
+            return endTurnError
           }
           
           const playOrder = getGamePlayOrder(game)
