@@ -753,16 +753,27 @@ const battlePhase = {
       // Check if target is killed
       if (target.currentHP <= 0) {
         G.log.push(`${target.name} was defeated!`)
+        G.units = G.units.filter(u => u.id !== target.id)
       }
       
       // Counter-attack for melee (if target is still alive and attacker is in melee range)
       if (target.currentHP > 0 && attacker.range === 1 && distance === 1) {
-        const counterDamage = Math.max(1, Math.floor(target.attackPower * 0.5))
+        if (target.type === 'CATAPULT' && !target.isTransport) {
+          G.log.push(`${target.name} cannot counter-attack (siege weapon)!`)
+          return
+        }
+
+        let counterBase = target.attackPower * 0.5
+        if (target.type === 'ARCHER') {
+          counterBase *= 0.5
+        }
+        const counterDamage = Math.max(1, Math.floor(counterBase))
         attacker.currentHP -= counterDamage
         G.log.push(`${target.name} counter-attacked for ${counterDamage} damage!`)
         
         if (attacker.currentHP <= 0) {
           G.log.push(`${attacker.name} was defeated!`)
+          G.units = G.units.filter(u => u.id !== attacker.id)
         }
       }
     },

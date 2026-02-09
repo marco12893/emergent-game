@@ -180,7 +180,7 @@ const GameBoard = ({
   }, [fogOfWarEnabled, visibleHexSet])
 
   const getClampedOffset = useCallback((offset) => {
-    const padding = 120
+    const padding = 40
     const baseX = (mapWidth + 2) * HEX_SIZE * 3
     const baseY = (mapHeight + 2) * HEX_SIZE * 3
     const maxX = baseX * zoom + padding

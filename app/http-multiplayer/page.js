@@ -335,6 +335,12 @@ export default function HTTPMultiplayerPage() {
   }, [gameState, isMyTurn, playerID, selectedUnitType, teamMode])
 
   useEffect(() => {
+    if (!gameState || gameState.phase === 'setup') return
+    setHighlightedHexes([])
+    setAttackableHexes([])
+  }, [gameState?.phase])
+
+  useEffect(() => {
     if (!gameState || !hoveredHex || gameState.phase !== 'battle') {
       setDamagePreview(null)
       return
@@ -663,8 +669,8 @@ export default function HTTPMultiplayerPage() {
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-300/80">Medieval Tactical Battle</p>
               <h1 className="text-3xl font-bold text-amber-300 md:text-4xl">Pre-Game Lobby</h1>
               <p className="mt-2 max-w-2xl text-sm text-slate-300">
-                Set the battlefield, join as a player or spectator, and jump into a duel. Player slots are assigned
-                automatically when you enter.
+                Set the battlefield, join as a player or spectator, and jump into a duel. Pick any open slot once you
+                enter the lobby.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">

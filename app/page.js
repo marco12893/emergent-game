@@ -465,6 +465,12 @@ export default function HTTPMultiplayerPage() {
   }, [gameState, isMyTurn, playerID, selectedUnitType, teamMode])
 
   useEffect(() => {
+    if (!gameState || gameState.phase === 'setup') return
+    setHighlightedHexes([])
+    setAttackableHexes([])
+  }, [gameState?.phase])
+
+  useEffect(() => {
     if (!gameState || !hoveredHex || gameState.phase !== 'battle' || !isMyTurn) {
       setDamagePreview(null)
       return
