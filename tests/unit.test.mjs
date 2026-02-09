@@ -723,7 +723,7 @@ test('archers deal reduced counter-attack damage in melee', () => {
     target.id
   )
 
-  assert.equal(attacker.currentHP, attacker.maxHP - 5)
+  assert.equal(attacker.currentHP, attacker.maxHP - 13)
 })
 
 test('catapults do not counter-attack in melee', () => {
@@ -764,7 +764,7 @@ test('archers and catapults gain hill attack bonus', () => {
     archer.id,
     archerTarget.id
   )
-  assert.equal(archerTarget.currentHP, archerTarget.maxHP - 25)
+  assert.equal(archerTarget.currentHP, archerTarget.maxHP - 35)
 
   const catapult = createUnit('CATAPULT', '0', 0, 0)
   const catapultTarget = createUnit('SWORDSMAN', '1', 1, 0)

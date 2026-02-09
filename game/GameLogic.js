@@ -22,20 +22,20 @@ export const UNIT_TYPES = {
     name: 'Archer',
     image: 'archer',
     maxHP: 60,
-    attackPower: 20,
+    attackPower: 30,
     movePoints: 2,
     range: 2, // Ranged attack
-    description: 'Ranged unit that can attack from distance without counter-attack.',
+    description: 'Ranged unit with extended range.',
   },
   KNIGHT: {
     type: 'KNIGHT',
     name: 'Knight',
     image: 'knight',
     maxHP: 150,
-    attackPower: 35,
+    attackPower: 30,
     movePoints: 3,
     range: 1, // Melee only
-    description: 'Fast, powerful cavalry unit with high HP.',
+    description: 'Heavy cavalry with high HP and movement.',
   },
   MILITIA: {
     type: 'MILITIA',
@@ -188,6 +188,20 @@ const restoreFromTransport = (unit, { resetMovePoints } = {}) => {
   }
 }
 
+const getDamageMultiplier = (currentHP, maxHP) => {
+  const hpPercentage = maxHP > 0 ? currentHP / maxHP : 0
+  if (hpPercentage > 0.75) {
+    return 1.0
+  }
+  if (hpPercentage > 0.5) {
+    return 0.85
+  }
+  if (hpPercentage > 0.25) {
+    return 0.7
+  }
+  return 0.5
+}
+
 // Create a new unit instance
 export const createUnit = (unitType, ownerID, q, r) => {
   const template = UNIT_TYPES[unitType]
@@ -211,6 +225,7 @@ export const createUnit = (unitType, ownerID, q, r) => {
     s: -q - r,
     hasMoved: false,
     hasAttacked: false,
+    hasMovedOrAttacked: false,
     lastMove: null,
   }
 }
@@ -491,12 +506,6 @@ const setupPhase = {
         return INVALID_MOVE
       }
       
-      // Check unit limit (5 units per player)
-      const playerUnits = G.units.filter(u => u.ownerID === playerID)
-      if (playerUnits.length >= 5) {
-        return INVALID_MOVE
-      }
-      
       // Create and place the unit
       const newUnit = createUnit(unitType, playerID, q, r)
       if (terrainData.waterOnly && !newUnit.isNaval) {
@@ -568,6 +577,10 @@ const battlePhase = {
         return INVALID_MOVE
       }
       
+      if (unit.type === 'CATAPULT' && !unit.isTransport && unit.hasMovedOrAttacked) {
+        return INVALID_MOVE
+      }
+
       if (unit.hasMoved) {
         return INVALID_MOVE
       }
@@ -643,6 +656,7 @@ const battlePhase = {
         s: unit.s,
         movePoints: unit.movePoints,
         hasMoved: unit.hasMoved,
+        hasMovedOrAttacked: unit.hasMovedOrAttacked,
       }
 
       // Move the unit
@@ -666,6 +680,10 @@ const battlePhase = {
       } else {
         unit.hasMoved = unit.movePoints <= 0 // Mark as moved if no movement points left
       }
+
+      if (unit.type === 'CATAPULT' && !unit.isTransport) {
+        unit.hasMovedOrAttacked = true
+      }
       
       G.log.push(`Player ${playerID}'s ${unit.name} moved from (${oldQ}, ${oldR}) to (${targetQ}, ${targetR})`)
     },
@@ -685,6 +703,7 @@ const battlePhase = {
       unit.s = previous.s
       unit.movePoints = previous.movePoints
       unit.hasMoved = previous.hasMoved
+      unit.hasMovedOrAttacked = previous.hasMovedOrAttacked
       unit.lastMove = null
 
       G.log.push(`Player ${playerID}'s ${unit.name} undid their move.`)
@@ -714,6 +733,10 @@ const battlePhase = {
         return INVALID_MOVE
       }
 
+      if (attacker.type === 'CATAPULT' && !attacker.isTransport && attacker.hasMovedOrAttacked) {
+        return INVALID_MOVE
+      }
+
       if (G.fogOfWarEnabled) {
         const visibleUnits = getVisibleUnitsForPlayer({
           units: G.units,
@@ -734,48 +757,84 @@ const battlePhase = {
         return INVALID_MOVE
       }
       
-      // Calculate damage (with terrain defense bonus)
+      // Calculate damage (with terrain defense bonus and wound penalty)
       const targetHexKey = `${target.q},${target.r}`
       const terrain = G.terrainMap[targetHexKey] || 'PLAIN'
-      const defenseBonus = TERRAIN_TYPES[terrain].defenseBonus
+      const defenseBonus = TERRAIN_TYPES[terrain].defenseBonus || 0
       const attackerTerrain = G.terrainMap[`${attacker.q},${attacker.r}`] || 'PLAIN'
       const hillBonus = attackerTerrain === 'HILLS' && ['ARCHER', 'CATAPULT'].includes(attacker.type)
         ? 5
         : 0
+      const baseDamage = attacker.attackPower + hillBonus
+      const damageMultiplier = getDamageMultiplier(attacker.currentHP, attacker.maxHP)
+      const reducedDamage = Math.round(baseDamage * damageMultiplier)
+      const damage = Math.max(1, reducedDamage - defenseBonus)
 
-      const damage = Math.max(1, attacker.attackPower + hillBonus - defenseBonus)
       target.currentHP -= damage
       attacker.hasAttacked = true
       attacker.lastMove = null
-      
-      G.log.push(`Player ${playerID}'s ${attacker.name} hit ${target.name} for ${damage} damage!`)
-      
-      // Check if target is killed
-      if (target.currentHP <= 0) {
-        G.log.push(`${target.name} was defeated!`)
+
+      if (attacker.type === 'CATAPULT' && !attacker.isTransport) {
+        attacker.hasMovedOrAttacked = true
       }
       
-      // Counter-attack for melee (if target is still alive and attacker is in melee range)
-      if (target.currentHP > 0 && attacker.range === 1 && distance === 1) {
-        const counterDamage = Math.max(1, Math.floor(target.attackPower * 0.5))
-        attacker.currentHP -= counterDamage
-        G.log.push(`${target.name} counter-attacked for ${counterDamage} damage!`)
-        
-        if (attacker.currentHP <= 0) {
-          G.log.push(`${attacker.name} was defeated!`)
+      G.log.push(
+        `Player ${playerID}'s ${attacker.name} hit ${target.name} for ${damage} damage` +
+        `${damageMultiplier < 1.0 ? ` (reduced to ${Math.round(damageMultiplier * 100)}% due to wounds)` : ''}` +
+        `${defenseBonus > 0 ? ` (terrain defense +${defenseBonus})` : ''}!`
+      )
+      
+      // Counter-attack logic (if target survives and is in range)
+      if (target.currentHP > 0) {
+        if (distance <= target.range) {
+          const attackerTerrainKey = `${attacker.q},${attacker.r}`
+          const attackerTerrainData = TERRAIN_TYPES[G.terrainMap[attackerTerrainKey] || 'PLAIN']
+          const attackerDefenseBonus = attackerTerrainData.defenseBonus || 0
+          const targetDamageMultiplier = getDamageMultiplier(target.currentHP, target.maxHP)
+          const targetBaseDamage = target.attackPower
+
+          if (target.type === 'CATAPULT' && !target.isTransport) {
+            G.log.push(`${target.name} cannot counter-attack (siege weapon)!`)
+          } else {
+            let meleePenaltyMultiplier = 1.0
+            if (target.type === 'ARCHER' && distance === 1) {
+              meleePenaltyMultiplier = 0.5
+            }
+
+            const targetReducedDamage = Math.round(
+              targetBaseDamage * targetDamageMultiplier * meleePenaltyMultiplier
+            )
+            const counterDamage = Math.max(1, targetReducedDamage - attackerDefenseBonus)
+            attacker.currentHP -= counterDamage
+            G.log.push(
+              `${target.name} counter-attacked for ${counterDamage} damage` +
+              `${targetDamageMultiplier < 1.0 ? ` (reduced to ${Math.round(targetDamageMultiplier * 100)}% due to wounds)` : ''}` +
+              `${meleePenaltyMultiplier < 1.0 ? ' (melee penalty -50%)' : ''}` +
+              `${attackerDefenseBonus > 0 ? ` (terrain defense +${attackerDefenseBonus})` : ''}!`
+            )
+
+            if (attacker.currentHP <= 0) {
+              G.units = G.units.filter(u => u.id !== attacker.id)
+              G.log.push(`${attacker.name} was defeated by counter-attack!`)
+            }
+          }
         }
+      }
+
+      if (target.currentHP <= 0) {
+        G.units = G.units.filter(u => u.id !== target.id)
+        G.log.push(`${target.name} was defeated!`)
       }
     },
     
     endTurn: ({ G, ctx, events, playerID }) => {
-      // Reset unit action flags for current player
+      // Reset unit action flags for all units
       G.units.forEach(unit => {
-        if (unit.ownerID === playerID) {
-          unit.hasMoved = false
-          unit.hasAttacked = false
-          unit.movePoints = unit.maxMovePoints
-          unit.lastMove = null
-        }
+        unit.hasMoved = false
+        unit.hasAttacked = false
+        unit.movePoints = unit.maxMovePoints
+        unit.hasMovedOrAttacked = false
+        unit.lastMove = null
       })
       
       G.selectedUnitId = null
