@@ -437,6 +437,7 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
                 hexes={G.hexes || []}
                 mapSize={G.mapSize || null}
                 terrainMap={G.terrainMap}
+                phase={G.phase || null}
                 selectedUnitId={G.selectedUnitId}
                 currentPlayerID={playerID}
                 damagePreview={damagePreview}

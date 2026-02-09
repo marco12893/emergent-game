@@ -3,6 +3,7 @@
 import React, { useMemo, useCallback, useState, useRef, useEffect } from 'react'
 import { HexGrid, Layout, Hexagon } from 'react-hexgrid'
 import { getUnitSpriteProps } from '@/game/teamUtils'
+import { shouldEmitDamageOnRemoval } from '@/game/GameLogic'
 
 // Terrain types with their properties
 const TERRAIN_TYPES = {
@@ -55,6 +56,7 @@ const GameBoard = ({
   hexes = [],
   mapSize = null,
   terrainMap = {},
+  phase = null,
   selectedUnitId = null,
   currentPlayerID = '0',
   damagePreview = null,
@@ -134,7 +136,7 @@ const GameBoard = ({
             s: nextUnit.s,
           })
         }
-      } else if (prevUnit.currentHP > 0) {
+      } else if (prevUnit.currentHP > 0 && shouldEmitDamageOnRemoval(phase)) {
         newEvents.push({
           id: `${unitId}-${createdAt}-${Math.random()}`,
           unitId,

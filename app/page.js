@@ -1544,6 +1544,7 @@ export default function HTTPMultiplayerPage() {
           hexes={gameState?.hexes || []}
           mapSize={gameState?.mapSize || null}
           terrainMap={gameState?.terrainMap || {}}
+          phase={gameState?.phase || null}
           selectedUnitId={gameState?.selectedUnitId || null}
           currentPlayerID={playerID}
           damagePreview={damagePreview}

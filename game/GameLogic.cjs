@@ -168,6 +168,8 @@ const getVisibleUnitsForPlayer = ({
   })
 }
 
+const shouldEmitDamageOnRemoval = (phase) => phase !== 'setup'
+
 // Get neighboring hexes (distance 1)
 const getNeighbors = (hex, allHexes) => {
   const directions = [
@@ -624,4 +626,5 @@ module.exports = {
   getUnitVisionRange,
   getVisibleHexesForPlayer,
   getVisibleUnitsForPlayer,
+  shouldEmitDamageOnRemoval,
 }

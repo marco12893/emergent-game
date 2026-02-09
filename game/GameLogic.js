@@ -308,6 +308,8 @@ export const getVisibleUnitsForPlayer = ({
   })
 }
 
+export const shouldEmitDamageOnRemoval = (phase) => phase !== 'setup'
+
 // Get neighboring hexes (distance 1)
 export const getNeighbors = (hex, allHexes) => {
   const directions = [

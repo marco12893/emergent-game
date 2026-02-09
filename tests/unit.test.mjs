@@ -41,6 +41,7 @@ import {
   getUnitVisionRange,
   getVisibleHexesForPlayer,
   getVisibleUnitsForPlayer,
+  shouldEmitDamageOnRemoval,
   hexDistance,
   isHexOccupied,
   isInSpawnZone,
@@ -663,4 +664,10 @@ test('getVisibleUnitsForPlayer limits visibility outside vision range', () => {
   const visibleIds = visibleUnits.map(unit => unit.id)
   assert.equal(visibleIds.includes('enemyNear'), true)
   assert.equal(visibleIds.includes('enemyFar'), false)
+})
+
+test('shouldEmitDamageOnRemoval skips setup phase removals', () => {
+  assert.equal(shouldEmitDamageOnRemoval('setup'), false)
+  assert.equal(shouldEmitDamageOnRemoval('battle'), true)
+  assert.equal(shouldEmitDamageOnRemoval(null), true)
 })
