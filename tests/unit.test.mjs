@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { INVALID_MOVE } from 'boardgame.io/dist/cjs/core.js'
 import { cn } from '../lib/utils.js'
 import {
   sanitizeAction,
@@ -79,10 +80,11 @@ test('lib/utils cn merges class names and trims falsy values', () => {
   assert.equal(cn('p-2', false && 'hidden', 'p-4'), 'p-4')
 })
 
-test('sanitizeGameId strips invalid characters and limits length', () => {
-  assert.equal(sanitizeGameId('game-1'), 'game-1')
-  assert.equal(sanitizeGameId(' game<>/'), 'game')
-  assert.equal(sanitizeGameId('a'.repeat(60)).length, 50)
+test('sanitizeGameId enforces 4-character uppercase lobby codes', () => {
+  assert.equal(sanitizeGameId('abcd'), 'ABCD')
+  assert.equal(sanitizeGameId('ab-cd'), 'ABCD')
+  assert.equal(sanitizeGameId('ab1d'), '')
+  assert.equal(sanitizeGameId('abc'), '')
 })
 
 test('sanitizePlayerID only accepts allowed values', () => {
@@ -396,6 +398,466 @@ test('sanitizeAction rejects strings with symbols', () => {
 
 test('sanitizePlayerName collapses whitespace', () => {
   assert.equal(sanitizePlayerName('  Alice   Bob  '), 'Alice   Bob')
+})
+
+test('chat payload validation enforces required fields and sanitization', () => {
+  const schema = {
+    message: { required: true, sanitize: sanitizeChatMessage },
+    playerID: { required: true, sanitize: sanitizePlayerID },
+    playerName: { required: false, sanitize: sanitizePlayerName },
+  }
+
+  const valid = validatePayload(
+    { message: ' Hello <b>World</b> ', playerID: '0', playerName: ' Alice ' },
+    schema
+  )
+  assert.equal(valid.error, undefined)
+  assert.deepEqual(valid.sanitized, {
+    message: 'Hello bWorld/b',
+    playerID: '0',
+    playerName: 'Alice',
+  })
+
+  const emptyMessage = validatePayload({ message: '', playerID: '0' }, schema)
+  assert.equal(emptyMessage.error, undefined)
+  assert.equal(emptyMessage.sanitized.message, '')
+})
+
+test('battle move stores lastMove and undo restores previous state', () => {
+  const hexes = makeHexGrid(2)
+  const terrainMap = makeTerrainMap(hexes)
+  const unit = createUnit('SWORDSMAN', '0', 0, 0)
+  const G = { hexes, units: [unit], terrainMap, log: [] }
+
+  MedievalBattleGame.phases.battle.moves.moveUnit(
+    { G, ctx: {}, playerID: '0' },
+    unit.id,
+    1,
+    0
+  )
+
+  assert.equal(unit.lastMove.q, 0)
+  assert.equal(unit.lastMove.r, 0)
+  assert.equal(Math.abs(unit.lastMove.s), 0)
+  assert.equal(unit.lastMove.movePoints, 2)
+  assert.equal(unit.lastMove.hasMoved, false)
+
+  MedievalBattleGame.phases.battle.moves.undoMove(
+    { G, ctx: {}, playerID: '0' },
+    unit.id
+  )
+
+  assert.equal(unit.q, 0)
+  assert.equal(unit.r, 0)
+  assert.equal(Math.abs(unit.s), 0)
+  assert.equal(unit.movePoints, 2)
+  assert.equal(unit.hasMoved, false)
+  assert.equal(unit.lastMove, null)
+})
+
+test('undo move is blocked after attacking or without a previous move', () => {
+  const hexes = makeHexGrid(1)
+  const terrainMap = makeTerrainMap(hexes)
+  const unit = createUnit('SWORDSMAN', '0', 0, 0)
+  const G = { hexes, units: [unit], terrainMap, log: [] }
+
+  const noMoveResult = MedievalBattleGame.phases.battle.moves.undoMove(
+    { G, ctx: {}, playerID: '0' },
+    unit.id
+  )
+  assert.equal(noMoveResult, INVALID_MOVE)
+
+  unit.lastMove = { q: 0, r: 0, s: 0, movePoints: 2, hasMoved: false }
+  unit.hasAttacked = true
+
+  const attackedResult = MedievalBattleGame.phases.battle.moves.undoMove(
+    { G, ctx: {}, playerID: '0' },
+    unit.id
+  )
+  assert.equal(attackedResult, INVALID_MOVE)
+})
+
+test('battle endTurn clears selected unit', () => {
+  const ctx = { numPlayers: 2, playOrder: ['0', '1'], phase: 'battle' }
+  const game = MedievalBattleGame.setup({ ctx, setupData: {} })
+  game.phase = 'battle'
+  const unit = createUnit('SWORDSMAN', '0', 0, 0)
+  game.units.push(unit)
+  game.selectedUnitId = unit.id
+
+  MedievalBattleGame.phases.battle.moves.endTurn({
+    G: game,
+    ctx,
+    playerID: '0',
+    events: { endTurn: () => {} },
+  })
+
+  assert.equal(game.selectedUnitId, null)
+})
+
+test('units can embark and disembark with transport stat changes and full move points', () => {
+  const hexes = makeHexGrid(1)
+  const terrainMap = makeTerrainMap(hexes, {
+    '1,0': 'WATER',
+    '0,1': 'PLAIN',
+  })
+  const unit = createUnit('KNIGHT', '0', 0, 0)
+  unit.currentHP = 75
+  const G = { hexes, units: [unit], terrainMap, log: [] }
+
+  const embarkResult = MedievalBattleGame.phases.battle.moves.moveUnit(
+    { G, ctx: {}, playerID: '0' },
+    unit.id,
+    1,
+    0
+  )
+  assert.equal(embarkResult, undefined)
+  assert.equal(unit.isTransport, true)
+  assert.equal(unit.isNaval, true)
+  assert.equal(unit.maxMovePoints, 2)
+  assert.equal(unit.range, 1)
+  assert.equal(unit.movePoints, 0)
+  assert.equal(unit.hasAttacked, true)
+  assert.equal(unit.currentHP, 20)
+
+  unit.movePoints = unit.maxMovePoints
+  unit.hasAttacked = false
+  unit.hasMoved = false
+
+  const disembarkResult = MedievalBattleGame.phases.battle.moves.moveUnit(
+    { G, ctx: {}, playerID: '0' },
+    unit.id,
+    0,
+    1
+  )
+  assert.equal(disembarkResult, undefined)
+  assert.equal(unit.isTransport, false)
+  assert.equal(unit.isNaval, false)
+  assert.equal(unit.maxMovePoints, 3)
+  assert.equal(unit.currentHP, 75)
+  assert.equal(unit.movePoints, 0)
+  assert.equal(unit.hasAttacked, true)
+})
+
+test('embark and disembark require full movement points', () => {
+  const hexes = makeHexGrid(1)
+  const terrainMap = makeTerrainMap(hexes, {
+    '1,0': 'WATER',
+    '0,1': 'PLAIN',
+  })
+  const unit = createUnit('SWORDSMAN', '0', 0, 0)
+  unit.movePoints = 1
+  const G = { hexes, units: [unit], terrainMap, log: [] }
+
+  const embarkResult = MedievalBattleGame.phases.battle.moves.moveUnit(
+    { G, ctx: {}, playerID: '0' },
+    unit.id,
+    1,
+    0
+  )
+  assert.equal(embarkResult, INVALID_MOVE)
+
+  unit.movePoints = unit.maxMovePoints
+  MedievalBattleGame.phases.battle.moves.moveUnit(
+    { G, ctx: {}, playerID: '0' },
+    unit.id,
+    1,
+    0
+  )
+  unit.movePoints = 1
+
+  const disembarkResult = MedievalBattleGame.phases.battle.moves.moveUnit(
+    { G, ctx: {}, playerID: '0' },
+    unit.id,
+    0,
+    1
+  )
+  assert.equal(disembarkResult, INVALID_MOVE)
+})
+
+test('transport ships stay at sea unless disembarking on land', () => {
+  const hexes = makeHexGrid(1)
+  const terrainMap = makeTerrainMap(hexes, {
+    '1,0': 'WATER',
+    '0,1': 'WATER',
+  })
+  const unit = createUnit('SWORDSMAN', '0', 0, 0)
+  const G = { hexes, units: [unit], terrainMap, log: [] }
+
+  MedievalBattleGame.phases.battle.moves.moveUnit(
+    { G, ctx: {}, playerID: '0' },
+    unit.id,
+    1,
+    0
+  )
+  unit.movePoints = unit.maxMovePoints
+  unit.hasMoved = false
+  MedievalBattleGame.phases.battle.moves.moveUnit(
+    { G, ctx: {}, playerID: '0' },
+    unit.id,
+    0,
+    1
+  )
+  assert.equal(unit.isTransport, true)
+})
+
+test('disembarking prevents immediate attacks', () => {
+  const hexes = makeHexGrid(1)
+  const terrainMap = makeTerrainMap(hexes, {
+    '1,0': 'WATER',
+    '0,1': 'PLAIN',
+  })
+  const unit = createUnit('SWORDSMAN', '0', 0, 0)
+  const target = createUnit('MILITIA', '1', -1, 1)
+  const G = { hexes, units: [unit, target], terrainMap, log: [] }
+
+  MedievalBattleGame.phases.battle.moves.moveUnit(
+    { G, ctx: {}, playerID: '0' },
+    unit.id,
+    1,
+    0
+  )
+  unit.movePoints = unit.maxMovePoints
+  unit.hasAttacked = false
+  unit.hasMoved = false
+  MedievalBattleGame.phases.battle.moves.moveUnit(
+    { G, ctx: {}, playerID: '0' },
+    unit.id,
+    0,
+    1
+  )
+
+  const attackResult = MedievalBattleGame.phases.battle.moves.attackUnit(
+    { G, ctx: {}, playerID: '0' },
+    unit.id,
+    target.id
+  )
+  assert.equal(attackResult, INVALID_MOVE)
+})
+
+test('transport destruction removes embarked unit', () => {
+  const hexes = makeHexGrid(1)
+  const terrainMap = makeTerrainMap(hexes, { '1,0': 'WATER' })
+  const unit = createUnit('SWORDSMAN', '0', 0, 0)
+  const attacker = createUnit('CATAPULT', '1', 0, 1)
+  attacker.attackPower = 100
+  const G = { hexes, units: [unit, attacker], terrainMap, log: [] }
+
+  MedievalBattleGame.phases.battle.moves.moveUnit(
+    { G, ctx: {}, playerID: '0' },
+    unit.id,
+    1,
+    0
+  )
+
+  MedievalBattleGame.phases.battle.moves.attackUnit(
+    { G, ctx: {}, playerID: '1' },
+    attacker.id,
+    unit.id
+  )
+
+  assert.equal(G.units.some((u) => u.id === unit.id), false)
+})
+
+test('transport stat swaps preserve health ratios', () => {
+  const hexes = makeHexGrid(1)
+  const terrainMap = makeTerrainMap(hexes, { '1,0': 'WATER', '0,1': 'PLAIN' })
+  const unit = createUnit('ARCHER', '0', 0, 0)
+  unit.currentHP = 30
+  const G = { hexes, units: [unit], terrainMap, log: [] }
+
+  MedievalBattleGame.phases.battle.moves.moveUnit(
+    { G, ctx: {}, playerID: '0' },
+    unit.id,
+    1,
+    0
+  )
+  assert.equal(unit.currentHP, 20)
+
+  unit.movePoints = unit.maxMovePoints
+  unit.hasAttacked = false
+  unit.hasMoved = false
+  MedievalBattleGame.phases.battle.moves.moveUnit(
+    { G, ctx: {}, playerID: '0' },
+    unit.id,
+    0,
+    1
+  )
+  assert.equal(unit.currentHP, 30)
+  assert.equal(unit.range, 2)
+})
+
+test('transport disables catapult siege limitations', () => {
+  const hexes = makeHexGrid(1)
+  const terrainMap = makeTerrainMap(hexes, { '1,0': 'WATER', '0,1': 'PLAIN' })
+  const catapult = createUnit('CATAPULT', '0', 0, 0)
+  const attacker = createUnit('SWORDSMAN', '1', 0, 1)
+  const G = { hexes, units: [catapult, attacker], terrainMap, log: [] }
+
+  MedievalBattleGame.phases.battle.moves.moveUnit(
+    { G, ctx: {}, playerID: '0' },
+    catapult.id,
+    1,
+    0
+  )
+
+  MedievalBattleGame.phases.battle.moves.attackUnit(
+    { G, ctx: {}, playerID: '1' },
+    attacker.id,
+    catapult.id
+  )
+
+  assert.ok(attacker.currentHP < attacker.maxHP)
+})
+
+test('archers deal reduced counter-attack damage in melee', () => {
+  const hexes = makeHexGrid(1)
+  const terrainMap = makeTerrainMap(hexes)
+  const attacker = createUnit('SWORDSMAN', '0', 0, 0)
+  const target = createUnit('ARCHER', '1', 1, 0)
+  const G = { hexes, units: [attacker, target], terrainMap, log: [] }
+
+  MedievalBattleGame.phases.battle.moves.attackUnit(
+    { G, ctx: {}, playerID: '0' },
+    attacker.id,
+    target.id
+  )
+
+  assert.equal(attacker.currentHP, attacker.maxHP - 5)
+})
+
+test('catapults do not counter-attack in melee', () => {
+  const hexes = makeHexGrid(1)
+  const terrainMap = makeTerrainMap(hexes)
+  const attacker = createUnit('SWORDSMAN', '0', 0, 0)
+  const target = createUnit('CATAPULT', '1', 1, 0)
+  const G = { hexes, units: [attacker, target], terrainMap, log: [] }
+
+  MedievalBattleGame.phases.battle.moves.attackUnit(
+    { G, ctx: {}, playerID: '0' },
+    attacker.id,
+    target.id
+  )
+
+  assert.equal(attacker.currentHP, attacker.maxHP)
+})
+
+test('catapult movement accounts for hill move cost reduction', () => {
+  const hexes = makeHexGrid(1)
+  const terrainMap = makeTerrainMap(hexes, { '1,0': 'HILLS' })
+  const catapult = createUnit('CATAPULT', '0', 0, 0)
+
+  const reachable = getReachableHexes(catapult, hexes, [], terrainMap)
+  assert.ok(reachable.some((hex) => hex.q === 1 && hex.r === 0))
+})
+
+test('archers and catapults gain hill attack bonus', () => {
+  const hexes = makeHexGrid(1)
+  const terrainMap = makeTerrainMap(hexes, { '0,0': 'HILLS' })
+
+  const archer = createUnit('ARCHER', '0', 0, 0)
+  const archerTarget = createUnit('SWORDSMAN', '1', 1, 0)
+  let G = { hexes, units: [archer, archerTarget], terrainMap, log: [] }
+
+  MedievalBattleGame.phases.battle.moves.attackUnit(
+    { G, ctx: {}, playerID: '0' },
+    archer.id,
+    archerTarget.id
+  )
+  assert.equal(archerTarget.currentHP, archerTarget.maxHP - 25)
+
+  const catapult = createUnit('CATAPULT', '0', 0, 0)
+  const catapultTarget = createUnit('SWORDSMAN', '1', 1, 0)
+  G = { hexes, units: [catapult, catapultTarget], terrainMap, log: [] }
+
+  MedievalBattleGame.phases.battle.moves.attackUnit(
+    { G, ctx: {}, playerID: '0' },
+    catapult.id,
+    catapultTarget.id
+  )
+  assert.equal(catapultTarget.currentHP, catapultTarget.maxHP - 55)
+})
+
+test('war galleys can only reach water tiles', () => {
+  const hexes = makeHexGrid(1)
+  const terrainMap = makeTerrainMap(hexes, {
+    '0,0': 'WATER',
+    '1,0': 'PLAIN',
+    '0,1': 'WATER',
+  })
+  const galley = createUnit('WAR_GALLEY', '0', 0, 0)
+  const reachable = getReachableHexes(galley, hexes, [], terrainMap)
+
+  assert.ok(reachable.some((hex) => hex.q === 0 && hex.r === 1))
+  assert.equal(reachable.some((hex) => hex.q === 1 && hex.r === 0), false)
+})
+
+test('terrain defense bonuses reduce incoming damage', () => {
+  const hexes = makeHexGrid(1)
+  const terrainMap = makeTerrainMap(hexes, { '1,0': 'FOREST' })
+  const attacker = createUnit('SWORDSMAN', '0', 0, 0)
+  const defender = createUnit('SWORDSMAN', '1', 1, 0)
+  const G = { hexes, units: [attacker, defender], terrainMap, log: [] }
+
+  MedievalBattleGame.phases.battle.moves.attackUnit(
+    { G, ctx: {}, playerID: '0' },
+    attacker.id,
+    defender.id
+  )
+
+  assert.equal(defender.currentHP, defender.maxHP - 15)
+})
+
+test('team spawn zones share deployment areas within teams and differ between teams', () => {
+  const mapWidth = 6
+  assert.equal(isInSpawnZone(-4, 0, '0', mapWidth, true), true)
+  assert.equal(isInSpawnZone(-4, 0, '2', mapWidth, true), true)
+  assert.equal(isInSpawnZone(-4, 0, '1', mapWidth, true), false)
+  assert.equal(isInSpawnZone(4, 0, '1', mapWidth, true), true)
+  assert.equal(isInSpawnZone(4, 0, '3', mapWidth, true), true)
+  assert.equal(isInSpawnZone(4, 0, '0', mapWidth, true), false)
+})
+
+test('deployable hexes stay in spawn zones and respect team mode', () => {
+  const hexes = makeHexGrid(1)
+  const terrainMap = makeTerrainMap(hexes)
+  const deployable = getDeployableHexes({
+    unitType: 'SWORDSMAN',
+    hexes,
+    units: [],
+    terrainMap,
+    playerID: '2',
+    mapWidth: 3,
+    teamMode: true,
+  })
+
+  assert.ok(deployable.length > 0)
+  assert.ok(
+    deployable.every((hex) => isInSpawnZone(hex.q, hex.r, '2', 3, true))
+  )
+})
+
+test('setup readiness ends when all active players are ready', () => {
+  const G = {
+    units: [createUnit('SWORDSMAN', '0', 0, 0), createUnit('SWORDSMAN', '1', 1, 0)],
+    playersReady: { '0': true, '1': true },
+  }
+  const ctx = { playOrder: ['0', '1'] }
+  const result = MedievalBattleGame.phases.setup.endIf({ G, ctx })
+  assert.equal(result, true)
+})
+
+test('elimination victory triggers when one player has no units', () => {
+  const G = {
+    teamMode: false,
+    gameMode: 'ELIMINATION',
+    turn: 3,
+    units: [createUnit('SWORDSMAN', '1', 0, 0)],
+  }
+  const ctx = { phase: 'battle' }
+  const result = MedievalBattleGame.endIf({ G, ctx })
+  assert.equal(result.winner, '1')
+  assert.equal(result.victoryType, 'elimination')
 })
 
 test('sanitizeChatMessage removes control characters and normalizes spaces', () => {
