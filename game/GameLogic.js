@@ -1,7 +1,7 @@
 import { INVALID_MOVE } from 'boardgame.io/dist/cjs/core.js'
 import { v4 as uuidv4 } from 'uuid'
-import { DEFAULT_MAP_ID, generateMapData, getMapConfig } from './maps'
-import { areAllies, getTeamId, getTeamLabel, getTeamPlayOrder } from './teamUtils'
+import { DEFAULT_MAP_ID, generateMapData, getMapConfig } from './maps.js'
+import { areAllies, getTeamId, getTeamLabel, getTeamPlayOrder } from './teamUtils.js'
 
 // ============================================
 // UNIT DEFINITIONS - Medieval Roster
