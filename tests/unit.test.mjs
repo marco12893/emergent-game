@@ -1299,3 +1299,39 @@ test('morale damage modifiers and transitions are applied', () => {
   MedievalBattleGame.phases.battle.moves.attackUnit({ G, ctx: {}, playerID: '0' }, killer.id, weakTarget.id)
   assert.equal(killer.morale, 'NEUTRAL')
 })
+
+
+test('morale transitions obey high-to-neutral on encirclement and neutral-to-high on kill', () => {
+  const hexes = makeHexGrid(3)
+  const terrainMap = makeTerrainMap(hexes)
+
+  const center = createUnit('SWORDSMAN', '0', 0, 0)
+  center.morale = 'HIGH'
+  const helper = createUnit('SWORDSMAN', '0', -3, 0)
+  const left = createUnit('SWORDSMAN', '1', -1, 0)
+  const right = createUnit('SWORDSMAN', '1', 1, 0)
+  const encircledGame = { hexes, units: [center, helper, left, right], terrainMap, log: [], teamMode: false }
+
+  MedievalBattleGame.phases.battle.moves.moveUnit(
+    { G: encircledGame, ctx: {}, playerID: '0' },
+    helper.id,
+    -2,
+    0
+  )
+
+  assert.equal(center.morale, 'NEUTRAL')
+
+  const killer = createUnit('SWORDSMAN', '0', 0, 0)
+  killer.morale = 'NEUTRAL'
+  const weakTarget = createUnit('MILITIA', '1', 1, 0)
+  weakTarget.currentHP = 1
+  const killGame = { hexes, units: [killer, weakTarget], terrainMap, log: [], teamMode: false }
+
+  MedievalBattleGame.phases.battle.moves.attackUnit(
+    { G: killGame, ctx: {}, playerID: '0' },
+    killer.id,
+    weakTarget.id
+  )
+
+  assert.equal(killer.morale, 'HIGH')
+})
