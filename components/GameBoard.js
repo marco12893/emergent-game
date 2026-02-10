@@ -4,6 +4,7 @@ import React, { useMemo, useCallback, useState, useRef, useEffect } from 'react'
 import { HexGrid, Layout, Hexagon } from 'react-hexgrid'
 import { getUnitSpriteProps } from '@/game/teamUtils'
 import { shouldEmitDamageOnRemoval } from '@/game/GameLogic'
+import { shouldShowUnitActionRing } from '@/game/unitActionIndicators'
 
 // Terrain types with their properties
 const TERRAIN_TYPES = {
@@ -178,6 +179,17 @@ const GameBoard = ({
     if (!fogOfWarEnabled || !visibleHexSet) return true
     return visibleHexSet.has(`${hex.q},${hex.r}`)
   }, [fogOfWarEnabled, visibleHexSet])
+
+  const visibleUnitIds = useMemo(() => {
+    if (!fogOfWarEnabled || !visibleHexSet) return null
+    const ids = new Set()
+    units.forEach((unit) => {
+      if (visibleHexSet.has(`${unit.q},${unit.r}`)) {
+        ids.add(unit.id)
+      }
+    })
+    return ids
+  }, [fogOfWarEnabled, units, visibleHexSet])
 
   const getClampedOffset = useCallback((offset) => {
     const padding = 120
@@ -649,12 +661,22 @@ const GameBoard = ({
               const showAttackPreview = damagePreview?.targetId === unit.id
               const showCounterPreview = damagePreview?.attackerId === unit.id
               const { src, filter } = getUnitSpriteProps(unit, unit.ownerID)
+              const hasAvailableActions = shouldShowUnitActionRing({
+                unit,
+                units,
+                currentPlayerID,
+                teamMode,
+                visibleUnitIds,
+              })
+              const isExhausted = unit.ownerID === currentPlayerID && !hasAvailableActions
               const dropShadow = isUnitSelected
                 ? 'drop-shadow(0 0 3px #FBBF24)'
                 : 'drop-shadow(0px 2px 4px rgba(0,0,0,0.5))'
-              const filterStyle = filter && filter !== 'none'
-                ? `${filter} ${dropShadow}`
-                : dropShadow
+              const toneFilter = isExhausted ? 'saturate(0.55) grayscale(0.3)' : null
+              const filterStyle = [filter && filter !== 'none' ? filter : null, toneFilter, dropShadow]
+                .filter(Boolean)
+                .join(' ')
+              const unitOpacity = isExhausted ? 0.95 : 1
 
               return (
                 <g key={`unit-${hex.q}-${hex.r}-${hex.s}`} style={{ pointerEvents: 'none' }}>
@@ -676,7 +698,8 @@ const GameBoard = ({
                       height={unit.isTransport ? '16' : '14'}
                       style={{ 
                         pointerEvents: 'none',
-                        filter: filterStyle
+                        filter: filterStyle,
+                        opacity: unitOpacity,
                       }}
                     />
                     
