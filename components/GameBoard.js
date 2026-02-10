@@ -690,14 +690,14 @@ const GameBoard = ({
                     {showActionRing && (
                       <image
                         href={ringSrc}
-                        x="-6"
-                        y="0.8"
-                        width="12"
-                        height="6"
+                        x="-7.2"
+                        y="-0.2"
+                        width="14.4"
+                        height="7.2"
                         preserveAspectRatio="xMidYMid meet"
                         style={{
                           pointerEvents: 'none',
-                          opacity: 0.95,
+                          opacity: 1,
                         }}
                       />
                     )}
@@ -747,7 +747,7 @@ const GameBoard = ({
                     )}
                     
                     {/* HP bar */}
-                    <g transform="translate(-5, 4.0)" style={{ filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.9))' }}>
+                    <g transform="translate(-5, -8.6)" style={{ filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.9))' }}>
                       <rect
                         x="0"
                         y="0"
