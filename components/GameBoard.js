@@ -4,6 +4,7 @@ import React, { useMemo, useCallback, useState, useRef, useEffect } from 'react'
 import { HexGrid, Layout, Hexagon } from 'react-hexgrid'
 import { getUnitSpriteProps } from '@/game/teamUtils'
 import { shouldEmitDamageOnRemoval } from '@/game/GameLogic'
+import { getUnitActionRingImage, shouldShowUnitActionRing } from '@/game/unitActionIndicators'
 
 // Terrain types with their properties
 const TERRAIN_TYPES = {
@@ -178,6 +179,17 @@ const GameBoard = ({
     if (!fogOfWarEnabled || !visibleHexSet) return true
     return visibleHexSet.has(`${hex.q},${hex.r}`)
   }, [fogOfWarEnabled, visibleHexSet])
+
+  const visibleUnitIds = useMemo(() => {
+    if (!fogOfWarEnabled || !visibleHexSet) return null
+    const ids = new Set()
+    units.forEach((unit) => {
+      if (visibleHexSet.has(`${unit.q},${unit.r}`)) {
+        ids.add(unit.id)
+      }
+    })
+    return ids
+  }, [fogOfWarEnabled, units, visibleHexSet])
 
   const getClampedOffset = useCallback((offset) => {
     const padding = 120
@@ -649,6 +661,14 @@ const GameBoard = ({
               const showAttackPreview = damagePreview?.targetId === unit.id
               const showCounterPreview = damagePreview?.attackerId === unit.id
               const { src, filter } = getUnitSpriteProps(unit, unit.ownerID)
+              const ringSrc = getUnitActionRingImage(unit.ownerID)
+              const showActionRing = shouldShowUnitActionRing({
+                unit,
+                units,
+                currentPlayerID,
+                teamMode,
+                visibleUnitIds,
+              })
               const dropShadow = isUnitSelected
                 ? 'drop-shadow(0 0 3px #FBBF24)'
                 : 'drop-shadow(0px 2px 4px rgba(0,0,0,0.5))'
@@ -667,6 +687,21 @@ const GameBoard = ({
                       stroke: 'none',
                     }}
                   >
+                    {showActionRing && (
+                      <image
+                        href={ringSrc}
+                        x="-6"
+                        y="0.8"
+                        width="12"
+                        height="6"
+                        preserveAspectRatio="xMidYMid meet"
+                        style={{
+                          pointerEvents: 'none',
+                          opacity: 0.95,
+                        }}
+                      />
+                    )}
+
                     {/* Unit Image */}
                     <image
                       href={src}

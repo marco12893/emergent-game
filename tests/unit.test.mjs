@@ -33,6 +33,10 @@ import {
   TEAM_IDS,
 } from '../game/teamUtils.js'
 import {
+  getUnitActionRingImage,
+  shouldShowUnitActionRing,
+} from '../game/unitActionIndicators.js'
+import {
   createUnit,
   getAttackableHexes,
   getDeployableHexes,
@@ -1132,4 +1136,104 @@ test('shouldEmitDamageOnRemoval skips setup phase removals', () => {
   assert.equal(shouldEmitDamageOnRemoval('setup'), false)
   assert.equal(shouldEmitDamageOnRemoval('battle'), true)
   assert.equal(shouldEmitDamageOnRemoval(null), true)
+})
+
+
+test('getUnitActionRingImage returns color ring asset path', () => {
+  assert.equal(getUnitActionRingImage('0'), '/units/ring_blue.png')
+  assert.equal(getUnitActionRingImage('1'), '/units/ring_red.png')
+  assert.equal(getUnitActionRingImage('unknown'), '/units/ring_blue.png')
+})
+
+test('shouldShowUnitActionRing shows when unit can still move', () => {
+  const unit = createUnit('SWORDSMAN', '0', 0, 0)
+  const units = [unit, createUnit('SWORDSMAN', '1', 2, -2)]
+
+  assert.equal(
+    shouldShowUnitActionRing({ unit, units, currentPlayerID: '0', teamMode: false }),
+    true
+  )
+})
+
+test('shouldShowUnitActionRing hides when unit moved and attacked', () => {
+  const unit = createUnit('SWORDSMAN', '0', 0, 0)
+  unit.hasMoved = true
+  unit.hasAttacked = true
+  const units = [unit, createUnit('SWORDSMAN', '1', 1, -1)]
+
+  assert.equal(
+    shouldShowUnitActionRing({ unit, units, currentPlayerID: '0', teamMode: false }),
+    false
+  )
+})
+
+test('shouldShowUnitActionRing shows when moved but enemy remains in attack range', () => {
+  const unit = createUnit('SWORDSMAN', '0', 0, 0)
+  unit.hasMoved = true
+  unit.hasAttacked = false
+  const units = [unit, createUnit('SWORDSMAN', '1', 1, -1)]
+
+  assert.equal(
+    shouldShowUnitActionRing({ unit, units, currentPlayerID: '0', teamMode: false }),
+    true
+  )
+})
+
+test('shouldShowUnitActionRing hides when moved and no enemies are attackable', () => {
+  const unit = createUnit('SWORDSMAN', '0', 0, 0)
+  unit.hasMoved = true
+  unit.hasAttacked = false
+  const units = [unit, createUnit('SWORDSMAN', '1', 3, -3)]
+
+  assert.equal(
+    shouldShowUnitActionRing({ unit, units, currentPlayerID: '0', teamMode: false }),
+    false
+  )
+})
+
+test('shouldShowUnitActionRing respects team mode allied units', () => {
+  const unit = createUnit('SWORDSMAN', '0', 0, 0)
+  unit.hasMoved = true
+  unit.hasAttacked = false
+  const alliedNearby = createUnit('SWORDSMAN', '2', 1, -1)
+  const enemyFar = createUnit('SWORDSMAN', '1', 4, -4)
+
+  assert.equal(
+    shouldShowUnitActionRing({
+      unit,
+      units: [unit, alliedNearby, enemyFar],
+      currentPlayerID: '0',
+      teamMode: true,
+    }),
+    false
+  )
+})
+
+test('shouldShowUnitActionRing accounts for visible enemies when fog of war is enabled', () => {
+  const unit = createUnit('ARCHER', '0', 0, 0)
+  unit.hasMoved = true
+  unit.hasAttacked = false
+  const hiddenEnemy = createUnit('SWORDSMAN', '1', 2, -2)
+
+  assert.equal(
+    shouldShowUnitActionRing({
+      unit,
+      units: [unit, hiddenEnemy],
+      currentPlayerID: '0',
+      teamMode: false,
+      visibleUnitIds: new Set([unit.id]),
+    }),
+    false
+  )
+
+  assert.equal(
+    shouldShowUnitActionRing({
+      unit,
+      units: [unit, hiddenEnemy],
+      currentPlayerID: '0',
+      teamMode: false,
+      visibleUnitIds: new Set([unit.id, hiddenEnemy.id]),
+    }),
+    true
+  )
 })
