@@ -677,6 +677,11 @@ const GameBoard = ({
                 .filter(Boolean)
                 .join(' ')
               const unitOpacity = isExhausted ? 0.95 : 1
+              const moraleIconHref = unit.morale === 'LOW'
+                ? '/units/low_morale.png'
+                : unit.morale === 'HIGH'
+                  ? '/units/high_morale.png'
+                  : null
 
               return (
                 <g key={`unit-${hex.q}-${hex.r}-${hex.s}`} style={{ pointerEvents: 'none' }}>
@@ -756,6 +761,16 @@ const GameBoard = ({
                         strokeWidth="0.08"
                         rx="0.3" 
                       />
+                      {moraleIconHref && (
+                        <image
+                          href={moraleIconHref}
+                          x="9.2"
+                          y="-1.2"
+                          width="2"
+                          height="2"
+                          style={{ pointerEvents: 'none' }}
+                        />
+                      )}
                     </g>
                   </Hexagon>
                 </g>

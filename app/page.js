@@ -520,7 +520,8 @@ export default function HTTPMultiplayerPage() {
       damageMultiplier = 0.50
     }
 
-    const reducedDamage = Math.round(baseDamage * damageMultiplier)
+    const moraleMultiplier = selectedUnit.morale === 'LOW' ? 0.8 : selectedUnit.morale === 'HIGH' ? 1.2 : 1.0
+    const reducedDamage = Math.round(baseDamage * damageMultiplier * moraleMultiplier)
     const attackDamage = Math.max(1, reducedDamage - defenseBonus)
     const targetRemaining = targetUnit.currentHP - attackDamage
 
@@ -540,8 +541,9 @@ export default function HTTPMultiplayerPage() {
         }
 
         const meleePenaltyMultiplier = targetUnit.type === 'ARCHER' && distance === 1 ? 0.5 : 1.0
+        const targetMoraleMultiplier = targetUnit.morale === 'LOW' ? 0.8 : targetUnit.morale === 'HIGH' ? 1.2 : 1.0
         const targetReducedDamage = Math.round(
-          targetUnit.attackPower * targetDamageMultiplier * meleePenaltyMultiplier
+          targetUnit.attackPower * targetDamageMultiplier * meleePenaltyMultiplier * targetMoraleMultiplier
         )
         const attackerDefenseBonus = TERRAIN_TYPES[attackerTerrain]?.defenseBonus ?? 0
         counterDamage = Math.max(1, targetReducedDamage - attackerDefenseBonus)
