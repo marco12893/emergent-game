@@ -4,7 +4,7 @@ import React, { useMemo, useCallback, useState, useRef, useEffect } from 'react'
 import { HexGrid, Layout, Hexagon } from 'react-hexgrid'
 import { getUnitSpriteProps } from '@/game/teamUtils'
 import { shouldEmitDamageOnRemoval } from '@/game/GameLogic'
-import { getUnitActionRingImage, shouldShowUnitActionRing } from '@/game/unitActionIndicators'
+import { shouldShowUnitActionRing } from '@/game/unitActionIndicators'
 
 // Terrain types with their properties
 const TERRAIN_TYPES = {
@@ -661,20 +661,22 @@ const GameBoard = ({
               const showAttackPreview = damagePreview?.targetId === unit.id
               const showCounterPreview = damagePreview?.attackerId === unit.id
               const { src, filter } = getUnitSpriteProps(unit, unit.ownerID)
-              const ringSrc = getUnitActionRingImage(unit.ownerID)
-              const showActionRing = shouldShowUnitActionRing({
+              const hasAvailableActions = shouldShowUnitActionRing({
                 unit,
                 units,
                 currentPlayerID,
                 teamMode,
                 visibleUnitIds,
               })
+              const isExhausted = unit.ownerID === currentPlayerID && !hasAvailableActions
               const dropShadow = isUnitSelected
                 ? 'drop-shadow(0 0 3px #FBBF24)'
                 : 'drop-shadow(0px 2px 4px rgba(0,0,0,0.5))'
-              const filterStyle = filter && filter !== 'none'
-                ? `${filter} ${dropShadow}`
-                : dropShadow
+              const toneFilter = isExhausted ? 'saturate(0.55) grayscale(0.3)' : null
+              const filterStyle = [filter && filter !== 'none' ? filter : null, toneFilter, dropShadow]
+                .filter(Boolean)
+                .join(' ')
+              const unitOpacity = isExhausted ? 0.95 : 1
 
               return (
                 <g key={`unit-${hex.q}-${hex.r}-${hex.s}`} style={{ pointerEvents: 'none' }}>
@@ -687,21 +689,6 @@ const GameBoard = ({
                       stroke: 'none',
                     }}
                   >
-                    {showActionRing && (
-                      <image
-                        href={ringSrc}
-                        x="-7.2"
-                        y="-0.2"
-                        width="14.4"
-                        height="7.2"
-                        preserveAspectRatio="xMidYMid meet"
-                        style={{
-                          pointerEvents: 'none',
-                          opacity: 1,
-                        }}
-                      />
-                    )}
-
                     {/* Unit Image */}
                     <image
                       href={src}
@@ -711,7 +698,8 @@ const GameBoard = ({
                       height={unit.isTransport ? '16' : '14'}
                       style={{ 
                         pointerEvents: 'none',
-                        filter: filterStyle
+                        filter: filterStyle,
+                        opacity: unitOpacity,
                       }}
                     />
                     
@@ -747,7 +735,7 @@ const GameBoard = ({
                     )}
                     
                     {/* HP bar */}
-                    <g transform="translate(-5, -8.6)" style={{ filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.9))' }}>
+                    <g transform="translate(-5, 4.0)" style={{ filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.9))' }}>
                       <rect
                         x="0"
                         y="0"
