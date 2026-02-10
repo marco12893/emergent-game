@@ -764,10 +764,10 @@ const GameBoard = ({
                       {moraleIconHref && (
                         <image
                           href={moraleIconHref}
-                          x="8.4"
-                          y="-1.8"
-                          width="3.1"
-                          height="3.1"
+                          x="6.5"
+                          y="-3.8"
+                          width="3.6"
+                          height="3.6"
                           style={{ pointerEvents: 'none' }}
                         />
                       )}
