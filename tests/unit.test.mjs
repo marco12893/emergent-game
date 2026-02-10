@@ -1237,3 +1237,151 @@ test('shouldShowUnitActionRing accounts for visible enemies when fog of war is e
     true
   )
 })
+
+
+test('encirclement is only opposite-side adjacency', () => {
+  const hexes = makeHexGrid(3)
+  const terrainMap = makeTerrainMap(hexes)
+
+  const triggerMoraleTick = (G) => {
+    const mover = G.units.find((u) => u.ownerID === '0' && u.id !== G.centerId)
+    MedievalBattleGame.phases.battle.moves.moveUnit({ G, ctx: {}, playerID: '0' }, mover.id, mover.q + 1, mover.r)
+  }
+
+  const center = createUnit('SWORDSMAN', '0', 0, 0)
+  const helper = createUnit('SWORDSMAN', '0', -3, 0)
+  const left = createUnit('SWORDSMAN', '1', -1, 0)
+  const right = createUnit('SWORDSMAN', '1', 1, 0)
+  let G = { hexes, units: [center, helper, left, right], terrainMap, log: [], teamMode: false, centerId: center.id }
+  triggerMoraleTick(G)
+  assert.equal(center.morale, 'LOW')
+  MedievalBattleGame.phases.battle.moves.moveUnit({ G, ctx: {}, playerID: '1' }, right.id, 2, 0)
+  assert.equal(center.morale, 'NEUTRAL')
+
+  const center2 = createUnit('SWORDSMAN', '0', 0, 0)
+  const helper2 = createUnit('SWORDSMAN', '0', -3, 0)
+  const enemyLeft = createUnit('SWORDSMAN', '1', -1, 0)
+  const enemyTopRight = createUnit('SWORDSMAN', '1', 1, -1)
+  G = { hexes, units: [center2, helper2, enemyLeft, enemyTopRight], terrainMap, log: [], teamMode: false, centerId: center2.id }
+  triggerMoraleTick(G)
+  assert.equal(center2.morale, 'NEUTRAL')
+
+  const center3 = createUnit('SWORDSMAN', '0', 0, 0)
+  const helper3 = createUnit('SWORDSMAN', '0', -3, 0)
+  const enemyBottomLeft = createUnit('SWORDSMAN', '1', -1, 1)
+  const enemyTopRight2 = createUnit('SWORDSMAN', '1', 1, -1)
+  G = { hexes, units: [center3, helper3, enemyBottomLeft, enemyTopRight2], terrainMap, log: [], teamMode: false, centerId: center3.id }
+  triggerMoraleTick(G)
+  assert.equal(center3.morale, 'LOW')
+})
+
+test('morale damage modifiers and transitions are applied', () => {
+  const hexes = makeHexGrid(2)
+  const terrainMap = makeTerrainMap(hexes)
+
+  const lowAttacker = createUnit('SWORDSMAN', '0', 0, 0)
+  lowAttacker.morale = 'LOW'
+  lowAttacker.moraleBase = 'NEUTRAL'
+  const defender = createUnit('SWORDSMAN', '1', 1, 0)
+  let G = { hexes, units: [lowAttacker, defender], terrainMap, log: [], teamMode: false }
+  MedievalBattleGame.phases.battle.moves.attackUnit({ G, ctx: {}, playerID: '0' }, lowAttacker.id, defender.id)
+  assert.equal(defender.currentHP, defender.maxHP - 20)
+
+  const highAttacker = createUnit('SWORDSMAN', '0', 0, 0)
+  highAttacker.morale = 'HIGH'
+  highAttacker.moraleBase = 'HIGH'
+  const defender2 = createUnit('SWORDSMAN', '1', 1, 0)
+  G = { hexes, units: [highAttacker, defender2], terrainMap, log: [], teamMode: false }
+  MedievalBattleGame.phases.battle.moves.attackUnit({ G, ctx: {}, playerID: '0' }, highAttacker.id, defender2.id)
+  assert.equal(defender2.currentHP, defender2.maxHP - 30)
+
+  const killer = createUnit('SWORDSMAN', '0', 0, 0)
+  killer.morale = 'LOW'
+  killer.moraleBase = 'NEUTRAL'
+  const weakTarget = createUnit('MILITIA', '1', 1, 0)
+  weakTarget.currentHP = 1
+  G = { hexes, units: [killer, weakTarget], terrainMap, log: [], teamMode: false }
+  MedievalBattleGame.phases.battle.moves.attackUnit({ G, ctx: {}, playerID: '0' }, killer.id, weakTarget.id)
+  assert.equal(killer.morale, 'NEUTRAL')
+})
+
+
+test('morale transitions obey high-to-neutral on encirclement and neutral-to-high on kill', () => {
+  const hexes = makeHexGrid(3)
+  const terrainMap = makeTerrainMap(hexes)
+
+  const center = createUnit('SWORDSMAN', '0', 0, 0)
+  center.morale = 'HIGH'
+  center.moraleBase = 'HIGH'
+  const helper = createUnit('SWORDSMAN', '0', -3, 0)
+  const left = createUnit('SWORDSMAN', '1', -1, 0)
+  const right = createUnit('SWORDSMAN', '1', 1, 0)
+  const encircledGame = { hexes, units: [center, helper, left, right], terrainMap, log: [], teamMode: false }
+
+  MedievalBattleGame.phases.battle.moves.moveUnit(
+    { G: encircledGame, ctx: {}, playerID: '0' },
+    helper.id,
+    -2,
+    0
+  )
+
+  assert.equal(center.morale, 'NEUTRAL')
+
+  MedievalBattleGame.phases.battle.moves.moveUnit(
+    { G: encircledGame, ctx: {}, playerID: '1' },
+    right.id,
+    2,
+    0
+  )
+
+  assert.equal(center.morale, 'HIGH')
+
+  const killer = createUnit('SWORDSMAN', '0', 0, 0)
+  killer.morale = 'NEUTRAL'
+  killer.moraleBase = 'NEUTRAL'
+  const weakTarget = createUnit('MILITIA', '1', 1, 0)
+  weakTarget.currentHP = 1
+  const killGame = { hexes, units: [killer, weakTarget], terrainMap, log: [], teamMode: false }
+
+  MedievalBattleGame.phases.battle.moves.attackUnit(
+    { G: killGame, ctx: {}, playerID: '0' },
+    killer.id,
+    weakTarget.id
+  )
+
+  assert.equal(killer.morale, 'HIGH')
+})
+
+
+test('war galleys ignore encirclement morale but still gain high morale on kill', () => {
+  const hexes = makeHexGrid(3)
+  const terrainMap = makeTerrainMap(hexes)
+
+  const galley = createUnit('WAR_GALLEY', '0', 0, 0)
+  const helper = createUnit('SWORDSMAN', '0', -3, 0)
+  const leftEnemy = createUnit('SWORDSMAN', '1', -1, 0)
+  const rightEnemy = createUnit('SWORDSMAN', '1', 1, 0)
+  const G = { hexes, units: [galley, helper, leftEnemy, rightEnemy], terrainMap, log: [], teamMode: false }
+
+  MedievalBattleGame.phases.battle.moves.moveUnit(
+    { G, ctx: {}, playerID: '0' },
+    helper.id,
+    -2,
+    0
+  )
+
+  assert.equal(galley.morale, 'NEUTRAL')
+
+  const target = createUnit('MILITIA', '1', 1, 0)
+  target.currentHP = 1
+  G.units = [galley, target]
+  galley.hasAttacked = false
+
+  MedievalBattleGame.phases.battle.moves.attackUnit(
+    { G, ctx: {}, playerID: '0' },
+    galley.id,
+    target.id
+  )
+
+  assert.equal(galley.morale, 'HIGH')
+})

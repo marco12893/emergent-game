@@ -105,6 +105,13 @@ const TRANSPORT_STATS = {
   range: 1,
 }
 
+
+const MORALE_STATES = {
+  LOW: 'LOW',
+  NEUTRAL: 'NEUTRAL',
+  HIGH: 'HIGH',
+}
+
 const GAME_MODES = {
   ELIMINATION: {
     id: 'ELIMINATION',
@@ -376,6 +383,85 @@ const isUnitVisibleToPlayer = (unit, alliedUnits, visibleHexes, terrainMap = {})
   return alliedUnits.some(alliedUnit => hexDistance(alliedUnit, unit) <= detectionRange)
 }
 
+
+const HEX_DIRECTIONS = [
+  { q: 1, r: 0 },
+  { q: 1, r: -1 },
+  { q: 0, r: -1 },
+  { q: -1, r: 0 },
+  { q: -1, r: 1 },
+  { q: 0, r: 1 },
+]
+
+const getMoraleMultiplier = (morale) => {
+  if (morale === MORALE_STATES.LOW) return 0.8
+  if (morale === MORALE_STATES.HIGH) return 1.2
+  return 1.0
+}
+
+const canUnitsFight = (unitA, unitB, teamMode) => {
+  if (!unitA || !unitB) return false
+  if (teamMode) return !areAllies(unitA.ownerID, unitB.ownerID)
+  return unitA.ownerID !== unitB.ownerID
+}
+
+const getUnitByPosition = (units, q, r) => {
+  return units.find(unit => unit.currentHP > 0 && unit.q === q && unit.r === r)
+}
+
+const isUnitEncircled = (unit, units, teamMode) => {
+  if (!unit || unit.currentHP <= 0) return false
+  if (unit.isNaval) return false
+
+  for (let i = 0; i < 3; i += 1) {
+    const direction = HEX_DIRECTIONS[i]
+    const oppositeDirection = { q: -direction.q, r: -direction.r }
+    const sideA = getUnitByPosition(units, unit.q + direction.q, unit.r + direction.r)
+    const sideB = getUnitByPosition(units, unit.q + oppositeDirection.q, unit.r + oppositeDirection.r)
+
+    if (canUnitsFight(unit, sideA, teamMode) && canUnitsFight(unit, sideB, teamMode)) {
+      return true
+    }
+  }
+
+  return false
+}
+
+const normalizeUnitMorale = (units = []) => {
+  units.forEach((unit) => {
+    if (!unit.moraleBase) {
+      unit.moraleBase = unit.morale === MORALE_STATES.HIGH ? MORALE_STATES.HIGH : MORALE_STATES.NEUTRAL
+    }
+    if (!unit.morale) {
+      unit.morale = unit.moraleBase
+    }
+  })
+}
+
+const getEffectiveMorale = (moraleBase, isEncircled) => {
+  if (!isEncircled) return moraleBase
+  return moraleBase === MORALE_STATES.HIGH ? MORALE_STATES.NEUTRAL : MORALE_STATES.LOW
+}
+
+const promoteMoraleFromKill = (unit) => {
+  if (!unit) return
+  if (unit.morale === MORALE_STATES.LOW) {
+    unit.moraleBase = MORALE_STATES.NEUTRAL
+    return
+  }
+  if (unit.moraleBase !== MORALE_STATES.HIGH) {
+    unit.moraleBase = MORALE_STATES.HIGH
+  }
+}
+
+const applyEncirclementMorale = (units = [], teamMode = false) => {
+  normalizeUnitMorale(units)
+  units.forEach((unit) => {
+    const encircled = isUnitEncircled(unit, units, teamMode)
+    unit.morale = getEffectiveMorale(unit.moraleBase, encircled)
+  })
+}
+
 // Handle OPTIONS requests for CORS preflight
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -418,6 +504,9 @@ export async function POST(request) {
     let game
     try {
       game = await getGame(sanitizedGameId)
+      if (game?.units) {
+        normalizeUnitMorale(game.units)
+      }
     } catch (kvError) {
       console.error('❌ KV getGame failed:', kvError)
       return NextResponse.json({ 
@@ -886,7 +975,9 @@ export async function POST(request) {
             hasMoved: false,
             hasAttacked: false,
             hasMovedOrAttacked: false, // For catapult move-or-attack restriction
-            lastMove: null
+            lastMove: null,
+            morale: MORALE_STATES.NEUTRAL,
+            moraleBase: MORALE_STATES.NEUTRAL
           }
           
           if (terrainData.waterOnly && !newUnit.isNaval) {
@@ -894,6 +985,7 @@ export async function POST(request) {
           }
           
           game.units.push(newUnit)
+          applyEncirclementMorale(game.units, teamMode)
           game.log.push(`Player ${placePlayerID} placed ${newUnit.name} at (${q}, ${r})`)
           game.lastUpdate = Date.now()
           break
@@ -980,6 +1072,7 @@ export async function POST(request) {
           }
           
           game.units = game.units.filter(u => u.id !== removeUnitId)
+          applyEncirclementMorale(game.units, teamMode)
           game.log.push(`Player ${removePlayerID} removed ${unitToRemove.name} at (${unitToRemove.q}, ${unitToRemove.r})`)
           game.lastUpdate = Date.now()
           break
@@ -1247,6 +1340,7 @@ export async function POST(request) {
             }
             
             game.log.push(`Player ${movePlayerID}'s ${movingUnit.name} moved to (${sanitizeCoordinate(targetQ)}, ${sanitizeCoordinate(targetR)})`)
+            applyEncirclementMorale(game.units, teamMode)
             game.lastUpdate = Date.now()
           } else {
             return NextResponse.json({ 
@@ -1513,7 +1607,8 @@ export async function POST(request) {
               damageMultiplier = 0.50 // 50% damage
             }
             
-            const reducedDamage = Math.round(baseDamage * damageMultiplier)
+            const attackerMoraleMultiplier = getMoraleMultiplier(attacker.morale)
+            const reducedDamage = Math.round(baseDamage * damageMultiplier * attackerMoraleMultiplier)
             const actualDamage = Math.max(1, reducedDamage - defenseBonus) // Minimum 1 damage
             
             target.currentHP -= actualDamage
@@ -1525,7 +1620,7 @@ export async function POST(request) {
               attacker.hasMovedOrAttacked = true
             }
             
-            game.log.push(`Player ${attackPlayerID || payload.playerID}'s ${attacker.name} hit ${target.name} for ${actualDamage} damage${damageMultiplier < 1.0 ? ` (reduced to ${Math.round(damageMultiplier * 100)}% due to wounds)` : ''}${defenseBonus > 0 ? ` (terrain defense +${defenseBonus})` : ''}!`)
+            game.log.push(`Player ${attackPlayerID || payload.playerID}'s ${attacker.name} hit ${target.name} for ${actualDamage} damage${damageMultiplier < 1.0 ? ` (reduced to ${Math.round(damageMultiplier * 100)}% due to wounds)` : ''}${attackerMoraleMultiplier !== 1.0 ? ` (${attackerMoraleMultiplier > 1 ? '+20%' : '-20%'} morale)` : ''}${defenseBonus > 0 ? ` (terrain defense +${defenseBonus})` : ''}!`)
             
             // Counter-attack logic (if target survives and is in range)
             if (target.currentHP > 0) {
@@ -1568,13 +1663,15 @@ export async function POST(request) {
                     meleePenaltyMultiplier = 0.5 // 50% damage reduction in melee
                   }
                   
-                  const targetReducedDamage = Math.round(targetBaseDamage * targetDamageMultiplier * meleePenaltyMultiplier)
+                  const targetMoraleMultiplier = getMoraleMultiplier(target.morale)
+                  const targetReducedDamage = Math.round(targetBaseDamage * targetDamageMultiplier * meleePenaltyMultiplier * targetMoraleMultiplier)
                   const counterDamage = Math.max(1, targetReducedDamage - attackerDefenseBonus)
                   attacker.currentHP -= counterDamage
                   
-                  game.log.push(`${target.name} counter-attacked for ${counterDamage} damage${targetDamageMultiplier < 1.0 ? ` (reduced to ${Math.round(targetDamageMultiplier * 100)}% due to wounds)` : ''}${meleePenaltyMultiplier < 1.0 ? ` (melee penalty -50%)` : ''}${attackerDefenseBonus > 0 ? ` (terrain defense +${attackerDefenseBonus})` : ''}!`)
+                  game.log.push(`${target.name} counter-attacked for ${counterDamage} damage${targetDamageMultiplier < 1.0 ? ` (reduced to ${Math.round(targetDamageMultiplier * 100)}% due to wounds)` : ''}${targetMoraleMultiplier !== 1.0 ? ` (${targetMoraleMultiplier > 1 ? '+20%' : '-20%'} morale)` : ''}${meleePenaltyMultiplier < 1.0 ? ` (melee penalty -50%)` : ''}${attackerDefenseBonus > 0 ? ` (terrain defense +${attackerDefenseBonus})` : ''}!`)
                   
                   if (attacker.currentHP <= 0) {
+                    promoteMoraleFromKill(target)
                     game.units = game.units.filter(u => u.id !== attacker.id)
                     game.log.push(`${attacker.name} was defeated by counter-attack!`)
                   }
@@ -1583,10 +1680,12 @@ export async function POST(request) {
             }
             
             if (target.currentHP <= 0) {
+              promoteMoraleFromKill(attacker)
               game.units = game.units.filter(u => u.id !== target.id)
               game.log.push(`${target.name} was defeated!`)
             }
-            
+
+            applyEncirclementMorale(game.units, teamMode)
             game.lastUpdate = Date.now()
           } else {
             return NextResponse.json({ 
