@@ -426,40 +426,38 @@ const isUnitEncircled = (unit, units, teamMode) => {
   return false
 }
 
-const degradeMoraleFromEncirclement = (unit) => {
-  if (unit.morale === MORALE_STATES.HIGH) {
-    unit.morale = MORALE_STATES.NEUTRAL
-    return
-  }
-  if (unit.morale === MORALE_STATES.NEUTRAL) {
-    unit.morale = MORALE_STATES.LOW
-  }
+const normalizeUnitMorale = (units = []) => {
+  units.forEach((unit) => {
+    if (!unit.moraleBase) {
+      unit.moraleBase = unit.morale === MORALE_STATES.HIGH ? MORALE_STATES.HIGH : MORALE_STATES.NEUTRAL
+    }
+    if (!unit.morale) {
+      unit.morale = unit.moraleBase
+    }
+  })
+}
+
+const getEffectiveMorale = (moraleBase, isEncircled) => {
+  if (!isEncircled) return moraleBase
+  return moraleBase === MORALE_STATES.HIGH ? MORALE_STATES.NEUTRAL : MORALE_STATES.LOW
 }
 
 const promoteMoraleFromKill = (unit) => {
+  if (!unit) return
   if (unit.morale === MORALE_STATES.LOW) {
-    unit.morale = MORALE_STATES.NEUTRAL
+    unit.moraleBase = MORALE_STATES.NEUTRAL
     return
   }
-  if (unit.morale === MORALE_STATES.NEUTRAL) {
-    unit.morale = MORALE_STATES.HIGH
+  if (unit.moraleBase !== MORALE_STATES.HIGH) {
+    unit.moraleBase = MORALE_STATES.HIGH
   }
-}
-
-const normalizeUnitMorale = (units = []) => {
-  units.forEach((unit) => {
-    if (!unit.morale) {
-      unit.morale = MORALE_STATES.NEUTRAL
-    }
-  })
 }
 
 const applyEncirclementMorale = (units = [], teamMode = false) => {
   normalizeUnitMorale(units)
   units.forEach((unit) => {
-    if (isUnitEncircled(unit, units, teamMode)) {
-      degradeMoraleFromEncirclement(unit)
-    }
+    const encircled = isUnitEncircled(unit, units, teamMode)
+    unit.morale = getEffectiveMorale(unit.moraleBase, encircled)
   })
 }
 
@@ -977,7 +975,8 @@ export async function POST(request) {
             hasAttacked: false,
             hasMovedOrAttacked: false, // For catapult move-or-attack restriction
             lastMove: null,
-            morale: MORALE_STATES.NEUTRAL
+            morale: MORALE_STATES.NEUTRAL,
+            moraleBase: MORALE_STATES.NEUTRAL
           }
           
           if (terrainData.waterOnly && !newUnit.isNaval) {

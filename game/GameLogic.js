@@ -250,33 +250,38 @@ const isUnitEncircled = (unit, units, teamMode) => {
   return false
 }
 
-const degradeMoraleFromEncirclement = (unit) => {
-  if (unit.morale === MORALE_STATES.HIGH) {
-    unit.morale = MORALE_STATES.NEUTRAL
-    return
-  }
+const normalizeUnitMorale = (units = []) => {
+  units.forEach((unit) => {
+    if (!unit.moraleBase) {
+      unit.moraleBase = unit.morale === MORALE_STATES.HIGH ? MORALE_STATES.HIGH : MORALE_STATES.NEUTRAL
+    }
+    if (!unit.morale) {
+      unit.morale = unit.moraleBase
+    }
+  })
+}
 
-  if (unit.morale === MORALE_STATES.NEUTRAL) {
-    unit.morale = MORALE_STATES.LOW
-  }
+const getEffectiveMorale = (moraleBase, isEncircled) => {
+  if (!isEncircled) return moraleBase
+  return moraleBase === MORALE_STATES.HIGH ? MORALE_STATES.NEUTRAL : MORALE_STATES.LOW
 }
 
 const promoteMoraleFromKill = (unit) => {
+  if (!unit) return
   if (unit.morale === MORALE_STATES.LOW) {
-    unit.morale = MORALE_STATES.NEUTRAL
+    unit.moraleBase = MORALE_STATES.NEUTRAL
     return
   }
-
-  if (unit.morale === MORALE_STATES.NEUTRAL) {
-    unit.morale = MORALE_STATES.HIGH
+  if (unit.moraleBase !== MORALE_STATES.HIGH) {
+    unit.moraleBase = MORALE_STATES.HIGH
   }
 }
 
 const applyEncirclementMorale = (units, teamMode) => {
+  normalizeUnitMorale(units)
   units.forEach((unit) => {
-    if (isUnitEncircled(unit, units, teamMode)) {
-      degradeMoraleFromEncirclement(unit)
-    }
+    const encircled = isUnitEncircled(unit, units, teamMode)
+    unit.morale = getEffectiveMorale(unit.moraleBase, encircled)
   })
 }
 
@@ -306,6 +311,7 @@ export const createUnit = (unitType, ownerID, q, r) => {
     hasMovedOrAttacked: false,
     lastMove: null,
     morale: MORALE_STATES.NEUTRAL,
+    moraleBase: MORALE_STATES.NEUTRAL,
   }
 }
 
