@@ -80,6 +80,12 @@ const TRANSPORT_STATS = {
   range: 1,
 }
 
+export const MORALE_STATES = {
+  LOW: 'LOW',
+  NEUTRAL: 'NEUTRAL',
+  HIGH: 'HIGH',
+}
+
 // ============================================
 // GAME MODE DEFINITIONS
 // ============================================
@@ -202,6 +208,83 @@ const getDamageMultiplier = (currentHP, maxHP) => {
   return 0.5
 }
 
+const HEX_DIRECTIONS = [
+  { q: 1, r: 0 },
+  { q: 1, r: -1 },
+  { q: 0, r: -1 },
+  { q: -1, r: 0 },
+  { q: -1, r: 1 },
+  { q: 0, r: 1 },
+]
+
+const getMoraleMultiplier = (morale) => {
+  if (morale === MORALE_STATES.LOW) return 0.8
+  if (morale === MORALE_STATES.HIGH) return 1.2
+  return 1.0
+}
+
+const canUnitsFight = (unitA, unitB, teamMode) => {
+  if (!unitA || !unitB) return false
+  if (teamMode) return !areAllies(unitA.ownerID, unitB.ownerID)
+  return unitA.ownerID !== unitB.ownerID
+}
+
+const getUnitByPosition = (units, q, r) => {
+  return units.find(unit => unit.currentHP > 0 && unit.q === q && unit.r === r)
+}
+
+const isUnitEncircled = (unit, units, teamMode) => {
+  if (!unit || unit.currentHP <= 0) return false
+
+  for (let i = 0; i < 3; i += 1) {
+    const direction = HEX_DIRECTIONS[i]
+    const oppositeDirection = { q: -direction.q, r: -direction.r }
+    const sideA = getUnitByPosition(units, unit.q + direction.q, unit.r + direction.r)
+    const sideB = getUnitByPosition(units, unit.q + oppositeDirection.q, unit.r + oppositeDirection.r)
+
+    if (canUnitsFight(unit, sideA, teamMode) && canUnitsFight(unit, sideB, teamMode)) {
+      return true
+    }
+  }
+
+  return false
+}
+
+const normalizeUnitMorale = (units = []) => {
+  units.forEach((unit) => {
+    if (!unit.moraleBase) {
+      unit.moraleBase = unit.morale === MORALE_STATES.HIGH ? MORALE_STATES.HIGH : MORALE_STATES.NEUTRAL
+    }
+    if (!unit.morale) {
+      unit.morale = unit.moraleBase
+    }
+  })
+}
+
+const getEffectiveMorale = (moraleBase, isEncircled) => {
+  if (!isEncircled) return moraleBase
+  return moraleBase === MORALE_STATES.HIGH ? MORALE_STATES.NEUTRAL : MORALE_STATES.LOW
+}
+
+const promoteMoraleFromKill = (unit) => {
+  if (!unit) return
+  if (unit.morale === MORALE_STATES.LOW) {
+    unit.moraleBase = MORALE_STATES.NEUTRAL
+    return
+  }
+  if (unit.moraleBase !== MORALE_STATES.HIGH) {
+    unit.moraleBase = MORALE_STATES.HIGH
+  }
+}
+
+const applyEncirclementMorale = (units, teamMode) => {
+  normalizeUnitMorale(units)
+  units.forEach((unit) => {
+    const encircled = isUnitEncircled(unit, units, teamMode)
+    unit.morale = getEffectiveMorale(unit.moraleBase, encircled)
+  })
+}
+
 // Create a new unit instance
 export const createUnit = (unitType, ownerID, q, r) => {
   const template = UNIT_TYPES[unitType]
@@ -227,6 +310,8 @@ export const createUnit = (unitType, ownerID, q, r) => {
     hasAttacked: false,
     hasMovedOrAttacked: false,
     lastMove: null,
+    morale: MORALE_STATES.NEUTRAL,
+    moraleBase: MORALE_STATES.NEUTRAL,
   }
 }
 
@@ -512,6 +597,7 @@ const setupPhase = {
         applyTransportState(newUnit, { resetMovePoints: true })
       }
       G.units.push(newUnit)
+      applyEncirclementMorale(G.units, G.teamMode)
       
       // Log the action
       G.log.push(`Player ${playerID} placed ${UNIT_TYPES[unitType].name} at (${q}, ${r})`)
@@ -526,6 +612,7 @@ const setupPhase = {
       const unit = G.units[unitIndex]
       G.log.push(`Player ${playerID} removed ${unit.name} from (${unit.q}, ${unit.r})`)
       G.units.splice(unitIndex, 1)
+      applyEncirclementMorale(G.units, G.teamMode)
     },
     
     readyForBattle: ({ G, ctx, playerID, events }) => {
@@ -686,6 +773,8 @@ const battlePhase = {
       }
       
       G.log.push(`Player ${playerID}'s ${unit.name} moved from (${oldQ}, ${oldR}) to (${targetQ}, ${targetR})`)
+
+      applyEncirclementMorale(G.units, G.teamMode)
     },
 
     undoMove: ({ G, ctx, playerID }, unitId) => {
@@ -767,7 +856,8 @@ const battlePhase = {
         : 0
       const baseDamage = attacker.attackPower + hillBonus
       const damageMultiplier = getDamageMultiplier(attacker.currentHP, attacker.maxHP)
-      const reducedDamage = Math.round(baseDamage * damageMultiplier)
+      const moraleMultiplier = getMoraleMultiplier(attacker.morale)
+      const reducedDamage = Math.round(baseDamage * damageMultiplier * moraleMultiplier)
       const damage = Math.max(1, reducedDamage - defenseBonus)
 
       target.currentHP -= damage
@@ -781,6 +871,7 @@ const battlePhase = {
       G.log.push(
         `Player ${playerID}'s ${attacker.name} hit ${target.name} for ${damage} damage` +
         `${damageMultiplier < 1.0 ? ` (reduced to ${Math.round(damageMultiplier * 100)}% due to wounds)` : ''}` +
+        `${moraleMultiplier !== 1.0 ? ` (${moraleMultiplier > 1 ? '+20%' : '-20%'} morale)` : ''}` +
         `${defenseBonus > 0 ? ` (terrain defense +${defenseBonus})` : ''}!`
       )
       
@@ -792,6 +883,7 @@ const battlePhase = {
           const attackerDefenseBonus = attackerTerrainData.defenseBonus || 0
           const targetDamageMultiplier = getDamageMultiplier(target.currentHP, target.maxHP)
           const targetBaseDamage = target.attackPower
+          const targetMoraleMultiplier = getMoraleMultiplier(target.morale)
 
           if (target.type === 'CATAPULT' && !target.isTransport) {
             G.log.push(`${target.name} cannot counter-attack (siege weapon)!`)
@@ -802,18 +894,20 @@ const battlePhase = {
             }
 
             const targetReducedDamage = Math.round(
-              targetBaseDamage * targetDamageMultiplier * meleePenaltyMultiplier
+              targetBaseDamage * targetDamageMultiplier * meleePenaltyMultiplier * targetMoraleMultiplier
             )
             const counterDamage = Math.max(1, targetReducedDamage - attackerDefenseBonus)
             attacker.currentHP -= counterDamage
             G.log.push(
               `${target.name} counter-attacked for ${counterDamage} damage` +
               `${targetDamageMultiplier < 1.0 ? ` (reduced to ${Math.round(targetDamageMultiplier * 100)}% due to wounds)` : ''}` +
+              `${targetMoraleMultiplier !== 1.0 ? ` (${targetMoraleMultiplier > 1 ? '+20%' : '-20%'} morale)` : ''}` +
               `${meleePenaltyMultiplier < 1.0 ? ' (melee penalty -50%)' : ''}` +
               `${attackerDefenseBonus > 0 ? ` (terrain defense +${attackerDefenseBonus})` : ''}!`
             )
 
             if (attacker.currentHP <= 0) {
+              promoteMoraleFromKill(target)
               G.units = G.units.filter(u => u.id !== attacker.id)
               G.log.push(`${attacker.name} was defeated by counter-attack!`)
             }
@@ -822,9 +916,12 @@ const battlePhase = {
       }
 
       if (target.currentHP <= 0) {
+        promoteMoraleFromKill(attacker)
         G.units = G.units.filter(u => u.id !== target.id)
         G.log.push(`${target.name} was defeated!`)
       }
+
+      applyEncirclementMorale(G.units, G.teamMode)
     },
     
     endTurn: ({ G, ctx, events, playerID }) => {
