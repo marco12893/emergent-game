@@ -261,7 +261,9 @@ const normalizeUnitMorale = (units = []) => {
   })
 }
 
-const getEffectiveMorale = (moraleBase, isEncircled) => {
+const getEffectiveMorale = (unit, isEncircled) => {
+  const moraleBase = unit?.moraleBase ?? MORALE_STATES.NEUTRAL
+  if (unit?.isNaval) return moraleBase
   if (!isEncircled) return moraleBase
   return moraleBase === MORALE_STATES.HIGH ? MORALE_STATES.NEUTRAL : MORALE_STATES.LOW
 }
@@ -281,7 +283,7 @@ const applyEncirclementMorale = (units, teamMode) => {
   normalizeUnitMorale(units)
   units.forEach((unit) => {
     const encircled = isUnitEncircled(unit, units, teamMode)
-    unit.morale = getEffectiveMorale(unit.moraleBase, encircled)
+    unit.morale = getEffectiveMorale(unit, encircled)
   })
 }
 

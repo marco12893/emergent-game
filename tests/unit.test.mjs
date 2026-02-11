@@ -1306,6 +1306,42 @@ test('morale damage modifiers and transitions are applied', () => {
 })
 
 
+
+
+test('naval units ignore encirclement morale debuff but still gain kill morale bonus', () => {
+  const hexes = makeHexGrid(3)
+  const terrainMap = makeTerrainMap(hexes)
+
+  const galley = createUnit('WAR_GALLEY', '0', 0, 0)
+  galley.morale = 'NEUTRAL'
+  galley.moraleBase = 'NEUTRAL'
+  const helper = createUnit('SWORDSMAN', '0', -3, 0)
+  const leftEnemy = createUnit('SWORDSMAN', '1', -1, 0)
+  const rightEnemy = createUnit('SWORDSMAN', '1', 1, 0)
+
+  const encircledGame = { hexes, units: [galley, helper, leftEnemy, rightEnemy], terrainMap, log: [], teamMode: false }
+
+  MedievalBattleGame.phases.battle.moves.moveUnit(
+    { G: encircledGame, ctx: {}, playerID: '0' },
+    helper.id,
+    -2,
+    0
+  )
+
+  assert.equal(galley.morale, 'NEUTRAL')
+
+  const weakTarget = createUnit('MILITIA', '1', 1, 0)
+  weakTarget.currentHP = 1
+  const killGame = { hexes, units: [galley, weakTarget], terrainMap, log: [], teamMode: false }
+
+  MedievalBattleGame.phases.battle.moves.attackUnit(
+    { G: killGame, ctx: {}, playerID: '0' },
+    galley.id,
+    weakTarget.id
+  )
+
+  assert.equal(galley.morale, 'HIGH')
+})
 test('morale transitions obey high-to-neutral on encirclement and neutral-to-high on kill', () => {
   const hexes = makeHexGrid(3)
   const terrainMap = makeTerrainMap(hexes)
