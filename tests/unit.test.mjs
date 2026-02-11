@@ -47,6 +47,8 @@ import {
   getVisibleHexesForPlayer,
   getVisibleUnitsForPlayer,
   shouldEmitDamageOnRemoval,
+  getRetreatActivationTurn,
+  getRetreatZoneForPlayer,
   hexDistance,
   isHexOccupied,
   isInSpawnZone,
@@ -1132,9 +1134,39 @@ test('getVisibleUnitsForPlayer limits visibility outside vision range', () => {
   assert.equal(visibleIds.includes('enemyFar'), false)
 })
 
-test('shouldEmitDamageOnRemoval skips setup phase removals', () => {
+
+test('getRetreatActivationTurn follows per-map thresholds', () => {
+  assert.equal(getRetreatActivationTurn('MAP_1'), 9)
+  assert.equal(getRetreatActivationTurn('MAP_2'), 13)
+  assert.equal(getRetreatActivationTurn('MAP_3'), 9)
+})
+
+test('getRetreatZoneForPlayer returns two-edge columns per side', () => {
+  const { hexes } = generateMapData('MAP_1')
+  const left = getRetreatZoneForPlayer({
+    hexes,
+    mapWidth: MAPS.MAP_1.size.width,
+    playerID: '0',
+    teamMode: false,
+  })
+  const right = getRetreatZoneForPlayer({
+    hexes,
+    mapWidth: MAPS.MAP_1.size.width,
+    playerID: '1',
+    teamMode: false,
+  })
+
+  assert.ok(left.length > 0)
+  assert.ok(right.length > 0)
+  assert.ok(left.every((hex) => (hex.q + Math.floor(hex.r / 2)) <= -5))
+  assert.ok(right.every((hex) => (hex.q + Math.floor(hex.r / 2)) >= 5))
+})
+
+test('shouldEmitDamageOnRemoval skips setup and retreat removals', () => {
   assert.equal(shouldEmitDamageOnRemoval('setup'), false)
   assert.equal(shouldEmitDamageOnRemoval('battle'), true)
+  assert.equal(shouldEmitDamageOnRemoval('battle', 'u1', ['u1']), false)
+  assert.equal(shouldEmitDamageOnRemoval('battle', 'u2', ['u1']), true)
   assert.equal(shouldEmitDamageOnRemoval(null), true)
 })
 
@@ -1386,4 +1418,47 @@ test('morale transitions obey high-to-neutral on encirclement and neutral-to-hig
   )
 
   assert.equal(killer.morale, 'HIGH')
+})
+
+test('retreatUnit removes selected unit and tracks it as surviving', () => {
+  const ctx = { numPlayers: 2, currentPlayer: '0', playOrder: ['0', '1'], playOrderPos: 0, phase: 'battle' }
+  const game = MedievalBattleGame.setup({ ctx, setupData: { mapId: 'MAP_1' } })
+  game.phase = 'battle'
+  game.turn = 9
+
+  const unit = createUnit('SWORDSMAN', '0', -6, 0)
+  game.units = [unit]
+
+  const result = MedievalBattleGame.phases.battle.moves.retreatUnit(
+    { G: game, ctx, playerID: '0' },
+    unit.id
+  )
+
+  assert.equal(result, undefined)
+  assert.equal(game.units.length, 0)
+  assert.equal(game.retreatedUnits.length, 1)
+  assert.equal(game.retreatedUnits[0].id, unit.id)
+  assert.equal(game.retreatedUnitIds.includes(unit.id), true)
+})
+
+test('retreatUnit is blocked before map retreat turn and outside retreat zone', () => {
+  const ctx = { numPlayers: 2, currentPlayer: '0', playOrder: ['0', '1'], playOrderPos: 0, phase: 'battle' }
+  const game = MedievalBattleGame.setup({ ctx, setupData: { mapId: 'MAP_2' } })
+  game.phase = 'battle'
+
+  const tooEarly = createUnit('SWORDSMAN', '0', -8, 0)
+  game.units = [tooEarly]
+  game.turn = 12
+  assert.equal(
+    MedievalBattleGame.phases.battle.moves.retreatUnit({ G: game, ctx, playerID: '0' }, tooEarly.id),
+    INVALID_MOVE
+  )
+
+  const wrongZone = createUnit('SWORDSMAN', '0', 0, 0)
+  game.units = [wrongZone]
+  game.turn = 13
+  assert.equal(
+    MedievalBattleGame.phases.battle.moves.retreatUnit({ G: game, ctx, playerID: '0' }, wrongZone.id),
+    INVALID_MOVE
+  )
 })

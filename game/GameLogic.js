@@ -410,7 +410,42 @@ export const getVisibleUnitsForPlayer = ({
   })
 }
 
-export const shouldEmitDamageOnRemoval = (phase) => phase !== 'setup'
+export const shouldEmitDamageOnRemoval = (phase, removedUnitId = null, retreatedUnitIds = []) => {
+  if (phase === 'setup') return false
+  if (!removedUnitId) return true
+  return !retreatedUnitIds.includes(removedUnitId)
+}
+
+export const getRetreatActivationTurn = (mapId = DEFAULT_MAP_ID) => {
+  return mapId === 'MAP_2' ? 13 : 9
+}
+
+export const getRetreatZoneForPlayer = ({
+  hexes = [],
+  mapWidth,
+  playerID,
+  teamMode = false,
+}) => {
+  if (!Array.isArray(hexes) || hexes.length === 0 || typeof mapWidth !== 'number') {
+    return []
+  }
+
+  const teamId = teamMode ? getTeamId(playerID) : playerID
+  const isLeftSide = teamId === '0' || teamId === 'blue-green'
+  const isRightSide = teamId === '1' || teamId === 'red-yellow'
+  if (!isLeftSide && !isRightSide) return []
+
+  const leftEdge = -mapWidth
+  const rightEdge = mapWidth
+
+  return hexes.filter((hex) => {
+    const column = hex.q + Math.floor(hex.r / 2)
+    if (isLeftSide) {
+      return column <= leftEdge + 1
+    }
+    return column >= rightEdge - 1
+  })
+}
 
 // Get neighboring hexes (distance 1)
 export const getNeighbors = (hex, allHexes) => {
@@ -943,40 +978,45 @@ const battlePhase = {
     },
     
     toggleRetreatMode: ({ G, ctx }) => {
-      // Only allow retreat after turn 10
-      if (G.turn >= 10) {
+      // Only allow retreat once map threshold is reached
+      const activationTurn = getRetreatActivationTurn(G.mapId)
+      if (G.turn >= activationTurn) {
         G.retreatModeActive = !G.retreatModeActive
         G.log.push(G.retreatModeActive ? '🚨 Retreat mode ACTIVATED!' : 'Retreat mode deactivated.')
       }
     },
     
-    retreatUnit: ({ G, ctx, playerID }, unitId, targetQ, targetR) => {
+    retreatUnit: ({ G, ctx, playerID }, unitId) => {
       const unit = G.units.find(u => u.id === unitId)
       
       if (!unit || unit.ownerID !== playerID) {
         return INVALID_MOVE
       }
       
-      if (!G.retreatModeActive) {
+      const activationTurn = getRetreatActivationTurn(G.mapId)
+      if (G.turn < activationTurn) {
         return INVALID_MOVE
       }
-      
-      // Check if target is an extraction hex
-      const isExtraction = G.extractionHexes.some(h => h.q === targetQ && h.r === targetR)
-      if (!isExtraction) {
+
+      const retreatHexes = getRetreatZoneForPlayer({
+        hexes: G.hexes,
+        mapWidth: G.mapSize?.width || GAME_MODES[G.gameMode]?.mapSize?.width || 6,
+        playerID,
+        teamMode: G.teamMode,
+      })
+      const isInRetreatZone = retreatHexes.some(h => h.q === unit.q && h.r === unit.r)
+      if (!isInRetreatZone) {
         return INVALID_MOVE
       }
-      
-      // Check if unit can reach it
-      const reachable = getReachableHexes(unit, G.hexes, G.units, G.terrainMap)
-      const canReach = reachable.some(h => h.q === targetQ && h.r === targetR)
-      
-      if (!canReach) {
-        return INVALID_MOVE
-      }
-      
+
       // Remove unit (retreat successful)
       const unitIndex = G.units.findIndex(u => u.id === unitId)
+      if (unitIndex < 0) {
+        return INVALID_MOVE
+      }
+
+      G.retreatedUnits.push({ ...unit, retreated: true })
+      G.retreatedUnitIds.push(unit.id)
       G.units.splice(unitIndex, 1)
       
       G.log.push(`Player ${playerID}'s ${unit.name} successfully retreated!`)
@@ -1080,6 +1120,8 @@ export const MedievalBattleGame = {
       mapSize: { width: MAP_WIDTH, height: MAP_HEIGHT },
       retreatModeActive: false,
       extractionHexes: extractionHexes,
+      retreatedUnits: [],
+      retreatedUnitIds: [],
       objectiveHexes: modeConfig.objectiveHexes || [],
       turnLimit: modeConfig.turnLimit || null,
       objectiveControl: { [attackerId]: 0, [defenderId]: 0 }, // Track turns controlling objective

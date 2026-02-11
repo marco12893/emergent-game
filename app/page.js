@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useRef, useMemo } from 'react'
-import { UNIT_TYPES, TERRAIN_TYPES, getDeployableHexes, getVisibleHexesForPlayer, getVisibleUnitsForPlayer } from '@/game/GameLogic'
+import { UNIT_TYPES, TERRAIN_TYPES, getDeployableHexes, getVisibleHexesForPlayer, getVisibleUnitsForPlayer, getRetreatActivationTurn, getRetreatZoneForPlayer } from '@/game/GameLogic'
 import { areAllies, getPlayerColor, getUnitSpriteProps } from '@/game/teamUtils'
 import { DEFAULT_MAP_ID, MAPS } from '@/game/maps'
 import GameBoard from '@/components/GameBoard'
@@ -185,6 +185,35 @@ export default function HTTPMultiplayerPage() {
   const selectedUnitForInfo = selectedUnitForInfoId
     ? visibleUnits.find(unit => unit.id === selectedUnitForInfoId)
     : null
+
+  const retreatActivationTurn = useMemo(() => {
+    if (!gameState?.mapId) return null
+    return getRetreatActivationTurn(gameState.mapId)
+  }, [gameState?.mapId])
+
+  const retreatHexes = useMemo(() => {
+    if (!gameState || gameState.phase !== 'battle' || !playerID || isSpectator) return []
+    const activationTurn = getRetreatActivationTurn(gameState.mapId)
+    if ((gameState.turn || 1) < activationTurn) return []
+    return getRetreatZoneForPlayer({
+      hexes: gameState.hexes,
+      mapWidth: gameState?.mapSize?.width || 6,
+      playerID,
+      teamMode,
+    })
+  }, [gameState, playerID, teamMode, isSpectator])
+
+  const selectedOwnedUnit = useMemo(() => {
+    if (!gameState?.selectedUnitId) return null
+    const unit = gameState.units.find(u => u.id === gameState.selectedUnitId)
+    if (!unit || unit.ownerID !== playerID) return null
+    return unit
+  }, [gameState, playerID])
+
+  const canRetreatSelectedUnit = useMemo(() => {
+    if (!selectedOwnedUnit || gameState?.phase !== 'battle') return false
+    return retreatHexes.some(h => h.q === selectedOwnedUnit.q && h.r === selectedOwnedUnit.r)
+  }, [selectedOwnedUnit, gameState?.phase, retreatHexes])
 
   const getChatSenderClass = (message) => {
     if (message?.playerID === '0') return 'text-blue-400'
@@ -876,6 +905,13 @@ export default function HTTPMultiplayerPage() {
     setDamagePreview(null)
   }
 
+  const retreatSelectedUnit = () => {
+    if (!joined || !gameState || !selectedOwnedUnit || !canRetreatSelectedUnit) return
+    sendAction('retreatUnit', { unitId: selectedOwnedUnit.id, playerID })
+    setDamagePreview(null)
+    setSelectedUnitForInfoId(null)
+  }
+
   const readyForBattle = () => {
     if (!joined) return
     const deployedUnits = gameState?.units?.filter(
@@ -1550,6 +1586,8 @@ export default function HTTPMultiplayerPage() {
           selectedUnitId={gameState?.selectedUnitId || null}
           currentPlayerID={playerID}
           damagePreview={damagePreview}
+          retreatHexes={retreatHexes}
+          retreatedUnitIds={gameState?.retreatedUnitIds || []}
           showSpawnZones={gameState?.phase === 'setup'}
           isWinter={gameState?.isWinter}
           teamMode={gameState?.teamMode}
@@ -1599,6 +1637,14 @@ export default function HTTPMultiplayerPage() {
                   aria-label="Undo move"
                 >
                   <img src="/icons/Undo%20Button.png" alt="Undo move" className="w-7 h-7" />
+                </button>
+                <button
+                  onClick={retreatSelectedUnit}
+                  disabled={!isMyTurn || !canRetreatSelectedUnit}
+                  title={retreatActivationTurn ? `Retreat available from turn ${retreatActivationTurn}` : 'Retreat'}
+                  className="px-4 h-12 bg-yellow-500 hover:bg-yellow-400 disabled:bg-slate-600 disabled:text-slate-400 text-slate-900 font-bold rounded-lg shadow-lg transition-all transform hover:scale-105"
+                >
+                  Retreat
                 </button>
                 <button
                   onClick={endTurn}
@@ -1816,7 +1862,7 @@ export default function HTTPMultiplayerPage() {
           victoryData={gameState.gameOver}
           onClose={() => setShowVictoryScreen(false)}
           playerID={playerID}
-          units={gameState.units}
+          units={[...(gameState.units || []), ...((gameState.retreatedUnits || []))]}
         />
       )}
 

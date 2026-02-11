@@ -66,6 +66,8 @@ const GameBoard = ({
   teamMode = false,
   fogOfWarEnabled = false,
   visibleHexes = null,
+  retreatHexes = [],
+  retreatedUnitIds = [],
 }) => {
   const DAMAGE_DISPLAY_DURATION = 3000
   const mapWidth = mapSize?.width || Math.max(6, ...hexes.map(hex => Math.abs(hex.q)))
@@ -137,7 +139,7 @@ const GameBoard = ({
             s: nextUnit.s,
           })
         }
-      } else if (prevUnit.currentHP > 0 && shouldEmitDamageOnRemoval(phase)) {
+      } else if (prevUnit.currentHP > 0 && shouldEmitDamageOnRemoval(phase, unitId, retreatedUnitIds)) {
         newEvents.push({
           id: `${unitId}-${createdAt}-${Math.random()}`,
           unitId,
@@ -155,7 +157,7 @@ const GameBoard = ({
     }
 
     previousUnitsRef.current = nextUnits
-  }, [allUnitsForDamageEvents, units])
+  }, [allUnitsForDamageEvents, units, phase, retreatedUnitIds])
 
   const activeDamageEvents = useMemo(() => {
     const activeMap = new Map()
@@ -551,6 +553,9 @@ const GameBoard = ({
     if (highlightedHexes.some(h => h.q === hex.q && h.r === hex.r)) {
       return { stroke: '#34D399', strokeWidth: 0.15 } // Movable (Green)
     }
+    if (retreatHexes.some(h => h.q === hex.q && h.r === hex.r)) {
+      return { stroke: '#FACC15', strokeWidth: 0.22 } // Retreat zone (Yellow)
+    }
     if (showSpawnZones && hex.spawnZone === 0) return { stroke: '#3B82F6', strokeWidth: 0.2 } // P0 Spawn
     if (showSpawnZones && hex.spawnZone === 1) return { stroke: '#EF4444', strokeWidth: 0.2 } // P1 Spawn
     
@@ -606,7 +611,8 @@ const GameBoard = ({
               const isAttackable = attackableHexes.some(h => h.q === hex.q && h.r === hex.r)
               const isReachable = highlightedHexes.some(h => h.q === hex.q && h.r === hex.r)
               const isVisible = isHexVisible(hex)
-              const highlightFilter = isReachable ? 'brightness(1.3)' : isAttackable ? 'brightness(1.2)' : 'none'
+              const isRetreat = retreatHexes.some(h => h.q === hex.q && h.r === hex.r)
+              const highlightFilter = isReachable ? 'brightness(1.3)' : isAttackable ? 'brightness(1.2)' : isRetreat ? 'brightness(1.15)' : 'none'
               
               return (
                 <g key={`${hex.q}-${hex.r}-${hex.s}`} data-hex-q={hex.q} data-hex-r={hex.r}>
