@@ -1642,9 +1642,10 @@ export default function HTTPMultiplayerPage() {
                   onClick={retreatSelectedUnit}
                   disabled={!isMyTurn || !canRetreatSelectedUnit}
                   title={retreatActivationTurn ? `Retreat available from turn ${retreatActivationTurn}` : 'Retreat'}
-                  className="px-4 h-12 bg-yellow-500 hover:bg-yellow-400 disabled:bg-slate-600 disabled:text-slate-400 text-slate-900 font-bold rounded-lg shadow-lg transition-all transform hover:scale-105"
+                  className="w-12 h-12 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:opacity-60 rounded-lg shadow-lg transition-all transform hover:scale-105 flex items-center justify-center"
+                  aria-label="Retreat unit"
                 >
-                  Retreat
+                  <img src="/units/retreat.png" alt="Retreat" className="w-7 h-7" />
                 </button>
                 <button
                   onClick={endTurn}
