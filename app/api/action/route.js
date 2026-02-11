@@ -2052,6 +2052,11 @@ export async function POST(request) {
             })
           }
 
+          const retreatTurnError = ensurePlayersTurn(retreatPlayerID, game, 'retreat')
+          if (retreatTurnError) {
+            return retreatTurnError
+          }
+
           const retreatTurn = getRetreatActivationTurn(game.mapId)
           if ((game.turn || 1) < retreatTurn) {
             return NextResponse.json({
