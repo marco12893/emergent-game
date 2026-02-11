@@ -232,6 +232,33 @@ const restoreFromTransport = (unit, { resetMovePoints } = {}) => {
   }
 }
 
+
+const getRetreatActivationTurn = (mapId = 'MAP_1') => {
+  return mapId === 'MAP_2' ? 13 : 9
+}
+
+const getRetreatZoneForPlayer = ({ hexes = [], mapWidth, playerID, teamMode = false }) => {
+  if (!Array.isArray(hexes) || hexes.length === 0 || typeof mapWidth !== 'number') {
+    return []
+  }
+
+  const teamId = teamMode ? getTeamId(playerID) : playerID
+  const isLeftSide = teamId === '0' || teamId === 'blue-green'
+  const isRightSide = teamId === '1' || teamId === 'red-yellow'
+  if (!isLeftSide && !isRightSide) return []
+
+  const leftEdge = -mapWidth
+  const rightEdge = mapWidth
+
+  return hexes.filter((hex) => {
+    const column = hex.q + Math.floor(hex.r / 2)
+    if (isLeftSide) {
+      return column <= leftEdge + 1
+    }
+    return column >= rightEdge - 1
+  })
+}
+
 const spectatorActionResponse = () => {
   return NextResponse.json(
     { error: 'Spectators cannot perform game actions.' },
@@ -561,6 +588,12 @@ export async function POST(request) {
     }
     if (typeof game.fogOfWarEnabled !== 'boolean') {
       game.fogOfWarEnabled = false
+    }
+    if (!Array.isArray(game.retreatedUnits)) {
+      game.retreatedUnits = []
+    }
+    if (!Array.isArray(game.retreatedUnitIds)) {
+      game.retreatedUnitIds = []
     }
     
     // Handle different game actions
@@ -1970,8 +2003,9 @@ export async function POST(request) {
           break
           
         case 'toggleRetreatMode':
-          // Only allow retreat after turn 10
-          if (game.turn >= 10) {
+          // Only allow retreat once map threshold is reached
+          const activationTurn = getRetreatActivationTurn(game.mapId)
+          if (game.turn >= activationTurn) {
             game.retreatModeActive = !game.retreatModeActive
             game.log.push(game.retreatModeActive ? '🚨 Retreat mode ACTIVATED!' : 'Retreat mode deactivated.')
           }
@@ -1982,8 +2016,6 @@ export async function POST(request) {
           // Validate and sanitize payload
           const retreatUnitSchema = {
             unitId: { required: true, sanitize: sanitizeUnitId },
-            targetQ: { required: true, sanitize: sanitizeCoordinate },
-            targetR: { required: true, sanitize: sanitizeCoordinate },
             playerID: { required: true, sanitize: sanitizePlayerID }
           }
           
@@ -2001,7 +2033,7 @@ export async function POST(request) {
             })
           }
           
-          const { unitId: retreatUnitId, targetQ: retreatTargetQ, targetR: retreatTargetR, playerID: retreatPlayerID } = retreatUnitValidation.sanitized
+          const { unitId: retreatUnitId, playerID: retreatPlayerID } = retreatUnitValidation.sanitized
 
           if (retreatPlayerID === 'spectator') {
             return spectatorActionResponse()
@@ -2019,6 +2051,21 @@ export async function POST(request) {
               }
             })
           }
+
+          const retreatTurnError = ensurePlayersTurn(retreatPlayerID, game, 'retreat')
+          if (retreatTurnError) {
+            return retreatTurnError
+          }
+
+          const retreatTurn = getRetreatActivationTurn(game.mapId)
+          if ((game.turn || 1) < retreatTurn) {
+            return NextResponse.json({
+              error: `Retreat is available from turn ${retreatTurn}`
+            }, {
+              status: 400,
+              headers: ACTION_CORS_HEADERS,
+            })
+          }
           
           const unit = game.units.find(u => u.id === retreatUnitId)
           
@@ -2034,55 +2081,41 @@ export async function POST(request) {
               }
             })
           }
-          
-          if (!game.retreatModeActive) {
+
+          const retreatHexes = getRetreatZoneForPlayer({
+            hexes: game.hexes,
+            mapWidth: game?.mapSize?.width || 6,
+            playerID: retreatPlayerID,
+            teamMode: game.teamMode,
+          })
+          const isInRetreatZone = retreatHexes.some(h => h.q === unit.q && h.r === unit.r)
+          if (!isInRetreatZone) {
             return NextResponse.json({ 
-              error: 'Retreat mode is not active' 
+              error: 'Unit must be standing in your retreat zone' 
             }, { 
               status: 400,
-              headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type',
-              }
-            })
-          }
-          
-          // Check if target is an extraction hex
-          const isExtraction = game.extractionHexes.some(h => h.q === retreatTargetQ && h.r === retreatTargetR)
-          if (!isExtraction) {
-            return NextResponse.json({ 
-              error: 'Target is not a valid extraction point' 
-            }, { 
-              status: 400,
-              headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type',
-              }
-            })
-          }
-          
-          // Check if unit can reach it
-          const reachable = getReachableHexes(unit, game.hexes, game.units, game.terrainMap)
-          const canReach = reachable.some(h => h.q === retreatTargetQ && h.r === retreatTargetR)
-          
-          if (!canReach) {
-            return NextResponse.json({ 
-              error: 'Unit cannot reach extraction point' 
-            }, { 
-              status: 400,
-              headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type',
-              }
+              headers: ACTION_CORS_HEADERS,
             })
           }
           
           // Remove unit (retreat successful)
           const unitIndex = game.units.findIndex(u => u.id === retreatUnitId)
+          if (unitIndex < 0) {
+            return NextResponse.json({
+              error: 'Unit not found for retreat',
+            }, {
+              status: 404,
+              headers: ACTION_CORS_HEADERS,
+            })
+          }
+          game.retreatedUnits = game.retreatedUnits || []
+          game.retreatedUnitIds = game.retreatedUnitIds || []
+          game.retreatedUnits.push({ ...unit, retreated: true })
+          game.retreatedUnitIds.push(unit.id)
           game.units.splice(unitIndex, 1)
+          if (game.selectedUnitId === retreatUnitId) {
+            game.selectedUnitId = null
+          }
           
           game.log.push(`Player ${retreatPlayerID}'s ${unit.name} successfully retreated!`)
           game.lastUpdate = Date.now()

@@ -88,7 +88,7 @@ const VictoryScreen = ({
                   style={{ filter }}
                   alt={unit.name}
                 />
-                <span className="text-slate-300">{unit.name}</span>
+                <span className="text-slate-300">{unit.name}{unit.retreated ? ' (Retreated)' : ''}</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-12 bg-slate-700 rounded-full h-1.5">
