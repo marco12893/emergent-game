@@ -56,6 +56,7 @@ import {
   MedievalBattleGame,
   TERRAIN_TYPES,
 } from '../game/GameLogic.js'
+import { sanitizeCustomMap } from '../lib/customMap.js'
 
 const makeHexGrid = (radius) => {
   const hexes = []
@@ -139,6 +140,7 @@ test('sanitizeChatMessage strips control chars and HTML', () => {
 
 test('sanitizeMapId validates map identifiers', () => {
   assert.equal(sanitizeMapId('map_1'), 'MAP_1')
+  assert.equal(sanitizeMapId('custom'), 'CUSTOM')
   assert.equal(sanitizeMapId('MAP_4'), null)
 })
 
@@ -182,6 +184,46 @@ test('generateMapData returns map config, hexes, and terrain', () => {
   assert.equal(data.mapConfig.id, 'MAP_1')
   assert.equal(Array.isArray(data.hexes), true)
   assert.ok(Object.keys(data.terrainMap).length > 0)
+})
+
+
+test('sanitizeCustomMap normalizes size, terrain, tiles, and deployment zones', () => {
+  const custom = sanitizeCustomMap({
+    name: '  My Custom   ',
+    size: { width: 4, height: 3 },
+    terrainMap: {
+      '0,0': 'FOREST',
+      '1,1': 'MOUNTAIN',
+      '999,999': 'WATER',
+      '0,1': 'INVALID',
+    },
+    tileMap: {
+      '0,0': '/tiles/Forest.png',
+      '1,1': '/tiles/Hills.png',
+      '2,2': 'https://evil.example/tile.png',
+    },
+    deploymentZones: {
+      blue: [{ q: -4, r: 0 }, { q: -4, r: 0 }, { q: 999, r: 999 }],
+      red: [{ q: 4, r: 0 }],
+    },
+  })
+
+  assert.equal(custom.id, 'CUSTOM')
+  assert.equal(custom.name, 'My Custom')
+  assert.equal(custom.size.width, 4)
+  assert.equal(custom.size.height, 3)
+  assert.equal(custom.terrainMap['0,0'], 'FOREST')
+  assert.equal(custom.terrainMap['0,1'], 'PLAIN')
+  assert.equal(custom.tileMap['0,0'], '/tiles/Forest.png')
+  assert.equal(custom.tileMap['2,2'], undefined)
+  assert.equal(custom.deploymentZones.blue.length, 1)
+  assert.deepEqual(custom.deploymentZones.red, [{ q: 4, r: 0 }])
+})
+
+test('sanitizeCustomMap rejects invalid sizes', () => {
+  assert.equal(sanitizeCustomMap(null), null)
+  assert.equal(sanitizeCustomMap({ size: { width: 2, height: 4 } }), null)
+  assert.equal(sanitizeCustomMap({ size: { width: 6, height: 20 } }), null)
 })
 
 test('MAPS exposes known map ids', () => {
@@ -255,12 +297,21 @@ test('isHexOccupied and getUnitAtHex require living units', () => {
   assert.equal(getUnitAtHex(0, 0, [unit]), undefined)
 })
 
-test('isInSpawnZone honors team mode', () => {
+test('isInSpawnZone honors team mode and custom deployment zones', () => {
   assert.equal(isInSpawnZone(-4, 0, '0', 6, false), true)
   assert.equal(isInSpawnZone(4, 0, '1', 6, false), true)
   assert.equal(isInSpawnZone(-4, 0, '1', 6, false), false)
   assert.equal(isInSpawnZone(-4, 0, '0', 6, true), true)
   assert.equal(isInSpawnZone(4, 0, '1', 6, true), true)
+
+  const deploymentZones = {
+    blue: [{ q: 0, r: 0 }],
+    red: [{ q: 1, r: 0 }],
+  }
+
+  assert.equal(isInSpawnZone(0, 0, '0', 6, false, deploymentZones), true)
+  assert.equal(isInSpawnZone(1, 0, '1', 6, false, deploymentZones), true)
+  assert.equal(isInSpawnZone(-4, 0, '0', 6, false, deploymentZones), false)
 })
 
 test('getDeployableHexes respects occupancy and terrain', () => {

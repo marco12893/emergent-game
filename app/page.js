@@ -1115,24 +1115,6 @@ export default function HTTPMultiplayerPage() {
                     />
                   </label>
                   <button
-                    onClick={() => {
-                      if (!customMapConfig) {
-                        setError('No custom map to export yet. Open map editor first.')
-                        return
-                      }
-                      const blob = new Blob([JSON.stringify(customMapConfig, null, 2)], { type: 'application/json' })
-                      const url = URL.createObjectURL(blob)
-                      const a = document.createElement('a')
-                      a.href = url
-                      a.download = 'custom-map.json'
-                      a.click()
-                      URL.revokeObjectURL(url)
-                    }}
-                    className="rounded-xl border border-emerald-500/70 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/20"
-                  >
-                    📤 Export Map
-                  </button>
-                  <button
                     onClick={createLobbyGame}
                     disabled={loading}
                     className="flex-1 rounded-xl bg-amber-500 px-4 py-3 text-sm font-bold text-white transition hover:bg-amber-400 disabled:bg-slate-600"
@@ -1233,6 +1215,17 @@ export default function HTTPMultiplayerPage() {
             </div>
           </div>
         </div>
+
+        <MapBuilderModal
+          open={showMapBuilder}
+          onClose={() => setShowMapBuilder(false)}
+          initialMap={customMapConfig}
+          onApply={(map) => {
+            setCustomMapConfig(map)
+            setSelectedMapId('CUSTOM')
+            setShowMapBuilder(false)
+          }}
+        />
       </div>
     )
   }
@@ -1924,17 +1917,6 @@ export default function HTTPMultiplayerPage() {
           units={[...(gameState.units || []), ...((gameState.retreatedUnits || []))]}
         />
       )}
-
-      <MapBuilderModal
-        open={showMapBuilder}
-        onClose={() => setShowMapBuilder(false)}
-        initialMap={customMapConfig}
-        onApply={(map) => {
-          setCustomMapConfig(map)
-          setSelectedMapId('CUSTOM')
-          setShowMapBuilder(false)
-        }}
-      />
 
       <ConfirmDialog
         open={showReadyConfirm}
