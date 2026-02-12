@@ -164,9 +164,24 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
           <label className="text-xs">W <input type="number" min={3} max={12} value={width} onChange={(e) => setWidth(Number(e.target.value))} className="ml-1 w-14 rounded bg-slate-800 px-1 py-0.5" /></label>
           <label className="text-xs">H <input type="number" min={3} max={10} value={height} onChange={(e) => setHeight(Number(e.target.value))} className="ml-1 w-14 rounded bg-slate-800 px-1 py-0.5" /></label>
           <button onClick={resizeMap} className="rounded bg-slate-700 px-2 py-1 text-xs">Create Size</button>
-          <button onClick={() => setEditMode('terrain')} className="rounded bg-slate-700 px-2 py-1 text-xs">Paint Tile</button>
-          <button onClick={() => setEditMode('deploy-blue')} className="rounded bg-blue-700 px-2 py-1 text-xs">Blue Deploy</button>
-          <button onClick={() => setEditMode('deploy-red')} className="rounded bg-red-700 px-2 py-1 text-xs">Red Deploy</button>
+          <button
+            onClick={() => setEditMode('terrain')}
+            className={`rounded px-2 py-1 text-xs ${editMode === 'terrain' ? 'bg-amber-600' : 'bg-slate-700'}`}
+          >
+            Paint Terrain
+          </button>
+          <button
+            onClick={() => setEditMode('deploy-blue')}
+            className={`rounded px-2 py-1 text-xs ${editMode === 'deploy-blue' ? 'bg-blue-500' : 'bg-blue-700'}`}
+          >
+            Blue Deploy
+          </button>
+          <button
+            onClick={() => setEditMode('deploy-red')}
+            className={`rounded px-2 py-1 text-xs ${editMode === 'deploy-red' ? 'bg-red-500' : 'bg-red-700'}`}
+          >
+            Red Deploy
+          </button>
           <button onClick={exportMap} className="rounded bg-emerald-700 px-2 py-1 text-xs">Export JSON</button>
           <button onClick={() => onApply(mapData)} className="rounded bg-amber-600 px-2 py-1 text-xs">Use In Lobby</button>
           <button onClick={onClose} className="ml-auto rounded bg-slate-700 px-2 py-1 text-xs">Close</button>
@@ -174,6 +189,11 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
 
         <div className="grid flex-1 gap-3 lg:grid-cols-[260px_1fr]">
           <div className="overflow-auto rounded border border-slate-700 p-2">
+            <div className="mb-2 rounded border border-slate-700 bg-slate-800/70 p-2 text-xs text-slate-300">
+              {editMode === 'terrain'
+                ? 'Paint Terrain: choose a terrain + texture, then click hexes to paint them.'
+                : `Deployment Mode: click hexes to toggle the ${selectedZone} deployment area.`}
+            </div>
             <div className="mb-2 text-xs text-slate-400">Terrain</div>
             <div className="mb-3 flex flex-wrap gap-1">
               {TERRAIN_OPTIONS.map((terrain) => (
