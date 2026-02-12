@@ -44,6 +44,63 @@ const createEmptyMap = (width, height) => {
   }
 }
 
+const getBoundsFromHexes = (hexes = []) => {
+  if (!hexes.length) {
+    return { width: 0, height: 0 }
+  }
+
+  let maxQ = 0
+  let maxR = 0
+  hexes.forEach((hex) => {
+    maxQ = Math.max(maxQ, Math.abs(hex.q))
+    maxR = Math.max(maxR, Math.abs(hex.r))
+  })
+
+  return {
+    width: Math.max(1, maxQ),
+    height: Math.max(1, maxR),
+  }
+}
+
+const normalizeCustomMap = (map) => {
+  const uniqueHexes = []
+  const seen = new Set()
+
+  ;(map?.hexes || []).forEach((hex) => {
+    const q = Number(hex?.q)
+    const r = Number(hex?.r)
+    if (Number.isNaN(q) || Number.isNaN(r)) return
+    const key = `${q},${r}`
+    if (seen.has(key)) return
+    seen.add(key)
+    uniqueHexes.push({ q, r, s: -q - r })
+  })
+
+  const terrainMap = {}
+  const tileMap = {}
+  uniqueHexes.forEach((hex) => {
+    const key = `${hex.q},${hex.r}`
+    terrainMap[key] = map?.terrainMap?.[key] || 'PLAIN'
+    if (map?.tileMap?.[key]) {
+      tileMap[key] = map.tileMap[key]
+    }
+  })
+
+  const deploymentZones = {
+    blue: (map?.deploymentZones?.blue || []).filter((hex) => seen.has(`${hex.q},${hex.r}`)),
+    red: (map?.deploymentZones?.red || []).filter((hex) => seen.has(`${hex.q},${hex.r}`)),
+  }
+
+  return {
+    ...(map || {}),
+    hexes: uniqueHexes,
+    terrainMap,
+    tileMap,
+    deploymentZones,
+    size: getBoundsFromHexes(uniqueHexes),
+  }
+}
+
 export default function MapBuilderModal({ open, onClose, onApply, initialMap }) {
   const [width, setWidth] = useState(6)
   const [height, setHeight] = useState(4)
@@ -52,6 +109,8 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
   const [selectedTerrain, setSelectedTerrain] = useState('PLAIN')
   const [selectedTile, setSelectedTile] = useState('')
   const [editMode, setEditMode] = useState('terrain')
+  const [customQ, setCustomQ] = useState(0)
+  const [customR, setCustomR] = useState(0)
 
   const filteredTiles = useMemo(
     () => tiles.filter((tile) => getTileTerrainType(tile) === selectedTerrain),
@@ -63,11 +122,11 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
     if (initialMap?.size?.width && initialMap?.size?.height) {
       setWidth(initialMap.size.width)
       setHeight(initialMap.size.height)
-      setMapData({
+      setMapData(normalizeCustomMap({
         ...initialMap,
         tileMap: initialMap.tileMap || {},
         deploymentZones: initialMap.deploymentZones || { blue: [], red: [] },
-      })
+      }))
     } else {
       setMapData(createEmptyMap(6, 4))
       setWidth(6)
@@ -102,6 +161,46 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
 
   const resizeMap = () => {
     setMapData(createEmptyMap(width, height))
+  }
+
+  const addHexAtCoordinates = () => {
+    setMapData((current) => {
+      const q = Number(customQ)
+      const r = Number(customR)
+      if (Number.isNaN(q) || Number.isNaN(r)) return current
+
+      const key = `${q},${r}`
+      const exists = current.hexes.some((hex) => hex.q === q && hex.r === r)
+      if (exists) return current
+
+      const next = {
+        ...current,
+        hexes: [...current.hexes, { q, r, s: -q - r }],
+        terrainMap: { ...current.terrainMap, [key]: selectedTerrain },
+        tileMap: { ...(current.tileMap || {}) },
+      }
+
+      if (selectedTile) {
+        next.tileMap[key] = selectedTile
+      }
+
+      return normalizeCustomMap(next)
+    })
+  }
+
+  const removeHexAtCoordinates = () => {
+    setMapData((current) => {
+      const q = Number(customQ)
+      const r = Number(customR)
+      if (Number.isNaN(q) || Number.isNaN(r)) return current
+
+      const next = {
+        ...current,
+        hexes: current.hexes.filter((hex) => !(hex.q === q && hex.r === r)),
+      }
+
+      return normalizeCustomMap(next)
+    })
   }
 
   const selectedZone = useMemo(() => (editMode === 'deploy-blue' ? 'blue' : editMode === 'deploy-red' ? 'red' : null), [editMode])
@@ -182,6 +281,12 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
           >
             Red Deploy
           </button>
+          <button
+            onClick={() => setEditMode('hex-shape')}
+            className={`rounded px-2 py-1 text-xs ${editMode === 'hex-shape' ? 'bg-emerald-500' : 'bg-emerald-700'}`}
+          >
+            Shape Hexes
+          </button>
           <button onClick={exportMap} className="rounded bg-emerald-700 px-2 py-1 text-xs">Export JSON</button>
           <button onClick={() => onApply(mapData)} className="rounded bg-amber-600 px-2 py-1 text-xs">Use In Lobby</button>
           <button onClick={onClose} className="ml-auto rounded bg-slate-700 px-2 py-1 text-xs">Close</button>
@@ -192,8 +297,39 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
             <div className="mb-2 rounded border border-slate-700 bg-slate-800/70 p-2 text-xs text-slate-300">
               {editMode === 'terrain'
                 ? 'Paint Terrain: choose a terrain + texture, then click hexes to paint them.'
-                : `Deployment Mode: click hexes to toggle the ${selectedZone} deployment area.`}
+                : editMode === 'hex-shape'
+                  ? 'Shape Mode: add or remove any hex by coordinate. Use this to extend specific rows or columns one tile at a time.'
+                  : `Deployment Mode: click hexes to toggle the ${selectedZone} deployment area.`}
             </div>
+            {editMode === 'hex-shape' && (
+              <div className="mb-3 rounded border border-slate-700 bg-slate-800/70 p-2 text-xs">
+                <div className="mb-2 text-slate-300">Hex coordinates (axial q,r)</div>
+                <div className="mb-2 flex gap-2">
+                  <label className="flex items-center gap-1">
+                    q
+                    <input
+                      type="number"
+                      value={customQ}
+                      onChange={(e) => setCustomQ(Number(e.target.value))}
+                      className="w-16 rounded bg-slate-700 px-1 py-0.5"
+                    />
+                  </label>
+                  <label className="flex items-center gap-1">
+                    r
+                    <input
+                      type="number"
+                      value={customR}
+                      onChange={(e) => setCustomR(Number(e.target.value))}
+                      className="w-16 rounded bg-slate-700 px-1 py-0.5"
+                    />
+                  </label>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={addHexAtCoordinates} className="rounded bg-emerald-700 px-2 py-1">Add Hex</button>
+                  <button onClick={removeHexAtCoordinates} className="rounded bg-rose-700 px-2 py-1">Remove Hex</button>
+                </div>
+              </div>
+            )}
             <div className="mb-2 text-xs text-slate-400">Terrain</div>
             <div className="mb-3 flex flex-wrap gap-1">
               {TERRAIN_OPTIONS.map((terrain) => (
