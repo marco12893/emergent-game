@@ -959,7 +959,7 @@ export async function POST(request) {
           
           // Check spawn zone restriction
           const mapWidth = game.mapSize?.width || 6
-          const inSpawnZone = isInSpawnZone(q, r, placePlayerID, mapWidth, teamMode)
+          const inSpawnZone = isInSpawnZone(q, r, placePlayerID, mapWidth, teamMode, game.deploymentZones)
           if (!inSpawnZone) {
             return NextResponse.json({ 
               error: 'Units can only be placed in your spawn zone' 

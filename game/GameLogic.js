@@ -480,7 +480,15 @@ export const getUnitAtHex = (q, r, units) => {
 }
 
 // Check if hex is in spawn zone
-export const isInSpawnZone = (q, r, playerID, mapWidth, teamMode = false) => {
+export const isInSpawnZone = (q, r, playerID, mapWidth, teamMode = false, deploymentZones = null) => {
+  if (deploymentZones && typeof deploymentZones === 'object') {
+    const blueZone = Array.isArray(deploymentZones.blue) ? deploymentZones.blue : []
+    const redZone = Array.isArray(deploymentZones.red) ? deploymentZones.red : []
+    const isBlue = teamMode ? getTeamId(playerID) === 'blue-green' : playerID === '0'
+    const targetZone = isBlue ? blueZone : redZone
+    return targetZone.some((hex) => hex.q === q && hex.r === r)
+  }
+
   const column = q + Math.floor(r / 2)
   const leftSpawnMax = -mapWidth + 2
   const rightSpawnMin = mapWidth - 2
@@ -504,6 +512,7 @@ export const getDeployableHexes = ({
   playerID,
   mapWidth,
   teamMode = false,
+  deploymentZones = null,
 }) => {
   if (!unitType || !UNIT_TYPES[unitType]) return []
   const template = UNIT_TYPES[unitType]
@@ -511,7 +520,7 @@ export const getDeployableHexes = ({
 
   return hexes
     .filter(hex => {
-      if (!isInSpawnZone(hex.q, hex.r, playerID, mapWidth, teamMode)) {
+      if (!isInSpawnZone(hex.q, hex.r, playerID, mapWidth, teamMode, deploymentZones)) {
         return false
       }
       if (isHexOccupied(hex.q, hex.r, units)) {
