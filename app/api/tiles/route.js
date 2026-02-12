@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import fs from 'fs/promises'
 import path from 'path'
 
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 const TILE_ROOT = path.join(process.cwd(), 'public', 'tiles')
 
 const walk = async (dir, prefix = '/tiles') => {
@@ -26,7 +29,15 @@ const walk = async (dir, prefix = '/tiles') => {
 export async function GET() {
   try {
     const tiles = await walk(TILE_ROOT)
-    return NextResponse.json({ tiles: tiles.sort() }, { status: 200 })
+    return NextResponse.json(
+      { tiles: tiles.sort() },
+      {
+        status: 200,
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+        },
+      }
+    )
   } catch (error) {
     return NextResponse.json({ error: 'Failed to load tile textures', details: error.message }, { status: 500 })
   }

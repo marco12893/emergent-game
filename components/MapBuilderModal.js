@@ -62,7 +62,7 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
 
   useEffect(() => {
     if (!open) return
-    fetch('/api/tiles')
+    fetch(`/api/tiles?ts=${Date.now()}`, { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
         const list = data?.tiles || []
@@ -72,7 +72,7 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
         }
       })
       .catch(() => setTiles([]))
-  }, [open, selectedTile])
+  }, [open])
 
   const resizeMap = () => {
     setMapData(createEmptyMap(width, height))
