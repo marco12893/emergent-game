@@ -45,7 +45,7 @@ export async function GET() {
       return {
         id: game.id,
         mapId: game.mapId || 'MAP_1',
-        mapName: mapNames[game.mapId] || mapNames.MAP_1,
+        mapName: game.mapName || mapNames[game.mapId] || mapNames.MAP_1,
         isWinter: Boolean(game.isWinter),
         teamMode: Boolean(game.teamMode),
         fogOfWarEnabled: Boolean(game.fogOfWarEnabled),

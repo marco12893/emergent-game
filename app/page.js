@@ -7,6 +7,7 @@ import { DEFAULT_MAP_ID, MAPS } from '@/game/maps'
 import GameBoard from '@/components/GameBoard'
 import VictoryScreen from '@/components/VictoryScreen'
 import ConfirmDialog from '@/components/ConfirmDialog'
+import MapBuilderModal from '@/components/MapBuilderModal'
 
 // Landscape detection component
 const LandscapePrompt = () => {
@@ -128,6 +129,8 @@ export default function HTTPMultiplayerPage() {
   const [lobbyGames, setLobbyGames] = useState([])
   const [lobbyLoading, setLobbyLoading] = useState(false)
   const [selectedMapId, setSelectedMapId] = useState(DEFAULT_MAP_ID)
+  const [customMapConfig, setCustomMapConfig] = useState(null)
+  const [showMapBuilder, setShowMapBuilder] = useState(false)
   const [isWinter, setIsWinter] = useState(false)
   const [teamModeEnabled, setTeamModeEnabled] = useState(false)
   const [storedSession, setStoredSession] = useState(null)
@@ -167,6 +170,7 @@ export default function HTTPMultiplayerPage() {
       terrainMap: gameState.terrainMap,
       playerID,
       teamMode,
+      deploymentZones: gameState.deploymentZones,
     })
   }, [fogActive, gameState, playerID, teamMode])
 
@@ -179,6 +183,7 @@ export default function HTTPMultiplayerPage() {
       terrainMap: gameState.terrainMap,
       playerID,
       teamMode,
+      deploymentZones: gameState.deploymentZones,
     })
   }, [fogActive, gameState, playerID, teamMode])
 
@@ -488,6 +493,7 @@ export default function HTTPMultiplayerPage() {
       playerID,
       mapWidth,
       teamMode,
+      deploymentZones: gameState.deploymentZones,
     })
     setHighlightedHexes(deployableHexes)
     setAttackableHexes([])
@@ -606,6 +612,9 @@ export default function HTTPMultiplayerPage() {
         mapId: mapId || undefined,
         winter: typeof winter === 'boolean' ? winter : undefined,
         teamMode: teamModeEnabled,
+      }
+      if (mapId === 'CUSTOM' && customMapConfig) {
+        payload.customMap = customMapConfig
       }
       if (resolvedPlayerID !== undefined && resolvedPlayerID !== null) {
         payload.playerID = resolvedPlayerID
@@ -800,6 +809,7 @@ export default function HTTPMultiplayerPage() {
         playerID,
         mapWidth,
         teamMode,
+        deploymentZones: gameState.deploymentZones,
       })
       const isDeployable = deployableHexes.some(h => h.q === hex.q && h.r === hex.r)
       if (isDeployable) {
@@ -965,7 +975,7 @@ export default function HTTPMultiplayerPage() {
             </div>
             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
               <span className="rounded-full bg-slate-800/80 px-3 py-1">Mode: {teamModeEnabled ? '2v2 Team Battle' : '1v1 Duel'}</span>
-              <span className="rounded-full bg-slate-800/80 px-3 py-1">Map: {MAPS[selectedMapId]?.name}</span>
+              <span className="rounded-full bg-slate-800/80 px-3 py-1">Map: {selectedMapId === 'CUSTOM' ? (customMapConfig?.name || 'Custom Map') : MAPS[selectedMapId]?.name}</span>
               <span className="rounded-full bg-slate-800/80 px-3 py-1">Season: {isWinter ? 'Winter' : 'Standard'}</span>
             </div>
           </div>
@@ -1041,9 +1051,10 @@ export default function HTTPMultiplayerPage() {
                         {map.name}
                       </option>
                     ))}
+                    <option value="CUSTOM">Custom Map (Map Builder)</option>
                   </select>
                   <p className="mt-2 text-xs text-slate-400">
-                    {MAPS[selectedMapId]?.description}
+                    {selectedMapId === 'CUSTOM' ? (customMapConfig?.description || 'Use map builder to create/import map JSON.') : MAPS[selectedMapId]?.description}
                   </p>
                 </div>
 
@@ -1075,21 +1086,53 @@ export default function HTTPMultiplayerPage() {
                   </label>
                 </div>
 
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    onClick={createLobbyGame}
-                    disabled={loading}
-                    className="flex-1 rounded-xl bg-amber-500 px-4 py-3 text-sm font-bold text-white transition hover:bg-amber-400 disabled:bg-slate-600"
-                  >
-                    {loading ? '🔄 Creating lobby...' : joinAsSpectator ? '👀 Create & Watch' : '➕ Create New Lobby'}
-                  </button>
-                  <button
-                    onClick={fetchLobbyGames}
-                    disabled={lobbyLoading}
-                    className="rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:bg-slate-700"
-                  >
-                    {lobbyLoading ? '⏳ Refreshing...' : '🔄 Refresh'}
-                  </button>
+                <div className="grid gap-3">
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      onClick={() => setShowMapBuilder(true)}
+                      className="rounded-xl border border-indigo-500/70 bg-indigo-500/10 px-4 py-3 text-sm font-semibold text-indigo-200 transition hover:bg-indigo-500/20"
+                    >
+                      🗺️ Enter Map Editor
+                    </button>
+                    <label className="cursor-pointer rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700">
+                      📥 Import Map
+                      <input
+                        type="file"
+                        accept="application/json"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0]
+                          if (!file) return
+                          try {
+                            const text = await file.text()
+                            const imported = JSON.parse(text)
+                            setCustomMapConfig(imported)
+                            setSelectedMapId('CUSTOM')
+                            setError('')
+                          } catch (err) {
+                            setError('Failed to import map JSON file.')
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_160px]">
+                    <button
+                      onClick={createLobbyGame}
+                      disabled={loading}
+                      className="rounded-xl bg-amber-500 px-4 py-3 text-sm font-bold text-white transition hover:bg-amber-400 disabled:bg-slate-600"
+                    >
+                      {loading ? '🔄 Creating lobby...' : joinAsSpectator ? '👀 Create & Watch' : '➕ Create New Lobby'}
+                    </button>
+                    <button
+                      onClick={fetchLobbyGames}
+                      disabled={lobbyLoading}
+                      className="rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:bg-slate-700"
+                    >
+                      {lobbyLoading ? '⏳ Refreshing...' : '🔄 Refresh'}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1177,6 +1220,17 @@ export default function HTTPMultiplayerPage() {
             </div>
           </div>
         </div>
+
+        <MapBuilderModal
+          open={showMapBuilder}
+          onClose={() => setShowMapBuilder(false)}
+          initialMap={customMapConfig}
+          onApply={(map) => {
+            setCustomMapConfig(map)
+            setSelectedMapId('CUSTOM')
+            setShowMapBuilder(false)
+          }}
+        />
       </div>
     )
   }
@@ -1590,6 +1644,8 @@ export default function HTTPMultiplayerPage() {
           retreatedUnitIds={gameState?.retreatedUnitIds || []}
           showSpawnZones={gameState?.phase === 'setup'}
           isWinter={gameState?.isWinter}
+          tileMap={gameState?.tileMap || null}
+          deploymentZones={gameState?.deploymentZones || null}
           teamMode={gameState?.teamMode}
           fogOfWarEnabled={fogActive}
           visibleHexes={visibleHexes}

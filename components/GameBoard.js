@@ -63,11 +63,13 @@ const GameBoard = ({
   damagePreview = null,
   showSpawnZones = true,
   isWinter = false,
+  tileMap = null,
   teamMode = false,
   fogOfWarEnabled = false,
   visibleHexes = null,
   retreatHexes = [],
   retreatedUnitIds = [],
+  deploymentZones = null,
 }) => {
   const DAMAGE_DISPLAY_DURATION = 3000
   const mapWidth = mapSize?.width || Math.max(6, ...hexes.map(hex => Math.abs(hex.q)))
@@ -517,6 +519,8 @@ const GameBoard = ({
 
   // Get tile image based on terrain type
   const getTileImage = (hex) => {
+    const customTile = tileMap?.[`${hex.q},${hex.r}`]
+    if (customTile) return customTile
     const tiles = isWinter
       ? {
           PLAIN: '/tiles/Winter_Grass.png',
@@ -613,6 +617,8 @@ const GameBoard = ({
               const isVisible = isHexVisible(hex)
               const isRetreat = retreatHexes.some(h => h.q === hex.q && h.r === hex.r)
               const highlightFilter = isReachable ? 'brightness(1.3)' : isAttackable ? 'brightness(1.2)' : isRetreat ? 'brightness(1.15)' : 'none'
+              const inBlueDeployZone = Array.isArray(deploymentZones?.blue) && deploymentZones.blue.some(h => h.q === hex.q && h.r === hex.r)
+              const inRedDeployZone = Array.isArray(deploymentZones?.red) && deploymentZones.red.some(h => h.q === hex.q && h.r === hex.r)
               
               return (
                 <g key={`${hex.q}-${hex.r}-${hex.s}`} data-hex-q={hex.q} data-hex-r={hex.r}>
@@ -646,6 +652,20 @@ const GameBoard = ({
                           pointerEvents: 'none', 
                           opacity: isVisible ? 0.8 : 0.45
                         }}
+                      />
+                    )}
+                    {inBlueDeployZone && (
+                      <polygon
+                        points="0,-5.5 4.76,-2.75 4.76,2.75 0,5.5 -4.76,2.75 -4.76,-2.75"
+                        fill="rgba(59,130,246,0.2)"
+                        style={{ pointerEvents: 'none' }}
+                      />
+                    )}
+                    {inRedDeployZone && (
+                      <polygon
+                        points="0,-5.5 4.76,-2.75 4.76,2.75 0,5.5 -4.76,2.75 -4.76,-2.75"
+                        fill="rgba(239,68,68,0.2)"
+                        style={{ pointerEvents: 'none' }}
                       />
                     )}
                     {fogOfWarEnabled && !isVisible && (
