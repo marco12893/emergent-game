@@ -1086,48 +1086,53 @@ export default function HTTPMultiplayerPage() {
                   </label>
                 </div>
 
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    onClick={() => setShowMapBuilder(true)}
-                    className="rounded-xl border border-indigo-500/70 bg-indigo-500/10 px-4 py-3 text-sm font-semibold text-indigo-200 transition hover:bg-indigo-500/20"
-                  >
-                    🗺️ Enter Map Editor
-                  </button>
-                  <label className="cursor-pointer rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700">
-                    📥 Import Map
-                    <input
-                      type="file"
-                      accept="application/json"
-                      className="hidden"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0]
-                        if (!file) return
-                        try {
-                          const text = await file.text()
-                          const imported = JSON.parse(text)
-                          setCustomMapConfig(imported)
-                          setSelectedMapId('CUSTOM')
-                          setError('')
-                        } catch (err) {
-                          setError('Failed to import map JSON file.')
-                        }
-                      }}
-                    />
-                  </label>
-                  <button
-                    onClick={createLobbyGame}
-                    disabled={loading}
-                    className="flex-1 rounded-xl bg-amber-500 px-4 py-3 text-sm font-bold text-white transition hover:bg-amber-400 disabled:bg-slate-600"
-                  >
-                    {loading ? '🔄 Creating lobby...' : joinAsSpectator ? '👀 Create & Watch' : '➕ Create New Lobby'}
-                  </button>
-                  <button
-                    onClick={fetchLobbyGames}
-                    disabled={lobbyLoading}
-                    className="rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:bg-slate-700"
-                  >
-                    {lobbyLoading ? '⏳ Refreshing...' : '🔄 Refresh'}
-                  </button>
+                <div className="grid gap-3">
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      onClick={() => setShowMapBuilder(true)}
+                      className="rounded-xl border border-indigo-500/70 bg-indigo-500/10 px-4 py-3 text-sm font-semibold text-indigo-200 transition hover:bg-indigo-500/20"
+                    >
+                      🗺️ Enter Map Editor
+                    </button>
+                    <label className="cursor-pointer rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700">
+                      📥 Import Map
+                      <input
+                        type="file"
+                        accept="application/json"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0]
+                          if (!file) return
+                          try {
+                            const text = await file.text()
+                            const imported = JSON.parse(text)
+                            setCustomMapConfig(imported)
+                            setSelectedMapId('CUSTOM')
+                            setError('')
+                          } catch (err) {
+                            setError('Failed to import map JSON file.')
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_160px]">
+                    <button
+                      onClick={createLobbyGame}
+                      disabled={loading}
+                      className="rounded-xl bg-amber-500 px-4 py-3 text-sm font-bold text-white transition hover:bg-amber-400 disabled:bg-slate-600"
+                    >
+                      {loading ? '🔄 Creating lobby...' : joinAsSpectator ? '👀 Create & Watch' : '➕ Create New Lobby'}
+                    </button>
+                    <button
+                      onClick={fetchLobbyGames}
+                      disabled={lobbyLoading}
+                      className="rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:bg-slate-700"
+                    >
+                      {lobbyLoading ? '⏳ Refreshing...' : '🔄 Refresh'}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

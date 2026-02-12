@@ -5,6 +5,16 @@ import GameBoard from '@/components/GameBoard'
 
 const TERRAIN_OPTIONS = ['PLAIN', 'FOREST', 'MOUNTAIN', 'HILLS', 'WATER']
 
+const getTileTerrainType = (tilePath = '') => {
+  const value = tilePath.toLowerCase()
+  if (value.includes('forest')) return 'FOREST'
+  if (value.includes('mountain')) return 'MOUNTAIN'
+  if (value.includes('hill')) return 'HILLS'
+  if (value.includes('ocean') || value.includes('water')) return 'WATER'
+  if (value.includes('grass') || value.includes('plain')) return 'PLAIN'
+  return 'PLAIN'
+}
+
 const buildHexes = (width, height) => {
   const hexes = []
   for (let r = -height; r <= height; r++) {
@@ -43,6 +53,11 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
   const [selectedTile, setSelectedTile] = useState('')
   const [editMode, setEditMode] = useState('terrain')
 
+  const filteredTiles = useMemo(
+    () => tiles.filter((tile) => getTileTerrainType(tile) === selectedTerrain),
+    [tiles, selectedTerrain]
+  )
+
   useEffect(() => {
     if (!open) return
     if (initialMap?.size?.width && initialMap?.size?.height) {
@@ -67,12 +82,23 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
       .then((data) => {
         const list = data?.tiles || []
         setTiles(list)
-        if (list.length && !selectedTile) {
-          setSelectedTile(list[0])
+        if (!list.length) {
+          setSelectedTile('')
+          return
         }
+
+        const matching = list.find((tile) => getTileTerrainType(tile) === selectedTerrain)
+        setSelectedTile(matching || list[0])
       })
       .catch(() => setTiles([]))
-  }, [open])
+  }, [open, selectedTerrain])
+
+  useEffect(() => {
+    if (!open || !filteredTiles.length) return
+    if (!filteredTiles.includes(selectedTile)) {
+      setSelectedTile(filteredTiles[0])
+    }
+  }, [filteredTiles, open, selectedTile])
 
   const resizeMap = () => {
     setMapData(createEmptyMap(width, height))
@@ -97,6 +123,8 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
         next.terrainMap[key] = selectedTerrain
         if (selectedTile) {
           next.tileMap[key] = selectedTile
+        } else {
+          delete next.tileMap[key]
         }
       } else if (selectedZone) {
         const myZone = next.deploymentZones[selectedZone]
@@ -154,14 +182,21 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
                 </button>
               ))}
             </div>
-            <div className="mb-2 text-xs text-slate-400">Textures from /public/tiles</div>
+            <div className="mb-2 text-xs text-slate-400">
+              Textures for {selectedTerrain} from /public/tiles
+            </div>
             <div className="grid grid-cols-2 gap-2">
-              {tiles.map((tile) => (
+              {filteredTiles.map((tile) => (
                 <button key={tile} onClick={() => setSelectedTile(tile)} className={`rounded border p-1 ${selectedTile === tile ? 'border-amber-400' : 'border-slate-700'}`}>
                   <img src={tile} alt={tile} className="h-12 w-full object-cover" />
                 </button>
               ))}
             </div>
+            {filteredTiles.length === 0 && (
+              <div className="mt-2 rounded border border-slate-700 bg-slate-800/70 p-2 text-xs text-slate-400">
+                No textures found for {selectedTerrain}. Add matching files in /public/tiles.
+              </div>
+            )}
           </div>
           <div className="relative overflow-hidden rounded border border-slate-700">
             <GameBoard
