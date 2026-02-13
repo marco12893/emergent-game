@@ -11,6 +11,13 @@ const TERRAIN_TYPES = {
   PLAIN: { name: 'Plain', color: '#8B9556', defenseBonus: 0 },
   FOREST: { name: 'Forest', color: '#2D5A27', defenseBonus: 2 },
   CITY: { name: 'City', color: '#7C2D12', defenseBonus: 5 },
+  BARRACKS: { name: 'Barracks', color: '#7C2D12', defenseBonus: 5 },
+  CASTLE: { name: 'Castle', color: '#7C2D12', defenseBonus: 5 },
+  CATHEDRAL: { name: 'Cathedral', color: '#7C2D12', defenseBonus: 5 },
+  FARM: { name: 'Farm', color: '#7C2D12', defenseBonus: 5 },
+  LIBRARY: { name: 'Library', color: '#7C2D12', defenseBonus: 5 },
+  WALLS: { name: 'Walls', color: '#6B7280', impassable: true, maxHP: 100 },
+  FLOOR: { name: 'Floor', color: '#8B9556', defenseBonus: 0 },
   MOUNTAIN: { name: 'Mountain', color: '#6B7280', impassable: true },
   HILLS: { name: 'Hills', color: '#A16207', defenseBonus: 1 },
   WATER: { name: 'Water', color: '#2563EB', impassable: true },
@@ -71,6 +78,7 @@ const GameBoard = ({
   retreatHexes = [],
   retreatedUnitIds = [],
   deploymentZones = null,
+  wallHealth = {},
 }) => {
   const DAMAGE_DISPLAY_DURATION = 3000
   const mapWidth = mapSize?.width || Math.max(6, ...hexes.map(hex => Math.abs(hex.q)))
@@ -530,6 +538,13 @@ const GameBoard = ({
           HILLS: '/tiles/Winter_Hills.png',
           WATER: '/tiles/Winter_Ocean.png',
           CITY: '/tiles/city/city_1.png',
+          BARRACKS: '/tiles/barracks/Gemini_Generated_Image_gf371igf371igf37.png',
+          CASTLE: '/tiles/castle/castle_center_mid.png',
+          CATHEDRAL: '/tiles/cathedral/Gemini_Generated_Image_b1oo93b1oo93b1oo.png',
+          FARM: '/tiles/farm/farm_1.png',
+          LIBRARY: '/tiles/library/Gemini_Generated_Image_f0lskqf0lskqf0ls.png',
+          WALLS: '/tiles/walls/walls.png',
+          FLOOR: '/tiles/floor.png',
         }
       : {
           PLAIN: '/tiles/Grass_5.png',
@@ -538,6 +553,13 @@ const GameBoard = ({
           HILLS: '/tiles/Hills.png',
           WATER: '/tiles/Ocean.png',
           CITY: '/tiles/city/city_1.png',
+          BARRACKS: '/tiles/barracks/Gemini_Generated_Image_gf371igf371igf37.png',
+          CASTLE: '/tiles/castle/castle_center_mid.png',
+          CATHEDRAL: '/tiles/cathedral/Gemini_Generated_Image_b1oo93b1oo93b1oo.png',
+          FARM: '/tiles/farm/farm_1.png',
+          LIBRARY: '/tiles/library/Gemini_Generated_Image_f0lskqf0lskqf0ls.png',
+          WALLS: '/tiles/walls/walls.png',
+          FLOOR: '/tiles/floor.png',
         }
 
     if (hex.terrain === 'FOREST' && !isWinter) {
@@ -656,6 +678,22 @@ const GameBoard = ({
                           opacity: isVisible ? 0.8 : 0.45
                         }}
                       />
+                    )}
+
+                    {hex.terrain === 'WALLS' && (
+                      <g transform="translate(-4.2, 3.6)" style={{ pointerEvents: 'none', filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.9))' }}>
+                        <rect x="0" y="0" width="8.4" height="1.3" fill="rgba(15, 23, 42, 0.9)" stroke="#E2E8F0" strokeWidth="0.1" rx="0.25" />
+                        <rect
+                          x="0"
+                          y="0"
+                          width={8.4 * (Math.max(0, Math.min(100, wallHealth?.[`${hex.q},${hex.r}`] ?? 100)) / 100)}
+                          height="1.3"
+                          fill={(wallHealth?.[`${hex.q},${hex.r}`] ?? 100) > 50 ? '#22C55E' : (wallHealth?.[`${hex.q},${hex.r}`] ?? 100) > 25 ? '#EAB308' : '#EF4444'}
+                          stroke="#F8FAFC"
+                          strokeWidth="0.08"
+                          rx="0.25"
+                        />
+                      </g>
                     )}
                     {inBlueDeployZone && (
                       <polygon

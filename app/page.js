@@ -391,6 +391,13 @@ export default function HTTPMultiplayerPage() {
                       FOREST: { moveCost: 1, passable: true, waterOnly: false },
                       HILLS: { moveCost: 2, passable: true, waterOnly: false },
                       CITY: { moveCost: 1, passable: true, waterOnly: false },
+                      BARRACKS: { moveCost: 1, passable: true, waterOnly: false },
+                      CASTLE: { moveCost: 1, passable: true, waterOnly: false },
+                      CATHEDRAL: { moveCost: 1, passable: true, waterOnly: false },
+                      FARM: { moveCost: 1, passable: true, waterOnly: false },
+                      LIBRARY: { moveCost: 1, passable: true, waterOnly: false },
+                      WALLS: { moveCost: Infinity, passable: false, waterOnly: false },
+                      FLOOR: { moveCost: 0.5, passable: true, waterOnly: false },
                       MOUNTAIN: { moveCost: Infinity, passable: false, waterOnly: false },
                       WATER: { moveCost: 1, passable: true, waterOnly: true },
                     }
@@ -862,6 +869,26 @@ export default function HTTPMultiplayerPage() {
           }
         }
         
+        const targetHexKey = `${hex.q},${hex.r}`
+        const isWallHex = gameState.terrainMap?.[targetHexKey] === 'WALLS'
+        const wallHP = gameState.wallHealth?.[targetHexKey] ?? 0
+        if (!unitOnHex && isWallHex && wallHP > 0) {
+          const distance = Math.max(
+            Math.abs(selectedUnit.q - hex.q),
+            Math.abs(selectedUnit.r - hex.r),
+            Math.abs(selectedUnit.s - hex.s)
+          )
+          if (distance <= selectedUnit.range && !selectedUnit.hasAttacked) {
+            sendAction('attackWall', {
+              attackerId: selectedUnit.id,
+              targetQ: hex.q,
+              targetR: hex.r,
+              playerID,
+            })
+            return
+          }
+        }
+
         // Check if clicking on empty hex to move
         if (!unitOnHex && !selectedUnit.hasMoved) {
           // Check if hex is in reachable hexes (already calculated with proper move points)
@@ -1647,6 +1674,7 @@ export default function HTTPMultiplayerPage() {
           isWinter={gameState?.isWinter}
           tileMap={gameState?.tileMap || null}
           deploymentZones={gameState?.deploymentZones || null}
+          wallHealth={gameState?.wallHealth || {}}
           teamMode={gameState?.teamMode}
           fogOfWarEnabled={fogActive}
           visibleHexes={visibleHexes}

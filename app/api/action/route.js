@@ -137,9 +137,30 @@ const GAME_MODES = {
 const TERRAIN_TYPES = {
   PLAIN: { name: 'Plain', defenseBonus: 0, moveCost: 1, passable: true, waterOnly: false },
   FOREST: { name: 'Forest', defenseBonus: 10, moveCost: 1, passable: true, waterOnly: false },
+  CITY: { name: 'City', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  BARRACKS: { name: 'Barracks', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  CASTLE: { name: 'Castle', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  CATHEDRAL: { name: 'Cathedral', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  FARM: { name: 'Farm', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  LIBRARY: { name: 'Library', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  WALLS: { name: 'Walls', defenseBonus: 0, moveCost: Infinity, passable: false, waterOnly: false, maxHP: 100 },
+  FLOOR: { name: 'Floor', defenseBonus: 0, moveCost: 0.5, passable: true, waterOnly: false },
   MOUNTAIN: { name: 'Mountain', defenseBonus: 0, moveCost: Infinity, passable: false, waterOnly: false },
   WATER: { name: 'Water', defenseBonus: 0, moveCost: 1, passable: true, waterOnly: true },
   HILLS: { name: 'Hills', defenseBonus: 8, moveCost: 2, passable: true, waterOnly: false },
+}
+
+
+const initializeWallHealth = (game) => {
+  if (!game.wallHealth || typeof game.wallHealth !== 'object') {
+    game.wallHealth = {}
+  }
+
+  Object.entries(game.terrainMap || {}).forEach(([key, terrain]) => {
+    if (terrain === 'WALLS' && typeof game.wallHealth[key] !== 'number') {
+      game.wallHealth[key] = TERRAIN_TYPES.WALLS.maxHP
+    }
+  })
 }
 
 const ACTION_CORS_HEADERS = {
@@ -595,6 +616,7 @@ export async function POST(request) {
     if (!Array.isArray(game.retreatedUnitIds)) {
       game.retreatedUnitIds = []
     }
+    initializeWallHealth(game)
     
     // Handle different game actions
     try {
@@ -1735,6 +1757,82 @@ export async function POST(request) {
           }
           break
           
+
+        case 'attackWall': {
+          if (!payload?.attackerId || payload?.targetQ === undefined || payload?.targetR === undefined || !payload?.playerID) {
+            return NextResponse.json({ error: 'Missing required fields for attackWall: attackerId, targetQ, targetR, playerID' }, { status: 400, headers: ACTION_CORS_HEADERS })
+          }
+
+          const attackPlayerID = sanitizePlayerID(payload.playerID)
+          if (attackPlayerID === 'spectator') {
+            return spectatorActionResponse()
+          }
+          if (!attackPlayerID || !isValidPlayerForGame(attackPlayerID, game)) {
+            return NextResponse.json({ error: 'Invalid playerID for attackWall' }, { status: 400, headers: ACTION_CORS_HEADERS })
+          }
+
+          const wallTurnError = ensurePlayersTurn(attackPlayerID, game, 'attack')
+          if (wallTurnError) {
+            return wallTurnError
+          }
+
+          const attacker = game.units.find(u => u.id === payload.attackerId)
+          const targetQ = sanitizeCoordinate(payload.targetQ)
+          const targetR = sanitizeCoordinate(payload.targetR)
+          if (!attacker || targetQ === null || targetR === null) {
+            return NextResponse.json({ error: 'Invalid attacker or target coordinates' }, { status: 400, headers: ACTION_CORS_HEADERS })
+          }
+
+          if (attacker.ownerID !== attackPlayerID) {
+            return NextResponse.json({ error: 'Cannot attack with a unit you do not own' }, { status: 403, headers: ACTION_CORS_HEADERS })
+          }
+          if (attacker.hasAttacked) {
+            return NextResponse.json({ error: 'Unit already attacked this turn' }, { status: 409, headers: ACTION_CORS_HEADERS })
+          }
+          if (attacker.type === 'CATAPULT' && !attacker.isTransport && attacker.hasMovedOrAttacked) {
+            return NextResponse.json({ error: 'Catapult cannot attack after moving this turn' }, { status: 409, headers: ACTION_CORS_HEADERS })
+          }
+
+          const targetKey = `${targetQ},${targetR}`
+          if ((game.terrainMap?.[targetKey] || 'PLAIN') !== 'WALLS') {
+            return NextResponse.json({ error: 'Target hex is not a wall' }, { status: 400, headers: ACTION_CORS_HEADERS })
+          }
+
+          const distance = Math.max(Math.abs(attacker.q - targetQ), Math.abs(attacker.r - targetR), Math.abs(attacker.s - (-targetQ - targetR)))
+          if (distance > attacker.range) {
+            return NextResponse.json({ error: 'Target wall is out of range' }, { status: 409, headers: ACTION_CORS_HEADERS })
+          }
+
+          const hpPercentage = attacker.maxHP > 0 ? attacker.currentHP / attacker.maxHP : 0
+          let damageMultiplier = 1.0
+          if (hpPercentage > 0.75) damageMultiplier = 1.0
+          else if (hpPercentage > 0.5) damageMultiplier = 0.85
+          else if (hpPercentage > 0.25) damageMultiplier = 0.70
+          else damageMultiplier = 0.50
+
+          const moraleMultiplier = getMoraleMultiplier(attacker.morale)
+          const reducedDamage = Math.round(attacker.attackPower * damageMultiplier * moraleMultiplier)
+          const damage = Math.max(1, reducedDamage)
+
+          game.wallHealth[targetKey] = Math.max(0, (game.wallHealth[targetKey] ?? TERRAIN_TYPES.WALLS.maxHP) - damage)
+          attacker.hasAttacked = true
+          attacker.lastMove = null
+          if (attacker.type === 'CATAPULT' && !attacker.isTransport) {
+            attacker.hasMovedOrAttacked = true
+          }
+
+          game.log.push(`Player ${attackPlayerID}'s ${attacker.name} damaged walls at (${targetQ}, ${targetR}) for ${damage}.`)
+
+          if (game.wallHealth[targetKey] <= 0) {
+            game.terrainMap[targetKey] = 'FLOOR'
+            delete game.wallHealth[targetKey]
+            game.log.push(`Walls at (${targetQ}, ${targetR}) were destroyed and turned into floor.`)
+          }
+
+          game.lastUpdate = Date.now()
+          break
+        }
+
         case 'sendChat':
           const chatSchema = {
             message: { required: true, sanitize: sanitizeChatMessage },

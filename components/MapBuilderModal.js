@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import GameBoard from '@/components/GameBoard'
 
-const TERRAIN_OPTIONS = ['PLAIN', 'FOREST', 'MOUNTAIN', 'HILLS', 'WATER', 'CITY']
+const TERRAIN_OPTIONS = ['PLAIN', 'FOREST', 'MOUNTAIN', 'HILLS', 'WATER', 'CITY', 'BARRACKS', 'CASTLE', 'CATHEDRAL', 'FARM', 'LIBRARY', 'WALLS', 'FLOOR']
 
 const getTileTerrainType = (tilePath = '') => {
   const value = tilePath.toLowerCase()
@@ -12,6 +12,13 @@ const getTileTerrainType = (tilePath = '') => {
   if (value.includes('hill')) return 'HILLS'
   if (value.includes('ocean') || value.includes('water')) return 'WATER'
   if (value.includes('city')) return 'CITY'
+  if (value.includes('barracks')) return 'BARRACKS'
+  if (value.includes('castle')) return 'CASTLE'
+  if (value.includes('cathedral')) return 'CATHEDRAL'
+  if (value.includes('farm')) return 'FARM'
+  if (value.includes('library')) return 'LIBRARY'
+  if (value.includes('walls')) return 'WALLS'
+  if (value.includes('/tiles/floor') || value.includes('floor')) return 'FLOOR'
   if (value.includes('grass') || value.includes('plain')) return 'PLAIN'
   return 'PLAIN'
 }

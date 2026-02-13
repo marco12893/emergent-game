@@ -118,9 +118,26 @@ export const TERRAIN_TYPES = {
   PLAIN: { name: 'Plain', defenseBonus: 0, moveCost: 1, passable: true, waterOnly: false },
   FOREST: { name: 'Forest', defenseBonus: 10, moveCost: 1, passable: true, waterOnly: false },
   CITY: { name: 'City', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  BARRACKS: { name: 'Barracks', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  CASTLE: { name: 'Castle', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  CATHEDRAL: { name: 'Cathedral', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  FARM: { name: 'Farm', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  LIBRARY: { name: 'Library', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  WALLS: { name: 'Walls', defenseBonus: 0, moveCost: Infinity, passable: false, waterOnly: false, maxHP: 100 },
+  FLOOR: { name: 'Floor', defenseBonus: 0, moveCost: 0.5, passable: true, waterOnly: false },
   MOUNTAIN: { name: 'Mountain', defenseBonus: 0, moveCost: Infinity, passable: false, waterOnly: false },
   WATER: { name: 'Water', defenseBonus: 0, moveCost: 1, passable: true, waterOnly: true },
   HILLS: { name: 'Hills', defenseBonus: 8, moveCost: 2, passable: true, waterOnly: false },
+}
+
+const createWallHealthMap = (terrainMap = {}) => {
+  const wallHealth = {}
+  Object.entries(terrainMap).forEach(([key, terrain]) => {
+    if (terrain === 'WALLS') {
+      wallHealth[key] = TERRAIN_TYPES.WALLS.maxHP
+    }
+  })
+  return wallHealth
 }
 
 // ============================================
@@ -1116,6 +1133,7 @@ export const MedievalBattleGame = {
     return {
       hexes,
       terrainMap,
+      wallHealth: createWallHealthMap(terrainMap),
       units: [],
       selectedUnitId: null,
       playersReady,
