@@ -43,6 +43,7 @@ const UNIT_TYPES = {
 const TERRAIN_TYPES = {
   PLAIN: { name: 'Plain', defenseBonus: 0, moveCost: 1, passable: true },
   FOREST: { name: 'Forest', defenseBonus: 2, moveCost: 1, passable: true },
+  CITY: { name: 'City', defenseBonus: 5, moveCost: 1, passable: true },
   MOUNTAIN: { name: 'Mountain', defenseBonus: 0, moveCost: Infinity, passable: false },
   HILLS: { name: 'Hills', defenseBonus: 2, moveCost: 2, passable: true },
 }

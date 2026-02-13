@@ -117,6 +117,7 @@ export const GAME_MODES = {
 export const TERRAIN_TYPES = {
   PLAIN: { name: 'Plain', defenseBonus: 0, moveCost: 1, passable: true, waterOnly: false },
   FOREST: { name: 'Forest', defenseBonus: 10, moveCost: 1, passable: true, waterOnly: false },
+  CITY: { name: 'City', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
   MOUNTAIN: { name: 'Mountain', defenseBonus: 0, moveCost: Infinity, passable: false, waterOnly: false },
   WATER: { name: 'Water', defenseBonus: 0, moveCost: 1, passable: true, waterOnly: true },
   HILLS: { name: 'Hills', defenseBonus: 8, moveCost: 2, passable: true, waterOnly: false },

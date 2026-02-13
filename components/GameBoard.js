@@ -10,6 +10,7 @@ import { shouldShowUnitActionRing } from '@/game/unitActionIndicators'
 const TERRAIN_TYPES = {
   PLAIN: { name: 'Plain', color: '#8B9556', defenseBonus: 0 },
   FOREST: { name: 'Forest', color: '#2D5A27', defenseBonus: 2 },
+  CITY: { name: 'City', color: '#7C2D12', defenseBonus: 5 },
   MOUNTAIN: { name: 'Mountain', color: '#6B7280', impassable: true },
   HILLS: { name: 'Hills', color: '#A16207', defenseBonus: 1 },
   WATER: { name: 'Water', color: '#2563EB', impassable: true },
@@ -528,6 +529,7 @@ const GameBoard = ({
           MOUNTAIN: '/tiles/Winter_Mountain.png',
           HILLS: '/tiles/Winter_Hills.png',
           WATER: '/tiles/Winter_Ocean.png',
+          CITY: '/tiles/city/city_1.png',
         }
       : {
           PLAIN: '/tiles/Grass_5.png',
@@ -535,6 +537,7 @@ const GameBoard = ({
           MOUNTAIN: '/tiles/Mountain_3.png',
           HILLS: '/tiles/Hills.png',
           WATER: '/tiles/Ocean.png',
+          CITY: '/tiles/city/city_1.png',
         }
 
     if (hex.terrain === 'FOREST' && !isWinter) {

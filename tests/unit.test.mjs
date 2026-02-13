@@ -196,6 +196,7 @@ test('sanitizeCustomMap normalizes size, terrain, tiles, and deployment zones', 
       '1,1': 'MOUNTAIN',
       '999,999': 'WATER',
       '0,1': 'INVALID',
+      '0,2': 'CITY',
     },
     tileMap: {
       '0,0': '/tiles/Forest.png',
@@ -213,7 +214,10 @@ test('sanitizeCustomMap normalizes size, terrain, tiles, and deployment zones', 
   assert.equal(custom.size.width, 4)
   assert.equal(custom.size.height, 3)
   assert.equal(custom.terrainMap['0,0'], 'FOREST')
+  assert.equal(TERRAIN_TYPES.CITY.defenseBonus, 5)
+  assert.equal(TERRAIN_TYPES.CITY.moveCost, 1)
   assert.equal(custom.terrainMap['0,1'], 'PLAIN')
+  assert.equal(custom.terrainMap['0,2'], 'CITY')
   assert.equal(custom.tileMap['0,0'], '/tiles/Forest.png')
   assert.equal(custom.tileMap['2,2'], undefined)
   assert.equal(custom.deploymentZones.blue.length, 1)
