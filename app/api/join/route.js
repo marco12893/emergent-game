@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getGame, setGame, createNewGame } from '@/lib/gameState'
+import { parseImportedCustomMap } from '@/lib/customMap'
 import { sanitizeGameId, sanitizeMapId, sanitizePlayerID, sanitizePlayerName, sanitizeWinterFlag, sanitizeTeamModeFlag } from '@/lib/inputSanitization'
 import { getTeamPlayOrder } from '@/game/teamUtils'
 
@@ -27,6 +28,7 @@ export async function POST(request) {
     const sanitizedMapId = sanitizeMapId(mapId)
     const sanitizedWinter = sanitizeWinterFlag(winter)
     const sanitizedTeamMode = sanitizeTeamModeFlag(teamMode)
+    const sanitizedCustomMap = sanitizedMapId === 'CUSTOM' ? parseImportedCustomMap(customMap) : null
     
     if (!sanitizedGameId || (playerID !== undefined && sanitizedPlayerID === null)) {
       return NextResponse.json({ 
@@ -63,8 +65,26 @@ export async function POST(request) {
     
     if (!game) {
       console.log('🆕 Creating new game')
+      if (sanitizedMapId === 'CUSTOM' && !sanitizedCustomMap) {
+        return NextResponse.json({
+          error: 'Invalid custom map JSON. Please export/import a valid custom map file.'
+        }, {
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type',
+          }
+        })
+      }
       try {
-        game = await createNewGame(gameId, sanitizedMapId || undefined, sanitizedWinter, sanitizedTeamMode, customMap)
+        game = await createNewGame(
+          sanitizedGameId,
+          sanitizedMapId || undefined,
+          sanitizedWinter,
+          sanitizedTeamMode,
+          sanitizedCustomMap
+        )
       } catch (createError) {
         console.error('❌ KV createGame failed:', createError)
         return NextResponse.json({ 

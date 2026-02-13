@@ -8,6 +8,7 @@ import GameBoard from '@/components/GameBoard'
 import VictoryScreen from '@/components/VictoryScreen'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import MapBuilderModal from '@/components/MapBuilderModal'
+import { parseImportedCustomMap } from '@/lib/customMap'
 
 // Landscape detection component
 const LandscapePrompt = () => {
@@ -1107,7 +1108,12 @@ export default function HTTPMultiplayerPage() {
                           try {
                             const text = await file.text()
                             const imported = JSON.parse(text)
-                            setCustomMapConfig(imported)
+                            const normalizedMap = parseImportedCustomMap(imported)
+                            if (!normalizedMap) {
+                              setError('Invalid map JSON. Export a custom map from the editor and try again.')
+                              return
+                            }
+                            setCustomMapConfig(normalizedMap)
                             setSelectedMapId('CUSTOM')
                             setError('')
                           } catch (err) {
