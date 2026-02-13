@@ -1,7 +1,8 @@
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import GameBoard from '@/components/GameBoard'
+import { parseImportedCustomMap } from '@/lib/customMap'
 
 const TERRAIN_OPTIONS = ['PLAIN', 'FOREST', 'MOUNTAIN', 'HILLS', 'WATER', 'CITY']
 
@@ -112,6 +113,7 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
   const [editMode, setEditMode] = useState('terrain')
   const [customQ, setCustomQ] = useState(0)
   const [customR, setCustomR] = useState(0)
+  const importInputRef = useRef(null)
 
   const filteredTiles = useMemo(
     () => tiles.filter((tile) => getTileTerrainType(tile) === selectedTerrain),
@@ -250,6 +252,28 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
     URL.revokeObjectURL(url)
   }
 
+  const importMap = async (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    try {
+      const text = await file.text()
+      const imported = JSON.parse(text)
+      const normalizedMap = parseImportedCustomMap(imported)
+      if (!normalizedMap) {
+        return
+      }
+
+      setMapData(normalizeCustomMap(normalizedMap))
+      setWidth(normalizedMap.size.width)
+      setHeight(normalizedMap.size.height)
+    } catch {
+      // Keep editor state untouched when import fails.
+    } finally {
+      event.target.value = ''
+    }
+  }
+
   if (!open) return null
 
   return (
@@ -287,6 +311,19 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
             className={`rounded px-2 py-1 text-xs ${editMode === 'hex-shape' ? 'bg-emerald-500' : 'bg-emerald-700'}`}
           >
             Shape Hexes
+          </button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json"
+            onChange={importMap}
+            className="hidden"
+          />
+          <button
+            onClick={() => importInputRef.current?.click()}
+            className="rounded bg-sky-700 px-2 py-1 text-xs"
+          >
+            Import JSON
           </button>
           <button onClick={exportMap} className="rounded bg-emerald-700 px-2 py-1 text-xs">Export JSON</button>
           <button onClick={() => onApply(mapData)} className="rounded bg-amber-600 px-2 py-1 text-xs">Use In Lobby</button>
