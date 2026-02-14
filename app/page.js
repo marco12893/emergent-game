@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { UNIT_TYPES, TERRAIN_TYPES, getDeployableHexes, getReachableHexes, getVisibleHexesForPlayer, getVisibleUnitsForPlayer, getRetreatActivationTurn, getRetreatZoneForPlayer } from '@/game/GameLogic'
-import { areAllies, getPlayerColor, getUnitSpriteProps } from '@/game/teamUtils'
+import { areAllies, getPlayerColor, getTeamId, getUnitSpriteProps } from '@/game/teamUtils'
 import { DEFAULT_MAP_ID, MAPS } from '@/game/maps'
 import GameBoard from '@/components/GameBoard'
 import VictoryScreen from '@/components/VictoryScreen'
