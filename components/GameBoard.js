@@ -11,8 +11,18 @@ const TERRAIN_TYPES = {
   PLAIN: { name: 'Plain', color: '#8B9556', defenseBonus: 0 },
   FOREST: { name: 'Forest', color: '#2D5A27', defenseBonus: 2 },
   CITY: { name: 'City', color: '#7C2D12', defenseBonus: 5 },
+  BARRACKS: { name: 'Barracks', color: '#7C2D12', defenseBonus: 5 },
+  CASTLE: { name: 'Castle', color: '#7C2D12', defenseBonus: 5 },
+  CATHEDRAL: { name: 'Cathedral', color: '#7C2D12', defenseBonus: 5 },
+  FARM: { name: 'Farm', color: '#7C2D12', defenseBonus: 5 },
+  LIBRARY: { name: 'Library', color: '#7C2D12', defenseBonus: 5 },
+  MOSQUE: { name: 'Mosque', color: '#7C2D12', defenseBonus: 5 },
+  HOSPITAL: { name: 'Hospital', color: '#7C2D12', defenseBonus: 5 },
+  UNIVERSITY: { name: 'University', color: '#7C2D12', defenseBonus: 5 },
   MOUNTAIN: { name: 'Mountain', color: '#6B7280', impassable: true },
   HILLS: { name: 'Hills', color: '#A16207', defenseBonus: 1 },
+  WALL: { name: 'Wall', color: '#64748B', impassable: true, maxHP: 100 },
+  FLOOR: { name: 'Floor', color: '#9CA3AF', defenseBonus: 0 },
   WATER: { name: 'Water', color: '#2563EB', impassable: true },
 }
 
@@ -58,6 +68,7 @@ const GameBoard = ({
   hexes = [],
   mapSize = null,
   terrainMap = {},
+  terrainHealth = {},
   phase = null,
   selectedUnitId = null,
   currentPlayerID = '0',
@@ -530,6 +541,16 @@ const GameBoard = ({
           HILLS: '/tiles/Winter_Hills.png',
           WATER: '/tiles/Winter_Ocean.png',
           CITY: '/tiles/city/city_1.png',
+          BARRACKS: '/tiles/barracks/barracks_1.png',
+          CASTLE: '/tiles/castle/castle_1.png',
+          CATHEDRAL: '/tiles/cathedral/cathedral_1.png',
+          FARM: '/tiles/farm/farm_1.png',
+          LIBRARY: '/tiles/library/library_1.png',
+          MOSQUE: '/tiles/mosque/mosque_1.png',
+          HOSPITAL: '/tiles/hospital/hospital_1.png',
+          UNIVERSITY: '/tiles/university/university_1.png',
+          WALL: '/tiles/walls/walls_1.png',
+          FLOOR: '/tiles/floor.png',
         }
       : {
           PLAIN: '/tiles/Grass_5.png',
@@ -538,6 +559,16 @@ const GameBoard = ({
           HILLS: '/tiles/Hills.png',
           WATER: '/tiles/Ocean.png',
           CITY: '/tiles/city/city_1.png',
+          BARRACKS: '/tiles/barracks/barracks_1.png',
+          CASTLE: '/tiles/castle/castle_1.png',
+          CATHEDRAL: '/tiles/cathedral/cathedral_1.png',
+          FARM: '/tiles/farm/farm_1.png',
+          LIBRARY: '/tiles/library/library_1.png',
+          MOSQUE: '/tiles/mosque/mosque_1.png',
+          HOSPITAL: '/tiles/hospital/hospital_1.png',
+          UNIVERSITY: '/tiles/university/university_1.png',
+          WALL: '/tiles/walls/walls_1.png',
+          FLOOR: '/tiles/floor.png',
         }
 
     if (hex.terrain === 'FOREST' && !isWinter) {
@@ -670,6 +701,21 @@ const GameBoard = ({
                         fill="rgba(239,68,68,0.2)"
                         style={{ pointerEvents: 'none' }}
                       />
+                    )}
+                    {hex.terrain === 'WALL' && (
+                      <g transform="translate(-5, 3.8)" style={{ filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.9))' }}>
+                        <rect x="0" y="0" width="10" height="1.2" fill="rgba(15, 23, 42, 0.9)" stroke="#E2E8F0" strokeWidth="0.1" rx="0.3" />
+                        <rect
+                          x="0"
+                          y="0"
+                          width={10 * ((terrainHealth?.[`${hex.q},${hex.r}`] ?? TERRAIN_TYPES.WALL.maxHP) / TERRAIN_TYPES.WALL.maxHP)}
+                          height="1.2"
+                          fill="#60A5FA"
+                          stroke="#F8FAFC"
+                          strokeWidth="0.08"
+                          rx="0.3"
+                        />
+                      </g>
                     )}
                     {fogOfWarEnabled && !isVisible && (
                       <polygon
