@@ -20,7 +20,7 @@ const getTileTerrainType = (tilePath = '') => {
   if (value.includes('library')) return 'LIBRARY'
   if (value.includes('mosque')) return 'MOSQUE'
   if (value.includes('hospital')) return 'HOSPITAL'
-  if (value.includes('university') || value.includes('univeristy')) return 'UNIVERSITY'
+  if (value.includes('university')) return 'UNIVERSITY'
   if (value.includes('wall')) return 'WALL'
   if (value.includes('floor')) return 'FLOOR'
   if (value.includes('grass') || value.includes('plain')) return 'PLAIN'
