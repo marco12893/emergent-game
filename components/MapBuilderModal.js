@@ -20,7 +20,7 @@ const getTileTerrainType = (tilePath = '') => {
   if (value.includes('library')) return 'LIBRARY'
   if (value.includes('mosque')) return 'MOSQUE'
   if (value.includes('hospital')) return 'HOSPITAL'
-  if (value.includes('university')) return 'UNIVERSITY'
+  if (value.includes('university') || value.includes('univeristy')) return 'UNIVERSITY'
   if (value.includes('wall')) return 'WALL'
   if (value.includes('floor')) return 'FLOOR'
   if (value.includes('grass') || value.includes('plain')) return 'PLAIN'
@@ -135,6 +135,7 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
   const [editorViewportSize, setEditorViewportSize] = useState({ width: 420, height: 420 })
   const panStartRef = useRef({ x: 0, y: 0 })
   const offsetStartRef = useRef({ x: 0, y: 0 })
+  const activePointerIdRef = useRef(null)
 
   const buildHexPath = (ctx, centerX, centerY, radius) => {
     ctx.beginPath()
@@ -370,6 +371,32 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
     setEditorOffset({ x: 0, y: 0 })
     setEditorHexRadius(100)
     event.target.value = ''
+  }
+
+  const startImagePan = (event) => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    activePointerIdRef.current = event.pointerId
+    event.currentTarget.setPointerCapture(event.pointerId)
+    setIsPanning(true)
+    panStartRef.current = { x: event.clientX, y: event.clientY }
+    offsetStartRef.current = { ...editorOffset }
+  }
+
+  const moveImagePan = (event) => {
+    if (!isPanning || activePointerIdRef.current !== event.pointerId) return
+    const dx = event.clientX - panStartRef.current.x
+    const dy = event.clientY - panStartRef.current.y
+    setEditorOffset({ x: offsetStartRef.current.x + dx, y: offsetStartRef.current.y + dy })
+  }
+
+  const stopImagePan = (event) => {
+    if (activePointerIdRef.current !== event.pointerId) return
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    activePointerIdRef.current = null
+    setIsPanning(false)
   }
 
   const saveCustomHexTile = async () => {
@@ -611,19 +638,10 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
             <div
               ref={editorViewportRef}
               className="relative mx-auto h-[420px] w-[420px] max-w-full cursor-grab overflow-hidden rounded border border-slate-700 bg-slate-950"
-              onMouseDown={(event) => {
-                setIsPanning(true)
-                panStartRef.current = { x: event.clientX, y: event.clientY }
-                offsetStartRef.current = { ...editorOffset }
-              }}
-              onMouseMove={(event) => {
-                if (!isPanning) return
-                const dx = event.clientX - panStartRef.current.x
-                const dy = event.clientY - panStartRef.current.y
-                setEditorOffset({ x: offsetStartRef.current.x + dx, y: offsetStartRef.current.y + dy })
-              }}
-              onMouseUp={() => setIsPanning(false)}
-              onMouseLeave={() => setIsPanning(false)}
+              onPointerDown={startImagePan}
+              onPointerMove={moveImagePan}
+              onPointerUp={stopImagePan}
+              onPointerCancel={stopImagePan}
               onWheel={(event) => {
                 event.preventDefault()
                 setEditorHexRadius((current) => Math.max(8, current - event.deltaY * 0.05))
