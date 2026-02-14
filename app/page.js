@@ -168,6 +168,7 @@ export default function HTTPMultiplayerPage() {
   const [chatInput, setChatInput] = useState('')
   const [isChatOpen, setIsChatOpen] = useState(false)
   const [forceLobbySelection, setForceLobbySelection] = useState(false)
+  const [kickedOutNotice, setKickedOutNotice] = useState('')
   const [nowTs, setNowTs] = useState(Date.now())
   const chatInputRef = useRef(null)
   const isSpectator = playerID === 'spectator'
@@ -402,6 +403,19 @@ export default function HTTPMultiplayerPage() {
         if (response.ok) {
           const state = await response.json()
           setGameState(state)
+
+          const currentPlayers = state?.players || {}
+          const wasKickedFromPlayerSlot = playerID && playerID !== 'spectator' && !currentPlayers[playerID]
+          if (wasKickedFromPlayerSlot) {
+            setPlayerID('spectator')
+            setForceLobbySelection(true)
+            setKickedOutNotice('You were kicked from your player slot and moved back to the match lobby.')
+            const nextSession = { matchID, playerID: 'spectator', playerName }
+            setStoredSession(nextSession)
+            if (typeof window !== 'undefined') {
+              sessionStorage.setItem('lobbySession', JSON.stringify(nextSession))
+            }
+          }
           
           // Update highlighting when game state changes
           if (state.phase === 'battle' && state.selectedUnitId) {
@@ -469,7 +483,7 @@ export default function HTTPMultiplayerPage() {
     }, 1000) // Poll every second
 
     return () => clearInterval(pollInterval)
-  }, [joined, matchID, playerID])
+  }, [joined, matchID, playerID, playerName])
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -671,6 +685,7 @@ export default function HTTPMultiplayerPage() {
         setPlayerID(data.playerID)
         setMatchID(gameId)
         setJoined(true)
+        setKickedOutNotice('')
         setForceLobbySelection(
           data.playerID !== 'spectator' && data.gameState?.phase !== 'lobby'
         )
@@ -1036,6 +1051,12 @@ export default function HTTPMultiplayerPage() {
             </div>
           </div>
 
+          {kickedOutNotice && (
+            <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">
+              {kickedOutNotice}
+            </div>
+          )}
+
           {error && (
             <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
               {error}
@@ -1327,6 +1348,8 @@ export default function HTTPMultiplayerPage() {
       const result = await sendAction('kickParticipant', { playerID, targetID })
       if (result?.success && targetID === playerID) {
         setPlayerID('spectator')
+        setForceLobbySelection(true)
+        setKickedOutNotice('You kicked yourself from the player slot and returned to the match lobby.')
       }
     }
 
@@ -1347,6 +1370,12 @@ export default function HTTPMultiplayerPage() {
               <span className="rounded-full bg-slate-800/80 px-3 py-1">Map: {lobbyMap?.name}</span>
             </div>
           </div>
+
+          {kickedOutNotice && (
+            <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">
+              {kickedOutNotice}
+            </div>
+          )}
 
           {error && (
             <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
