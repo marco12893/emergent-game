@@ -144,7 +144,21 @@ const getTerrainData = (terrainMap, q, r) => {
   return TERRAIN_TYPES[terrain]
 }
 
-const getUnitMoveCost = (unit, terrainData, { embarking, disembarking } = {}) => {
+const KNIGHT_PENALTY_TERRAINS = new Set([
+  'CITY',
+  'CASTLE',
+  'BARRACKS',
+  'CATHEDRAL',
+  'MOSQUE',
+  'HOSPITAL',
+  'UNIVERSITY',
+  'LIBRARY',
+  'FARM',
+])
+
+const isKnightPenaltyTerrain = terrainKey => KNIGHT_PENALTY_TERRAINS.has(terrainKey)
+
+const getUnitMoveCost = (unit, terrainData, terrainKey, { embarking, disembarking } = {}) => {
   if (embarking || disembarking) {
     return unit.maxMovePoints
   }
@@ -158,7 +172,7 @@ const getUnitMoveCost = (unit, terrainData, { embarking, disembarking } = {}) =>
 
   const knightType = UNIT_TYPES.KNIGHT?.type || 'KNIGHT'
   const isKnight = unit.baseType === knightType || unit.type === knightType
-  if (isKnight && terrainData.name === TERRAIN_TYPES.CITY.name) {
+  if (isKnight && isKnightPenaltyTerrain(terrainKey)) {
     return 2
   }
 
@@ -584,7 +598,7 @@ export const getReachableHexes = (unit, allHexes, units, terrainMap) => {
 
       if (!terrainData.passable) continue
       
-      const moveCost = getUnitMoveCost(unit, terrainData, { embarking, disembarking })
+      const moveCost = getUnitMoveCost(unit, terrainData, terrainMap[`${neighbor.q},${neighbor.r}`] || 'PLAIN', { embarking, disembarking })
       const remainingAfterMove = current.remainingMove - moveCost
       
       if (remainingAfterMove < 0) continue
@@ -792,7 +806,7 @@ const battlePhase = {
             if (isHexOccupied(neighbor.q, neighbor.r, units.filter(u => u.id !== unit.id))) continue
             
             visited.add(key)
-            const moveCost = getUnitMoveCost(unit, terrainData, { embarking, disembarking })
+            const moveCost = getUnitMoveCost(unit, terrainData, terrainMap[`${neighbor.q},${neighbor.r}`] || 'PLAIN', { embarking, disembarking })
             queue.push({ ...neighbor, cost: current.cost + moveCost })
           }
         }
@@ -936,9 +950,9 @@ const battlePhase = {
       const hillBonus = attackerTerrain === 'HILLS' && ['ARCHER', 'CATAPULT'].includes(attacker.type)
         ? 5
         : 0
-      const attackerOnCity = attackerTerrain === 'CITY' && attacker.type === 'KNIGHT'
-      const cityDebuffMultiplier = attackerOnCity ? 0.75 : 1
-      const baseDamage = Math.round((attacker.attackPower + hillBonus) * cityDebuffMultiplier)
+      const attackerOnPenaltyTerrain = isKnightPenaltyTerrain(attackerTerrain) && attacker.type === 'KNIGHT'
+      const terrainDebuffMultiplier = attackerOnPenaltyTerrain ? 0.75 : 1
+      const baseDamage = Math.round((attacker.attackPower + hillBonus) * terrainDebuffMultiplier)
       const damageMultiplier = getDamageMultiplier(attacker.currentHP, attacker.maxHP)
       const moraleMultiplier = getMoraleMultiplier(attacker.morale)
       const reducedDamage = Math.round(baseDamage * damageMultiplier * moraleMultiplier)
@@ -1489,9 +1503,9 @@ const applyTerrainDamage = (G, attacker, targetQ, targetR) => {
 
   const attackerTerrain = G.terrainMap[`${attacker.q},${attacker.r}`] || 'PLAIN'
   const hillBonus = attackerTerrain === 'HILLS' && ['ARCHER', 'CATAPULT'].includes(attacker.type) ? 5 : 0
-  const attackerOnCity = attackerTerrain === 'CITY' && attacker.type === 'KNIGHT'
-  const cityDebuffMultiplier = attackerOnCity ? 0.75 : 1
-  const baseDamage = Math.round((attacker.attackPower + hillBonus) * cityDebuffMultiplier)
+  const attackerOnPenaltyTerrain = isKnightPenaltyTerrain(attackerTerrain) && attacker.type === 'KNIGHT'
+  const terrainDebuffMultiplier = attackerOnPenaltyTerrain ? 0.75 : 1
+  const baseDamage = Math.round((attacker.attackPower + hillBonus) * terrainDebuffMultiplier)
   const damageMultiplier = getDamageMultiplier(attacker.currentHP, attacker.maxHP)
   const moraleMultiplier = getMoraleMultiplier(attacker.morale)
   const reducedDamage = Math.round(baseDamage * damageMultiplier * moraleMultiplier)
@@ -1519,4 +1533,3 @@ const applyTerrainDamage = (G, attacker, targetQ, targetR) => {
 
   return true
 }
-

@@ -8,6 +8,8 @@ import GameBoard from '@/components/GameBoard'
 import VictoryScreen from '@/components/VictoryScreen'
 import { areAllies, getPlayerColor, getTeamId, getTeamLabel } from '@/game/teamUtils'
 
+const KNIGHT_PENALTY_TERRAINS = new Set(['CITY', 'CASTLE', 'BARRACKS', 'CATHEDRAL', 'MOSQUE', 'HOSPITAL', 'UNIVERSITY', 'LIBRARY', 'FARM'])
+
 // Unit Info Panel Component
 const UnitInfoPanel = ({ unit, isSelected }) => {
   if (!unit) return null
@@ -183,7 +185,9 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
     const hillBonus = attackerTerrain === 'HILLS' && ['ARCHER', 'CATAPULT'].includes(selectedUnit.type)
       ? 5
       : 0
-    const attackDamage = Math.max(1, selectedUnit.attackPower + hillBonus - defenseBonus)
+    const knightTerrainPenalty = selectedUnit.type === 'KNIGHT' && KNIGHT_PENALTY_TERRAINS.has(attackerTerrain) ? 0.75 : 1
+    const baseDamage = Math.round((selectedUnit.attackPower + hillBonus) * knightTerrainPenalty)
+    const attackDamage = Math.max(1, baseDamage - defenseBonus)
     const targetRemaining = targetUnit.currentHP - attackDamage
 
     let counterDamage = 0
