@@ -82,6 +82,7 @@ const GameBoard = ({
   retreatHexes = [],
   retreatedUnitIds = [],
   deploymentZones = null,
+  allowUnboundedCamera = false,
 }) => {
   const DAMAGE_DISPLAY_DURATION = 3000
   const mapWidth = mapSize?.width || Math.max(6, ...hexes.map(hex => Math.abs(hex.q)))
@@ -208,6 +209,10 @@ const GameBoard = ({
   }, [fogOfWarEnabled, units, visibleHexSet])
 
   const getClampedOffset = useCallback((offset) => {
+    if (allowUnboundedCamera) {
+      return offset
+    }
+
     const padding = 120
     const baseX = (mapWidth + 2) * HEX_SIZE * 3
     const baseY = (mapHeight + 2) * HEX_SIZE * 3
@@ -217,7 +222,7 @@ const GameBoard = ({
       x: Math.max(-maxX, Math.min(maxX, offset.x)),
       y: Math.max(-maxY, Math.min(maxY, offset.y)),
     }
-  }, [mapHeight, mapWidth, HEX_SIZE, zoom])
+  }, [allowUnboundedCamera, mapHeight, mapWidth, HEX_SIZE, zoom])
 
   // Handle mouse wheel zoom
   const handleWheel = useCallback((e) => {

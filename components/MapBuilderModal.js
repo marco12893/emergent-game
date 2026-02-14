@@ -121,6 +121,7 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
   const [selectedTerrain, setSelectedTerrain] = useState('PLAIN')
   const [selectedTile, setSelectedTile] = useState('')
   const [editMode, setEditMode] = useState('terrain')
+  const [expandedTileFolders, setExpandedTileFolders] = useState(() => new Set())
   const [customQ, setCustomQ] = useState(0)
   const [customR, setCustomR] = useState(0)
   const importInputRef = useRef(null)
@@ -182,6 +183,86 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
     [tiles, selectedTerrain]
   )
 
+  const tileFolderTree = useMemo(() => {
+    const root = { folders: new Map(), tiles: [] }
+
+    filteredTiles.forEach((tilePath) => {
+      const normalized = tilePath.replace(/^\/tiles\/?/, '')
+      const segments = normalized.split('/').filter(Boolean)
+      let node = root
+
+      for (let i = 0; i < segments.length; i += 1) {
+        const segment = segments[i]
+        const isLeaf = i === segments.length - 1
+        if (isLeaf) {
+          node.tiles.push(tilePath)
+          continue
+        }
+
+        if (!node.folders.has(segment)) {
+          node.folders.set(segment, { folders: new Map(), tiles: [] })
+        }
+        node = node.folders.get(segment)
+      }
+    })
+
+    return root
+  }, [filteredTiles])
+
+  const toggleFolder = (folderPath) => {
+    setExpandedTileFolders((current) => {
+      const next = new Set(current)
+      if (next.has(folderPath)) {
+        next.delete(folderPath)
+      } else {
+        next.add(folderPath)
+      }
+      return next
+    })
+  }
+
+  const renderTileTree = (node, parentPath = '', depth = 0) => {
+    const folderEntries = Array.from(node.folders.entries()).sort(([a], [b]) => a.localeCompare(b))
+    const sortedTiles = [...node.tiles].sort((a, b) => a.localeCompare(b))
+
+    return (
+      <div className="space-y-1">
+        {folderEntries.map(([folderName, childNode]) => {
+          const folderPath = parentPath ? `${parentPath}/${folderName}` : folderName
+          const isExpanded = expandedTileFolders.has(folderPath)
+
+          return (
+            <div key={folderPath}>
+              <button
+                onClick={() => toggleFolder(folderPath)}
+                className="flex w-full items-center rounded bg-slate-800/70 px-2 py-1 text-left text-xs text-slate-200 hover:bg-slate-700"
+                style={{ paddingLeft: `${depth * 10 + 8}px` }}
+              >
+                <span className="mr-1">{isExpanded ? '▾' : '▸'}</span>
+                <span>📁 {folderName}</span>
+              </button>
+              {isExpanded && (
+                <div className="mt-1">
+                  {renderTileTree(childNode, folderPath, depth + 1)}
+                </div>
+              )}
+            </div>
+          )
+        })}
+
+        {sortedTiles.length > 0 && (
+          <div className="grid grid-cols-2 gap-2">
+            {sortedTiles.map((tile) => (
+              <button key={tile} onClick={() => setSelectedTile(tile)} className={`rounded border p-1 ${selectedTile === tile ? 'border-amber-400' : 'border-slate-700'}`}>
+                <img src={tile} alt={tile} className="h-12 w-full object-cover" />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   useEffect(() => {
     if (!open) return
     if (initialMap?.size?.width && initialMap?.size?.height) {
@@ -209,6 +290,7 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
 
       const matching = list.find((tile) => getTileTerrainType(tile) === selectedTerrain)
       setSelectedTile(matching || list[0])
+      setExpandedTileFolders(new Set())
     })
   }, [open, selectedTerrain])
 
@@ -496,28 +578,16 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
           <label className="text-xs">H <input type="number" min={3} max={10} value={height} onChange={(e) => setHeight(Number(e.target.value))} className="ml-1 w-14 rounded bg-slate-800 px-1 py-0.5" /></label>
           <button onClick={resizeMap} className="rounded bg-slate-700 px-2 py-1 text-xs">Create Size</button>
           <button
-            onClick={() => setEditMode('terrain')}
-            className={`rounded px-2 py-1 text-xs ${editMode === 'terrain' ? 'bg-amber-600' : 'bg-slate-700'}`}
-          >
-            Paint Terrain
-          </button>
-          <button
-            onClick={() => setEditMode('deploy-blue')}
+            onClick={() => setEditMode((current) => (current === 'deploy-blue' ? 'terrain' : 'deploy-blue'))}
             className={`rounded px-2 py-1 text-xs ${editMode === 'deploy-blue' ? 'bg-blue-500' : 'bg-blue-700'}`}
           >
             Blue Deploy
           </button>
           <button
-            onClick={() => setEditMode('deploy-red')}
+            onClick={() => setEditMode((current) => (current === 'deploy-red' ? 'terrain' : 'deploy-red'))}
             className={`rounded px-2 py-1 text-xs ${editMode === 'deploy-red' ? 'bg-red-500' : 'bg-red-700'}`}
           >
             Red Deploy
-          </button>
-          <button
-            onClick={() => setEditMode('hex-shape')}
-            className={`rounded px-2 py-1 text-xs ${editMode === 'hex-shape' ? 'bg-emerald-500' : 'bg-emerald-700'}`}
-          >
-            Shape Hexes
           </button>
           <input
             ref={importInputRef}
@@ -542,39 +612,35 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
             <div className="mb-2 rounded border border-slate-700 bg-slate-800/70 p-2 text-xs text-slate-300">
               {editMode === 'terrain'
                 ? 'Paint Terrain: choose a terrain + texture, then click hexes to paint them.'
-                : editMode === 'hex-shape'
-                  ? 'Shape Mode: add or remove any hex by coordinate. Use this to extend specific rows or columns one tile at a time.'
-                  : `Deployment Mode: click hexes to toggle the ${selectedZone} deployment area.`}
+                : `Deployment Mode: click hexes to toggle the ${selectedZone} deployment area. Click the same deploy button again to return to terrain painting.`}
             </div>
-            {editMode === 'hex-shape' && (
-              <div className="mb-3 rounded border border-slate-700 bg-slate-800/70 p-2 text-xs">
-                <div className="mb-2 text-slate-300">Hex coordinates (axial q,r)</div>
-                <div className="mb-2 flex gap-2">
-                  <label className="flex items-center gap-1">
-                    q
-                    <input
-                      type="number"
-                      value={customQ}
-                      onChange={(e) => setCustomQ(Number(e.target.value))}
-                      className="w-16 rounded bg-slate-700 px-1 py-0.5"
-                    />
-                  </label>
-                  <label className="flex items-center gap-1">
-                    r
-                    <input
-                      type="number"
-                      value={customR}
-                      onChange={(e) => setCustomR(Number(e.target.value))}
-                      className="w-16 rounded bg-slate-700 px-1 py-0.5"
-                    />
-                  </label>
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={addHexAtCoordinates} className="rounded bg-emerald-700 px-2 py-1">Add Hex</button>
-                  <button onClick={removeHexAtCoordinates} className="rounded bg-rose-700 px-2 py-1">Remove Hex</button>
-                </div>
+            <div className="mb-3 rounded border border-slate-700 bg-slate-800/70 p-2 text-xs">
+              <div className="mb-2 text-slate-300">Hex coordinates (axial q,r)</div>
+              <div className="mb-2 flex gap-2">
+                <label className="flex items-center gap-1">
+                  q
+                  <input
+                    type="number"
+                    value={customQ}
+                    onChange={(e) => setCustomQ(Number(e.target.value))}
+                    className="w-16 rounded bg-slate-700 px-1 py-0.5"
+                  />
+                </label>
+                <label className="flex items-center gap-1">
+                  r
+                  <input
+                    type="number"
+                    value={customR}
+                    onChange={(e) => setCustomR(Number(e.target.value))}
+                    className="w-16 rounded bg-slate-700 px-1 py-0.5"
+                  />
+                </label>
               </div>
-            )}
+              <div className="flex gap-2">
+                <button onClick={addHexAtCoordinates} className="rounded bg-emerald-700 px-2 py-1">Add Hex</button>
+                <button onClick={removeHexAtCoordinates} className="rounded bg-rose-700 px-2 py-1">Remove Hex</button>
+              </div>
+            </div>
             <div className="mb-2 text-xs text-slate-400">Terrain</div>
             <div className="mb-3 flex flex-wrap gap-1">
               {TERRAIN_OPTIONS.map((terrain) => (
@@ -599,12 +665,8 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
             >
               Add Custom Image Tile
             </button>
-            <div className="grid grid-cols-2 gap-2">
-              {filteredTiles.map((tile) => (
-                <button key={tile} onClick={() => setSelectedTile(tile)} className={`rounded border p-1 ${selectedTile === tile ? 'border-amber-400' : 'border-slate-700'}`}>
-                  <img src={tile} alt={tile} className="h-12 w-full object-cover" />
-                </button>
-              ))}
+            <div className="max-h-80 overflow-y-auto pr-1">
+              {renderTileTree(tileFolderTree)}
             </div>
             {filteredTiles.length === 0 && (
               <div className="mt-2 rounded border border-slate-700 bg-slate-800/70 p-2 text-xs text-slate-400">
@@ -623,6 +685,7 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
               showSpawnZones={false}
               highlightedHexes={selectedZone ? mapData.deploymentZones[selectedZone] : []}
               attackableHexes={[]}
+              allowUnboundedCamera
             />
           </div>
         </div>
