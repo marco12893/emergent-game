@@ -2,7 +2,7 @@
 
 import React, { useMemo, useCallback, useState, useRef, useEffect } from 'react'
 import { HexGrid, Layout, Hexagon } from 'react-hexgrid'
-import { getUnitSpriteProps } from '@/game/teamUtils'
+import { getTeamId, getUnitSpriteProps } from '@/game/teamUtils'
 import { shouldEmitDamageOnRemoval } from '@/game/GameLogic'
 import { shouldShowUnitActionRing } from '@/game/unitActionIndicators'
 
@@ -89,6 +89,9 @@ const GameBoard = ({
   const mapWidth = mapSize?.width || Math.max(6, ...hexes.map(hex => Math.abs(hex.q)))
   const mapHeight = mapSize?.height || Math.max(4, ...hexes.map(hex => Math.abs(hex.r)))
   const HEX_SIZE = 5.5 
+  const viewerTeamId = teamMode ? getTeamId(currentPlayerID) : currentPlayerID
+  const canSeeBlueDeployZone = viewerTeamId === '0' || viewerTeamId === 'blue-green'
+  const canSeeRedDeployZone = viewerTeamId === '1' || viewerTeamId === 'red-yellow'
   
   // Camera state
   const [cameraOffset, setCameraOffset] = useState({ x: 0, y: 0 })
@@ -711,14 +714,14 @@ const GameBoard = ({
                         }}
                       />
                     )}
-                    {showSpawnZones && inBlueDeployZone && (
+                    {showSpawnZones && canSeeBlueDeployZone && inBlueDeployZone && (
                       <polygon
                         points="0,-5.5 4.76,-2.75 4.76,2.75 0,5.5 -4.76,2.75 -4.76,-2.75"
                         fill="rgba(37,99,235,0.2)"
                         style={{ pointerEvents: 'none' }}
                       />
                     )}
-                    {showSpawnZones && inRedDeployZone && (
+                    {showSpawnZones && canSeeRedDeployZone && inRedDeployZone && (
                       <polygon
                         points="0,-5.5 4.76,-2.75 4.76,2.75 0,5.5 -4.76,2.75 -4.76,-2.75"
                         fill="rgba(220,38,38,0.24)"
@@ -726,17 +729,17 @@ const GameBoard = ({
                       />
                     )}
                     {hex.terrain === 'WALL' && (
-                      <g transform="translate(-5, 3.8)" style={{ filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.9))' }}>
-                        <rect x="0" y="0" width="10" height="1.2" fill="rgba(15, 23, 42, 0.9)" stroke="#E2E8F0" strokeWidth="0.1" rx="0.3" />
+                      <g transform="translate(-4.8, -5.4)" style={{ filter: 'drop-shadow(0 0 1.5px rgba(0,0,0,1))' }}>
+                        <rect x="0" y="0" width="9.6" height="1.35" fill="rgba(15, 23, 42, 0.95)" stroke="#E2E8F0" strokeWidth="0.12" rx="0.35" />
                         <rect
                           x="0"
                           y="0"
-                          width={10 * ((terrainHealth?.[`${hex.q},${hex.r}`] ?? TERRAIN_TYPES.WALL.maxHP) / TERRAIN_TYPES.WALL.maxHP)}
-                          height="1.2"
+                          width={9.6 * ((terrainHealth?.[`${hex.q},${hex.r}`] ?? TERRAIN_TYPES.WALL.maxHP) / TERRAIN_TYPES.WALL.maxHP)}
+                          height="1.35"
                           fill="#60A5FA"
                           stroke="#F8FAFC"
-                          strokeWidth="0.08"
-                          rx="0.3"
+                          strokeWidth="0.1"
+                          rx="0.35"
                         />
                       </g>
                     )}

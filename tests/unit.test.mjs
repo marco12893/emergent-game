@@ -55,6 +55,7 @@ import {
   getUnitAtHex,
   MedievalBattleGame,
   TERRAIN_TYPES,
+  UNIT_TYPES,
 } from '../game/GameLogic.js'
 import { sanitizeCustomMap } from '../lib/customMap.js'
 import {
@@ -120,6 +121,7 @@ test('sanitizeUnitId allows only alphanumeric', () => {
 test('sanitizeUnitType validates allowed types', () => {
   assert.equal(sanitizeUnitType('SWORDSMAN'), 'SWORDSMAN')
   assert.equal(sanitizeUnitType('war_galley'), 'WAR_GALLEY')
+  assert.equal(sanitizeUnitType('test_raider'), 'TEST_RAIDER')
   assert.equal(sanitizeUnitType('invalid'), null)
 })
 
@@ -232,6 +234,13 @@ test('validatePayload sanitizes values and reports errors', () => {
   assert.ok(invalid.error.includes('Invalid value for field: playerID'))
 })
 
+
+
+test('test raider stats are available for rapid QA', () => {
+  assert.equal(UNIT_TYPES.TEST_RAIDER.maxHP, 1)
+  assert.equal(UNIT_TYPES.TEST_RAIDER.attackPower, 200)
+  assert.equal(UNIT_TYPES.TEST_RAIDER.movePoints, 30)
+})
 test('getMapConfig falls back to default map', () => {
   assert.equal(getMapConfig('MAP_1').id, 'MAP_1')
   assert.equal(getMapConfig('missing').id, DEFAULT_MAP_ID)
@@ -289,7 +298,7 @@ test('sanitizeCustomMap rejects invalid sizes', () => {
 })
 
 test('MAPS exposes known map ids', () => {
-  assert.deepEqual(Object.keys(MAPS), ['MAP_1', 'MAP_2', 'MAP_3'])
+  assert.deepEqual(Object.keys(MAPS), ['MAP_1', 'MAP_2', 'MAP_3', 'MAP_4'])
 })
 
 test('player colors and team ids', () => {
