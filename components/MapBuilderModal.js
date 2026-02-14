@@ -120,6 +120,7 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
   const [editorOffset, setEditorOffset] = useState({ x: 0, y: 0 })
   const [editorHexRadius, setEditorHexRadius] = useState(100)
   const [isSavingCustomTile, setIsSavingCustomTile] = useState(false)
+  const [customTileStatus, setCustomTileStatus] = useState('')
   const [isPanning, setIsPanning] = useState(false)
   const [editorViewportSize, setEditorViewportSize] = useState({ width: 420, height: 420 })
   const panStartRef = useRef({ x: 0, y: 0 })
@@ -364,6 +365,8 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
   const saveCustomHexTile = async () => {
     if (!customImageEditor || !editorViewportRef.current || isSavingCustomTile) return
 
+    setCustomTileStatus('')
+
     const image = new Image()
     image.src = customImageEditor.src
     await image.decode()
@@ -394,10 +397,24 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
     ctx.drawImage(image, translatedX, translatedY, drawWidth, drawHeight)
 
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
-    if (!blob) return
+    if (!blob) {
+      setCustomTileStatus('Could not generate PNG tile from selection.')
+      return
+    }
+
+    const timestamp = Date.now()
+    const filenameBase = (customImageEditor?.name || 'custom_hex').replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9._-]/g, '_')
+    const downloadName = `${filenameBase}_hex_${timestamp}.png`
+
+    const downloadUrl = URL.createObjectURL(blob)
+    const downloadLink = document.createElement('a')
+    downloadLink.href = downloadUrl
+    downloadLink.download = downloadName
+    downloadLink.click()
+    URL.revokeObjectURL(downloadUrl)
 
     const formData = new FormData()
-    formData.append('file', blob, `custom_hex_${Date.now()}.png`)
+    formData.append('file', blob, downloadName)
 
     setIsSavingCustomTile(true)
     try {
@@ -405,14 +422,23 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
         method: 'POST',
         body: formData,
       })
-      if (!res.ok) return
-      const data = await res.json()
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        setCustomTileStatus(data?.error || 'Tile downloaded, but upload failed.')
+        return
+      }
+
       const list = await reloadTiles()
       if (data?.tilePath && list.includes(data.tilePath)) {
         setSelectedTile(data.tilePath)
       }
+
+      setCustomTileStatus('Tile downloaded and added to texture list.')
       setCustomImageEditor(null)
       setSelectedTerrain('PLAIN')
+    } catch {
+      setCustomTileStatus('Tile downloaded locally, but upload request failed.')
     } finally {
       setIsSavingCustomTile(false)
     }
@@ -631,12 +657,15 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
                 />
               </label>
               <div className="text-slate-400">Drag to pan image. Use mouse wheel or number input to resize hex (no max limit).</div>
+              {customTileStatus && (
+                <div className="max-w-xs text-[11px] text-slate-300">{customTileStatus}</div>
+              )}
               <button
                 onClick={saveCustomHexTile}
                 disabled={isSavingCustomTile}
                 className="ml-auto rounded bg-emerald-700 px-3 py-1 disabled:opacity-60"
               >
-                {isSavingCustomTile ? 'Saving...' : 'Save as Tile'}
+                {isSavingCustomTile ? 'Saving...' : 'Save & Download Tile'}
               </button>
             </div>
           </div>
