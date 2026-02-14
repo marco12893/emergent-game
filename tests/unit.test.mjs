@@ -55,8 +55,14 @@ import {
   getUnitAtHex,
   MedievalBattleGame,
   TERRAIN_TYPES,
+  UNIT_TYPES,
 } from '../game/GameLogic.js'
 import { sanitizeCustomMap } from '../lib/customMap.js'
+import {
+  createMap4ObjectiveState,
+  getMap4VictoryInfo,
+  updateMap4ObjectiveState,
+} from '../game/map4Objectives.js'
 
 const makeHexGrid = (radius) => {
   const hexes = []
@@ -141,9 +147,69 @@ test('sanitizeChatMessage strips control chars and HTML', () => {
 test('sanitizeMapId validates map identifiers', () => {
   assert.equal(sanitizeMapId('map_1'), 'MAP_1')
   assert.equal(sanitizeMapId('custom'), 'CUSTOM')
-  assert.equal(sanitizeMapId('MAP_4'), null)
+  assert.equal(sanitizeMapId('MAP_4'), 'MAP_4')
 })
 
+
+
+test('sanitizeCustomMap allows map-4-sized imports', () => {
+  const sanitized = sanitizeCustomMap({
+    size: { width: 13, height: 5 },
+    terrainMap: {},
+    deploymentZones: { blue: [], red: [] },
+  })
+  assert.ok(sanitized)
+  assert.equal(sanitized.size.width, 13)
+  assert.equal(sanitized.size.height, 5)
+})
+
+test('generateMapData loads static MAP_4 data and deployment zones', () => {
+  const map = generateMapData('MAP_4')
+  assert.equal(map.mapConfig.id, 'MAP_4')
+  assert.equal(map.terrainMap['-7,-4'], 'CASTLE')
+  assert.ok((map.deploymentZones?.blue || []).length > 0)
+  assert.ok((map.deploymentZones?.red || []).length > 0)
+})
+
+
+
+test('MAP_4 has no plain grass tile override that breaks winter visuals', () => {
+  const map = generateMapData('MAP_4')
+  const hasGrassOverride = Object.values(map.tileMap || {}).some((path) => path === '/tiles/Grass_5.png')
+  assert.equal(hasGrassOverride, false)
+})
+test('map 4 objective capture is paused by contest and resumes without reset', () => {
+  const G = {
+    units: [{ id: 'r1', ownerID: '1', q: 0, r: 0, currentHP: 100 }],
+    log: [],
+    map4ObjectiveState: createMap4ObjectiveState({ terrainMap: { '0,0': 'CASTLE' }, teamMode: false }),
+  }
+
+  updateMap4ObjectiveState({ G, teamMode: false })
+  updateMap4ObjectiveState({ G, teamMode: false })
+  assert.equal(G.map4ObjectiveState.buildings.CASTLE.captureProgress['1'], 2)
+
+  G.units.push({ id: 'b1', ownerID: '0', q: 0, r: 0, currentHP: 100 })
+  updateMap4ObjectiveState({ G, teamMode: false })
+  assert.equal(G.map4ObjectiveState.buildings.CASTLE.captureProgress['1'], 2)
+
+  G.units = G.units.filter((u) => u.ownerID !== '0')
+  updateMap4ObjectiveState({ G, teamMode: false })
+  assert.equal(G.map4ObjectiveState.buildings.CASTLE.captureProgress['1'], 3)
+  updateMap4ObjectiveState({ G, teamMode: false })
+  assert.equal(G.map4ObjectiveState.buildings.CASTLE.owner, '1')
+})
+
+test('map 4 defender wins at turn 40 when holding at least one objective', () => {
+  const G = {
+    units: [{ id: 'b1', ownerID: '0', q: 0, r: 0, currentHP: 100 }],
+    map4ObjectiveState: createMap4ObjectiveState({ terrainMap: { '0,0': 'CASTLE' }, teamMode: false }),
+  }
+
+  const victory = getMap4VictoryInfo({ G, teamMode: false, turn: 40 })
+  assert.equal(victory?.winner, '0')
+  assert.equal(victory?.victoryType, 'objective_defense')
+})
 test('sanitizeWinterFlag and teamMode flag parse booleans', () => {
   assert.equal(sanitizeWinterFlag(true), true)
   assert.equal(sanitizeWinterFlag('true'), true)
@@ -173,6 +239,7 @@ test('validatePayload sanitizes values and reports errors', () => {
   const invalid = validatePayload({ playerID: '5', unitType: 'archer' }, schema)
   assert.ok(invalid.error.includes('Invalid value for field: playerID'))
 })
+
 
 test('getMapConfig falls back to default map', () => {
   assert.equal(getMapConfig('MAP_1').id, 'MAP_1')
@@ -231,7 +298,7 @@ test('sanitizeCustomMap rejects invalid sizes', () => {
 })
 
 test('MAPS exposes known map ids', () => {
-  assert.deepEqual(Object.keys(MAPS), ['MAP_1', 'MAP_2', 'MAP_3'])
+  assert.deepEqual(Object.keys(MAPS), ['MAP_1', 'MAP_2', 'MAP_3', 'MAP_4'])
 })
 
 test('player colors and team ids', () => {
@@ -1089,6 +1156,33 @@ test('battle phase attackUnit applies hill bonus for archers', () => {
   assert.equal(target.currentHP, target.maxHP - expectedDamage)
 })
 
+
+
+test('battle phase knight spends 2 move points entering city tile', () => {
+  const ctx = { numPlayers: 2, playOrder: ['0', '1'], phase: 'battle' }
+  const game = MedievalBattleGame.setup({ ctx, setupData: {} })
+  game.phase = 'battle'
+  const knight = createUnit('KNIGHT', '0', 0, 0)
+  knight.movePoints = 1
+  game.terrainMap['1,0'] = 'CITY'
+  game.units.push(knight)
+  const reachable = getReachableHexes(knight, game.hexes, game.units, game.terrainMap)
+  assert.equal(reachable.some((hex) => hex.q === 1 && hex.r === 0), false)
+})
+
+test('battle phase knight does 25% less damage while attacking from city tile', () => {
+  const ctx = { numPlayers: 2, playOrder: ['0', '1'], phase: 'battle' }
+  const game = MedievalBattleGame.setup({ ctx, setupData: {} })
+  game.phase = 'battle'
+  const attacker = createUnit('KNIGHT', '0', 0, 0)
+  const target = createUnit('SWORDSMAN', '1', 1, 0)
+  game.terrainMap['0,0'] = 'CITY'
+  game.units.push(attacker, target)
+  const moves = MedievalBattleGame.phases.battle.moves
+  moves.attackUnit({ G: game, ctx, playerID: '0' }, attacker.id, target.id)
+  const expectedDamage = Math.max(1, Math.round(attacker.attackPower * 0.75) - TERRAIN_TYPES.PLAIN.defenseBonus)
+  assert.equal(target.currentHP, target.maxHP - expectedDamage)
+})
 test('battle phase endTurn resets unit actions', () => {
   const ctx = { numPlayers: 2, playOrder: ['0', '1'], phase: 'battle' }
   const game = MedievalBattleGame.setup({ ctx, setupData: {} })
@@ -1236,6 +1330,7 @@ test('getRetreatActivationTurn follows per-map thresholds', () => {
   assert.equal(getRetreatActivationTurn('MAP_1'), 9)
   assert.equal(getRetreatActivationTurn('MAP_2'), 13)
   assert.equal(getRetreatActivationTurn('MAP_3'), 9)
+  assert.equal(getRetreatActivationTurn('MAP_4'), 25)
 })
 
 test('getRetreatZoneForPlayer returns two-edge columns per side', () => {

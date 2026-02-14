@@ -13,6 +13,7 @@ import {
 } from '@/lib/inputSanitization'
 import { isInSpawnZone } from '@/game/GameLogic'
 import { areAllies, getTeamId, getTeamLabel, getTeamPlayOrder } from '@/game/teamUtils'
+import { createMap4ObjectiveState, getMap4VictoryInfo, updateMap4ObjectiveState } from '@/game/map4Objectives'
 
 // ============================================
 // UNIT & TERRAIN DEFINITIONS
@@ -193,6 +194,12 @@ const getUnitMoveCost = (unit, terrainData, { embarking, disembarking } = {}) =>
     return 1
   }
 
+  const knightType = UNIT_TYPES.KNIGHT?.type || 'KNIGHT'
+  const isKnight = unit.baseType === knightType || unit.type === knightType
+  if (isKnight && terrainData.name === TERRAIN_TYPES.CITY.name) {
+    return 2
+  }
+
   return terrainData.moveCost
 }
 
@@ -255,7 +262,9 @@ const applyTerrainDamage = (game, attacker, targetQ, targetR) => {
   const attackerTerrainKey = `${sanitizeCoordinate(attacker.q)},${sanitizeCoordinate(attacker.r)}`
   const attackerTerrain = game.terrainMap[attackerTerrainKey] || 'PLAIN'
   const hillBonus = attackerTerrain === 'HILLS' && ['ARCHER', 'CATAPULT'].includes(attacker.type) ? 5 : 0
-  const baseDamage = attacker.attackPower + hillBonus
+  const attackerOnCity = attackerTerrain === 'CITY' && attacker.type === 'KNIGHT'
+  const cityDebuffMultiplier = attackerOnCity ? 0.75 : 1
+  const baseDamage = Math.round((attacker.attackPower + hillBonus) * cityDebuffMultiplier)
   const hpPercentage = attacker.currentHP / attacker.maxHP
   let damageMultiplier = 1.0
   if (hpPercentage > 0.75) damageMultiplier = 1.0
@@ -287,6 +296,7 @@ const applyTerrainDamage = (game, attacker, targetQ, targetR) => {
   return { ok: true }
 }
 const getRetreatActivationTurn = (mapId = 'MAP_1') => {
+  if (mapId === 'MAP_4') return 25
   return mapId === 'MAP_2' ? 13 : 9
 }
 
@@ -632,6 +642,10 @@ export async function POST(request) {
     }
     if (!game.objectiveControl) {
       game.objectiveControl = { [game.attackerId]: 0, [game.defenderId]: 0 }
+    }
+
+    if (!game.map4ObjectiveState && game.mapId === 'MAP_4') {
+      game.map4ObjectiveState = createMap4ObjectiveState({ terrainMap: game.terrainMap || {}, teamMode: Boolean(game.teamMode) })
     }
     if (!game.spectators) {
       game.spectators = []
@@ -1724,7 +1738,9 @@ export async function POST(request) {
             const hillBonus = attackerTerrain === 'HILLS' && ['ARCHER', 'CATAPULT'].includes(attacker.type)
               ? 5
               : 0
-            const baseDamage = attacker.attackPower + hillBonus
+            const attackerOnCity = attackerTerrain === 'CITY' && attacker.type === 'KNIGHT'
+            const cityDebuffMultiplier = attackerOnCity ? 0.75 : 1
+            const baseDamage = Math.round((attacker.attackPower + hillBonus) * cityDebuffMultiplier)
             
             // Calculate damage reduction based on HP percentage
             const hpPercentage = attacker.currentHP / attacker.maxHP
@@ -1997,6 +2013,10 @@ export async function POST(request) {
                 game.log.push('Paris is contested!')
               }
             }
+
+            if (game.map4ObjectiveState?.enabled) {
+              updateMap4ObjectiveState({ G: game, teamMode })
+            }
           }
           
           game.currentPlayer = nextPlayer || roundStartPlayer
@@ -2256,9 +2276,13 @@ export async function POST(request) {
       const teamRedYellowAlive = aliveUnits.filter(u => getTeamId(u.ownerID) === 'red-yellow').length
       
       let victoryInfo = null
+
+      if (game.map4ObjectiveState?.enabled) {
+        victoryInfo = getMap4VictoryInfo({ G: game, teamMode, turn: game.turn || 1 })
+      }
       
       // Attack & Defend mode victory conditions
-      if (game.gameMode === 'ATTACK_DEFEND') {
+      if (!victoryInfo && game.gameMode === 'ATTACK_DEFEND') {
         // Defender (Player 1) wins if they hold objective for required turns
         if (game.objectiveControl[game.defenderId] >= game.turnLimit) {
           victoryInfo = {

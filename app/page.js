@@ -221,6 +221,40 @@ export default function HTTPMultiplayerPage() {
     return retreatHexes.some(h => h.q === selectedOwnedUnit.q && h.r === selectedOwnedUnit.r)
   }, [selectedOwnedUnit, gameState?.phase, retreatHexes])
 
+  const map4ObjectivePanel = useMemo(() => {
+    const objectiveState = gameState?.map4ObjectiveState
+    if (!objectiveState?.enabled) return null
+
+    const myTeam = teamMode ? getTeamId(playerID) : playerID
+    const isDefenderView = myTeam === objectiveState.defenderId
+    const isAttackerView = myTeam === objectiveState.attackerId
+    const title = isDefenderView
+      ? 'Defend for 40 turns or eliminate red/yellow.'
+      : isAttackerView
+        ? 'Capture cathedral, barracks, and castle or eliminate blue/green.'
+        : 'Map 4 objectives'
+
+    const buildings = Object.values(objectiveState.buildings || {})
+    return {
+      title,
+      buildings: buildings.map((building) => {
+        const viewerTeam = isDefenderView ? objectiveState.defenderId : objectiveState.attackerId
+        const enemyTeam = viewerTeam === objectiveState.defenderId ? objectiveState.attackerId : objectiveState.defenderId
+        const ownProgress = building.captureProgress?.[viewerTeam] || 0
+        const enemyProgress = building.captureProgress?.[enemyTeam] || 0
+        const progress = building.owner === viewerTeam
+          ? Math.max(0, objectiveState.captureTurns - enemyProgress)
+          : ownProgress
+        return {
+          label: building.label,
+          owner: building.owner,
+          progress,
+          captureTurns: objectiveState.captureTurns,
+        }
+      }),
+    }
+  }, [gameState?.map4ObjectiveState, playerID, teamMode])
+
   const getChatSenderClass = (message) => {
     if (message?.playerID === '0') return 'text-blue-400'
     if (message?.playerID === '1') return 'text-red-400'
@@ -1686,8 +1720,26 @@ export default function HTTPMultiplayerPage() {
           teamMode={gameState?.teamMode}
           fogOfWarEnabled={fogActive}
           visibleHexes={visibleHexes}
+          objectiveBuildingOwners={gameState?.map4ObjectiveState?.buildings || null}
         />
       </div>
+
+      {gameState?.phase === 'battle' && map4ObjectivePanel && (
+        <div className="fixed top-4 left-4 z-30 w-80 max-w-[85vw] rounded-lg border border-slate-600 bg-slate-900/85 p-3 text-xs shadow-lg backdrop-blur">
+          <div className="font-semibold text-amber-300">Objective</div>
+          <div className="mt-1 text-slate-200">{map4ObjectivePanel.title}</div>
+          <div className="mt-2 space-y-1 text-slate-100">
+            {map4ObjectivePanel.buildings.map((building) => (
+              <div key={building.label} className="flex items-center justify-between">
+                <span>{building.label} ({building.progress}/{building.captureTurns})</span>
+                <span className={building.owner === 'blue-green' || building.owner === '0' ? 'text-blue-300' : 'text-red-300'}>
+                  {building.owner === 'blue-green' || building.owner === '0' ? 'Blue-owned' : 'Red-owned'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       
       {/* Action Buttons - Bottom Right Corner */}
       <div className="fixed bottom-4 right-4 z-30">

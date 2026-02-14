@@ -2,6 +2,7 @@ import { INVALID_MOVE } from 'boardgame.io/dist/cjs/core.js'
 import { v4 as uuidv4 } from 'uuid'
 import { DEFAULT_MAP_ID, generateMapData, getMapConfig } from './maps.js'
 import { areAllies, getTeamId, getTeamLabel, getTeamPlayOrder } from './teamUtils.js'
+import { createMap4ObjectiveState, getMap4VictoryInfo, updateMap4ObjectiveState } from './map4Objectives.js'
 
 // ============================================
 // UNIT DEFINITIONS - Medieval Roster
@@ -153,6 +154,12 @@ const getUnitMoveCost = (unit, terrainData, { embarking, disembarking } = {}) =>
   const isCatapult = unit.baseType === catapultType || unit.type === catapultType
   if (isCatapult && terrainData.name === hillsName) {
     return 1
+  }
+
+  const knightType = UNIT_TYPES.KNIGHT?.type || 'KNIGHT'
+  const isKnight = unit.baseType === knightType || unit.type === knightType
+  if (isKnight && terrainData.name === TERRAIN_TYPES.CITY.name) {
+    return 2
   }
 
   return terrainData.moveCost
@@ -428,6 +435,7 @@ export const shouldEmitDamageOnRemoval = (phase, removedUnitId = null, retreated
 }
 
 export const getRetreatActivationTurn = (mapId = DEFAULT_MAP_ID) => {
+  if (mapId === 'MAP_4') return 25
   return mapId === 'MAP_2' ? 13 : 9
 }
 
@@ -928,7 +936,9 @@ const battlePhase = {
       const hillBonus = attackerTerrain === 'HILLS' && ['ARCHER', 'CATAPULT'].includes(attacker.type)
         ? 5
         : 0
-      const baseDamage = attacker.attackPower + hillBonus
+      const attackerOnCity = attackerTerrain === 'CITY' && attacker.type === 'KNIGHT'
+      const cityDebuffMultiplier = attackerOnCity ? 0.75 : 1
+      const baseDamage = Math.round((attacker.attackPower + hillBonus) * cityDebuffMultiplier)
       const damageMultiplier = getDamageMultiplier(attacker.currentHP, attacker.maxHP)
       const moraleMultiplier = getMoraleMultiplier(attacker.morale)
       const reducedDamage = Math.round(baseDamage * damageMultiplier * moraleMultiplier)
@@ -1163,6 +1173,7 @@ export const MedievalBattleGame = {
       objectiveHexes: modeConfig.objectiveHexes || [],
       turnLimit: modeConfig.turnLimit || null,
       objectiveControl: { [attackerId]: 0, [defenderId]: 0 }, // Track turns controlling objective
+      map4ObjectiveState: mapId === 'MAP_4' ? createMap4ObjectiveState({ terrainMap, teamMode }) : null,
       fogOfWarEnabled: setupData?.fogOfWarEnabled ?? false,
     }
   },
@@ -1268,6 +1279,10 @@ export const MedievalBattleGame = {
             G.log.push('Paris is contested!')
           }
         }
+
+        if (G.map4ObjectiveState?.enabled) {
+          updateMap4ObjectiveState({ G, teamMode: G.teamMode })
+        }
       }
     },
   },
@@ -1283,6 +1298,13 @@ export const MedievalBattleGame = {
     const p1Alive = aliveUnits.filter(u => u.ownerID === '1').length
     const teamBlueGreenAlive = aliveUnits.filter(u => getTeamId(u.ownerID) === 'blue-green').length
     const teamRedYellowAlive = aliveUnits.filter(u => getTeamId(u.ownerID) === 'red-yellow').length
+
+    if (G.map4ObjectiveState?.enabled) {
+      const map4Victory = getMap4VictoryInfo({ G, teamMode: G.teamMode, turn: G.turn })
+      if (map4Victory) {
+        return map4Victory
+      }
+    }
     
     // Attack & Defend mode victory conditions
     if (G.gameMode === 'ATTACK_DEFEND') {
@@ -1467,7 +1489,9 @@ const applyTerrainDamage = (G, attacker, targetQ, targetR) => {
 
   const attackerTerrain = G.terrainMap[`${attacker.q},${attacker.r}`] || 'PLAIN'
   const hillBonus = attackerTerrain === 'HILLS' && ['ARCHER', 'CATAPULT'].includes(attacker.type) ? 5 : 0
-  const baseDamage = attacker.attackPower + hillBonus
+  const attackerOnCity = attackerTerrain === 'CITY' && attacker.type === 'KNIGHT'
+  const cityDebuffMultiplier = attackerOnCity ? 0.75 : 1
+  const baseDamage = Math.round((attacker.attackPower + hillBonus) * cityDebuffMultiplier)
   const damageMultiplier = getDamageMultiplier(attacker.currentHP, attacker.maxHP)
   const moraleMultiplier = getMoraleMultiplier(attacker.morale)
   const reducedDamage = Math.round(baseDamage * damageMultiplier * moraleMultiplier)

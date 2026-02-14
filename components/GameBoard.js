@@ -83,6 +83,7 @@ const GameBoard = ({
   retreatedUnitIds = [],
   deploymentZones = null,
   allowUnboundedCamera = false,
+  objectiveBuildingOwners = null,
 }) => {
   const DAMAGE_DISPLAY_DURATION = 3000
   const mapWidth = mapSize?.width || Math.max(6, ...hexes.map(hex => Math.abs(hex.q)))
@@ -599,11 +600,25 @@ const GameBoard = ({
     if (retreatHexes.some(h => h.q === hex.q && h.r === hex.r)) {
       return { stroke: '#FACC15', strokeWidth: 0.22 } // Retreat zone (Yellow)
     }
-    if (showSpawnZones && hex.spawnZone === 0) return { stroke: '#3B82F6', strokeWidth: 0.2 } // P0 Spawn
-    if (showSpawnZones && hex.spawnZone === 1) return { stroke: '#EF4444', strokeWidth: 0.2 } // P1 Spawn
+    const objectiveBuilding = objectiveBuildingByHex.get(`${hex.q},${hex.r}`)
+    if (phase === 'battle' && objectiveBuilding?.owner) {
+      const ownerColor = objectiveBuilding.owner === 'blue-green' || objectiveBuilding.owner === '0' ? '#3B82F6' : '#EF4444'
+      return { stroke: ownerColor, strokeWidth: 0.2 }
+    }
     
     return { stroke: '#1E293B', strokeWidth: 0.06 } // Default Border
   }
+
+  const objectiveBuildingByHex = useMemo(() => {
+    const index = new Map()
+    if (!objectiveBuildingOwners || typeof objectiveBuildingOwners !== 'object') return index
+    Object.values(objectiveBuildingOwners).forEach((building) => {
+      ;(building?.hexes || []).forEach((hex) => {
+        index.set(`${hex.q},${hex.r}`, building)
+      })
+    })
+    return index
+  }, [objectiveBuildingOwners])
 
   const getUnitOnHex = (hex) => {
     return units.find(u => u.q === hex.q && u.r === hex.r)
@@ -656,8 +671,6 @@ const GameBoard = ({
               const isVisible = isHexVisible(hex)
               const isRetreat = retreatHexes.some(h => h.q === hex.q && h.r === hex.r)
               const highlightFilter = isReachable ? 'brightness(1.3)' : isAttackable ? 'brightness(1.2)' : isRetreat ? 'brightness(1.15)' : 'none'
-              const inBlueDeployZone = Array.isArray(deploymentZones?.blue) && deploymentZones.blue.some(h => h.q === hex.q && h.r === hex.r)
-              const inRedDeployZone = Array.isArray(deploymentZones?.red) && deploymentZones.red.some(h => h.q === hex.q && h.r === hex.r)
               
               return (
                 <g key={`${hex.q}-${hex.r}-${hex.s}`} data-hex-q={hex.q} data-hex-r={hex.r}>
@@ -693,35 +706,6 @@ const GameBoard = ({
                         }}
                       />
                     )}
-                    {inBlueDeployZone && (
-                      <polygon
-                        points="0,-5.5 4.76,-2.75 4.76,2.75 0,5.5 -4.76,2.75 -4.76,-2.75"
-                        fill="rgba(59,130,246,0.2)"
-                        style={{ pointerEvents: 'none' }}
-                      />
-                    )}
-                    {inRedDeployZone && (
-                      <polygon
-                        points="0,-5.5 4.76,-2.75 4.76,2.75 0,5.5 -4.76,2.75 -4.76,-2.75"
-                        fill="rgba(239,68,68,0.2)"
-                        style={{ pointerEvents: 'none' }}
-                      />
-                    )}
-                    {hex.terrain === 'WALL' && (
-                      <g transform="translate(-5, 3.8)" style={{ filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.9))' }}>
-                        <rect x="0" y="0" width="10" height="1.2" fill="rgba(15, 23, 42, 0.9)" stroke="#E2E8F0" strokeWidth="0.1" rx="0.3" />
-                        <rect
-                          x="0"
-                          y="0"
-                          width={10 * ((terrainHealth?.[`${hex.q},${hex.r}`] ?? TERRAIN_TYPES.WALL.maxHP) / TERRAIN_TYPES.WALL.maxHP)}
-                          height="1.2"
-                          fill="#60A5FA"
-                          stroke="#F8FAFC"
-                          strokeWidth="0.08"
-                          rx="0.3"
-                        />
-                      </g>
-                    )}
                     {fogOfWarEnabled && !isVisible && (
                       <polygon
                         points="0,-5.5 4.76,-2.75 4.76,2.75 0,5.5 -4.76,2.75 -4.76,-2.75"
@@ -729,6 +713,35 @@ const GameBoard = ({
                         style={{ pointerEvents: 'none' }}
                       />
                     )}
+                  </Hexagon>
+                </g>
+              )
+            })}
+
+            {hexData.map((hex) => {
+              if (hex.terrain !== 'WALL') return null
+              const isVisible = isHexVisible(hex)
+              return (
+                <g key={`wall-hp-${hex.q}-${hex.r}-${hex.s}`}>
+                  <Hexagon
+                    q={hex.q}
+                    r={hex.r}
+                    s={hex.s}
+                    cellStyle={{ fill: 'transparent', stroke: 'transparent', pointerEvents: 'none' }}
+                  >
+                    <g transform="translate(-4.8, 2.2)" style={{ filter: 'drop-shadow(0 0 1.5px rgba(0,0,0,1))', opacity: isVisible ? 0.95 : 0.7 }}>
+                      <rect x="0" y="0" width="9.6" height="1.35" fill="rgba(15, 23, 42, 0.58)" stroke="#E2E8F0" strokeWidth="0.12" rx="0.35" />
+                      <rect
+                        x="0"
+                        y="0"
+                        width={9.6 * ((terrainHealth?.[`${hex.q},${hex.r}`] ?? TERRAIN_TYPES.WALL.maxHP) / TERRAIN_TYPES.WALL.maxHP)}
+                        height="1.35"
+                        fill="rgba(96,165,250,0.62)"
+                        stroke="rgba(248,250,252,0.85)"
+                        strokeWidth="0.1"
+                        rx="0.35"
+                      />
+                    </g>
                   </Hexagon>
                 </g>
               )
