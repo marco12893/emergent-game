@@ -713,21 +713,35 @@ const GameBoard = ({
                         style={{ pointerEvents: 'none' }}
                       />
                     )}
-                    {hex.terrain === 'WALL' && (
-                      <g transform="translate(-4.8, 2.4)" style={{ filter: 'drop-shadow(0 0 1.5px rgba(0,0,0,1))' }}>
-                        <rect x="0" y="0" width="9.6" height="1.35" fill="rgba(15, 23, 42, 0.75)" stroke="#E2E8F0" strokeWidth="0.12" rx="0.35" />
-                        <rect
-                          x="0"
-                          y="0"
-                          width={9.6 * ((terrainHealth?.[`${hex.q},${hex.r}`] ?? TERRAIN_TYPES.WALL.maxHP) / TERRAIN_TYPES.WALL.maxHP)}
-                          height="1.35"
-                          fill="rgba(96,165,250,0.78)"
-                          stroke="#F8FAFC"
-                          strokeWidth="0.1"
-                          rx="0.35"
-                        />
-                      </g>
-                    )}
+                  </Hexagon>
+                </g>
+              )
+            })}
+
+            {hexData.map((hex) => {
+              if (hex.terrain !== 'WALL') return null
+              const isVisible = isHexVisible(hex)
+              return (
+                <g key={`wall-hp-${hex.q}-${hex.r}-${hex.s}`}>
+                  <Hexagon
+                    q={hex.q}
+                    r={hex.r}
+                    s={hex.s}
+                    cellStyle={{ fill: 'transparent', stroke: 'transparent', pointerEvents: 'none' }}
+                  >
+                    <g transform="translate(-4.8, 2.2)" style={{ filter: 'drop-shadow(0 0 1.5px rgba(0,0,0,1))', opacity: isVisible ? 0.95 : 0.7 }}>
+                      <rect x="0" y="0" width="9.6" height="1.35" fill="rgba(15, 23, 42, 0.58)" stroke="#E2E8F0" strokeWidth="0.12" rx="0.35" />
+                      <rect
+                        x="0"
+                        y="0"
+                        width={9.6 * ((terrainHealth?.[`${hex.q},${hex.r}`] ?? TERRAIN_TYPES.WALL.maxHP) / TERRAIN_TYPES.WALL.maxHP)}
+                        height="1.35"
+                        fill="rgba(96,165,250,0.62)"
+                        stroke="rgba(248,250,252,0.85)"
+                        strokeWidth="0.1"
+                        rx="0.35"
+                      />
+                    </g>
                   </Hexagon>
                 </g>
               )

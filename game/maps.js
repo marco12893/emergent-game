@@ -23,7 +23,7 @@ export const MAPS = {
   },
   MAP_4: {
     id: 'MAP_4',
-    name: 'Map 4 (Cathedral Siege)',
+    name: 'Map 4 (City Siege)',
     description: 'Attack/defend siege with cathedral, barracks, and castle objectives.',
     size: map4Data.size,
     deploymentZones: map4Data.deploymentZones,
