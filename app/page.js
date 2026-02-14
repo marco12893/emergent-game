@@ -10,6 +10,9 @@ import ConfirmDialog from '@/components/ConfirmDialog'
 import MapBuilderModal from '@/components/MapBuilderModal'
 import { parseImportedCustomMap } from '@/lib/customMap'
 
+const DAMAGE_VARIANCE_MIN = 0.8
+const DAMAGE_VARIANCE_MAX = 1.2
+
 // Landscape detection component
 const LandscapePrompt = () => {
   const [isPortrait, setIsPortrait] = useState(false)
@@ -614,10 +617,12 @@ export default function HTTPMultiplayerPage() {
 
     const moraleMultiplier = selectedUnit.morale === 'LOW' ? 0.8 : selectedUnit.morale === 'HIGH' ? 1.2 : 1.0
     const reducedDamage = Math.round(baseDamage * damageMultiplier * moraleMultiplier)
-    const attackDamage = Math.max(1, reducedDamage - defenseBonus)
-    const targetRemaining = targetUnit.currentHP - attackDamage
+    const attackDamageMin = Math.max(1, Math.round(reducedDamage * DAMAGE_VARIANCE_MIN) - defenseBonus)
+    const attackDamageMax = Math.max(1, Math.round(reducedDamage * DAMAGE_VARIANCE_MAX) - defenseBonus)
+    const targetRemaining = targetUnit.currentHP - attackDamageMin
 
-    let counterDamage = 0
+    let counterDamageMin = 0
+    let counterDamageMax = 0
     if (targetRemaining > 0 && distance <= targetUnit.range) {
       if (targetUnit.type !== 'CATAPULT' || targetUnit.isTransport) {
         const targetHpPercentage = targetRemaining / targetUnit.maxHP
@@ -638,15 +643,20 @@ export default function HTTPMultiplayerPage() {
           targetUnit.attackPower * targetDamageMultiplier * meleePenaltyMultiplier * targetMoraleMultiplier
         )
         const attackerDefenseBonus = TERRAIN_TYPES[attackerTerrain]?.defenseBonus ?? 0
-        counterDamage = Math.max(1, targetReducedDamage - attackerDefenseBonus)
+        counterDamageMin = Math.max(1, Math.round(targetReducedDamage * DAMAGE_VARIANCE_MIN) - attackerDefenseBonus)
+        counterDamageMax = Math.max(1, Math.round(targetReducedDamage * DAMAGE_VARIANCE_MAX) - attackerDefenseBonus)
       }
     }
 
     setDamagePreview({
       attackerId: selectedUnit.id,
       targetId: targetUnit.id,
-      attackDamage,
-      counterDamage,
+      attackDamage: attackDamageMin,
+      counterDamage: counterDamageMin,
+      attackDamageMin,
+      attackDamageMax,
+      counterDamageMin,
+      counterDamageMax,
     })
   }, [gameState, hoveredHex, isMyTurn, playerID, teamMode, visibleUnits])
 

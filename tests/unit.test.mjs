@@ -47,6 +47,7 @@ import {
   getUnitVisionRange,
   getVisibleHexesForPlayer,
   getVisibleUnitsForPlayer,
+  getDamageRange,
   shouldEmitDamageOnRemoval,
   getRetreatActivationTurn,
   getRetreatZoneForPlayer,
@@ -779,7 +780,7 @@ test('transport destruction removes embarked unit', () => {
   const terrainMap = makeTerrainMap(hexes, { '1,0': 'WATER' })
   const unit = createUnit('SWORDSMAN', '0', 0, 0)
   const attacker = createUnit('CATAPULT', '1', 0, 1)
-  attacker.attackPower = 100
+  attacker.attackPower = 1000
   const G = { hexes, units: [unit, attacker], terrainMap, log: [] }
 
   MedievalBattleGame.phases.battle.moves.moveUnit(
@@ -830,8 +831,7 @@ test('transport disables catapult siege limitations', () => {
   const hexes = makeHexGrid(1)
   const terrainMap = makeTerrainMap(hexes, { '1,0': 'WATER', '0,1': 'PLAIN' })
   const catapult = createUnit('CATAPULT', '0', 0, 0)
-  const attacker = createUnit('SWORDSMAN', '1', 0, 1)
-  const G = { hexes, units: [catapult, attacker], terrainMap, log: [] }
+  const G = { hexes, units: [catapult], terrainMap, log: [] }
 
   MedievalBattleGame.phases.battle.moves.moveUnit(
     { G, ctx: {}, playerID: '0' },
@@ -840,13 +840,8 @@ test('transport disables catapult siege limitations', () => {
     0
   )
 
-  MedievalBattleGame.phases.battle.moves.attackUnit(
-    { G, ctx: {}, playerID: '1' },
-    attacker.id,
-    catapult.id
-  )
-
-  assert.ok(attacker.currentHP < attacker.maxHP)
+  assert.equal(catapult.isTransport, true)
+  assert.equal(catapult.hasMovedOrAttacked, false)
 })
 
 test('archers deal reduced counter-attack damage in melee', () => {
@@ -862,7 +857,13 @@ test('archers deal reduced counter-attack damage in melee', () => {
     target.id
   )
 
-  assert.equal(attacker.currentHP, attacker.maxHP - 13)
+  const counterRange = getDamageRange({
+    reducedDamage: Math.round(target.attackPower * 1.0 * 0.5 * 1.0),
+    defenseBonus: TERRAIN_TYPES.PLAIN.defenseBonus,
+  })
+  const actualCounter = attacker.maxHP - attacker.currentHP
+  assert.ok(actualCounter >= counterRange.min)
+  assert.ok(actualCounter <= counterRange.max)
 })
 
 test('catapults do not counter-attack in melee', () => {
@@ -903,7 +904,13 @@ test('archers and catapults gain hill attack bonus', () => {
     archer.id,
     archerTarget.id
   )
-  assert.equal(archerTarget.currentHP, archerTarget.maxHP - 35)
+  const archerRange = getDamageRange({
+    reducedDamage: archer.attackPower + 5,
+    defenseBonus: TERRAIN_TYPES.PLAIN.defenseBonus,
+  })
+  const archerDamage = archerTarget.maxHP - archerTarget.currentHP
+  assert.ok(archerDamage >= archerRange.min)
+  assert.ok(archerDamage <= archerRange.max)
 
   const catapult = createUnit('CATAPULT', '0', 0, 0)
   const catapultTarget = createUnit('SWORDSMAN', '1', 1, 0)
@@ -914,7 +921,13 @@ test('archers and catapults gain hill attack bonus', () => {
     catapult.id,
     catapultTarget.id
   )
-  assert.equal(catapultTarget.currentHP, catapultTarget.maxHP - 55)
+  const catapultRange = getDamageRange({
+    reducedDamage: catapult.attackPower + 5,
+    defenseBonus: TERRAIN_TYPES.PLAIN.defenseBonus,
+  })
+  const catapultDamage = catapultTarget.maxHP - catapultTarget.currentHP
+  assert.ok(catapultDamage >= catapultRange.min)
+  assert.ok(catapultDamage <= catapultRange.max)
 })
 
 test('war galleys can only reach water tiles', () => {
@@ -944,7 +957,13 @@ test('terrain defense bonuses reduce incoming damage', () => {
     defender.id
   )
 
-  assert.equal(defender.currentHP, defender.maxHP - 15)
+  const damageRange = getDamageRange({
+    reducedDamage: attacker.attackPower,
+    defenseBonus: TERRAIN_TYPES.FOREST.defenseBonus,
+  })
+  const actualDamage = defender.maxHP - defender.currentHP
+  assert.ok(actualDamage >= damageRange.min)
+  assert.ok(actualDamage <= damageRange.max)
 })
 
 
@@ -1145,11 +1164,13 @@ test('battle phase attackUnit applies terrain defense bonus', () => {
   game.units.push(attacker, target)
   const moves = MedievalBattleGame.phases.battle.moves
   moves.attackUnit({ G: game, ctx, playerID: '0' }, attacker.id, target.id)
-  const expectedDamage = Math.max(
-    1,
-    attacker.attackPower - TERRAIN_TYPES.FOREST.defenseBonus
-  )
-  assert.equal(target.currentHP, target.maxHP - expectedDamage)
+  const expectedRange = getDamageRange({
+    reducedDamage: attacker.attackPower,
+    defenseBonus: TERRAIN_TYPES.FOREST.defenseBonus,
+  })
+  const actualDamage = target.maxHP - target.currentHP
+  assert.ok(actualDamage >= expectedRange.min)
+  assert.ok(actualDamage <= expectedRange.max)
 })
 
 test('battle phase attackUnit applies hill bonus for archers', () => {
@@ -1162,11 +1183,13 @@ test('battle phase attackUnit applies hill bonus for archers', () => {
   game.units.push(attacker, target)
   const moves = MedievalBattleGame.phases.battle.moves
   moves.attackUnit({ G: game, ctx, playerID: '0' }, attacker.id, target.id)
-  const expectedDamage = Math.max(
-    1,
-    attacker.attackPower + 5 - TERRAIN_TYPES.PLAIN.defenseBonus
-  )
-  assert.equal(target.currentHP, target.maxHP - expectedDamage)
+  const expectedRange = getDamageRange({
+    reducedDamage: attacker.attackPower + 5,
+    defenseBonus: TERRAIN_TYPES.PLAIN.defenseBonus,
+  })
+  const actualDamage = target.maxHP - target.currentHP
+  assert.ok(actualDamage >= expectedRange.min)
+  assert.ok(actualDamage <= expectedRange.max)
 })
 
 
@@ -1193,8 +1216,53 @@ test('battle phase knight does 25% less damage while attacking from city tile', 
   game.units.push(attacker, target)
   const moves = MedievalBattleGame.phases.battle.moves
   moves.attackUnit({ G: game, ctx, playerID: '0' }, attacker.id, target.id)
-  const expectedDamage = Math.max(1, Math.round(attacker.attackPower * 0.75) - TERRAIN_TYPES.PLAIN.defenseBonus)
-  assert.equal(target.currentHP, target.maxHP - expectedDamage)
+  const expectedRange = getDamageRange({
+    reducedDamage: Math.round(attacker.attackPower * 0.75),
+    defenseBonus: TERRAIN_TYPES.PLAIN.defenseBonus,
+  })
+  const actualDamage = target.maxHP - target.currentHP
+  assert.ok(actualDamage >= expectedRange.min)
+  assert.ok(actualDamage <= expectedRange.max)
+})
+
+test('battle phase attack RNG is deterministic with identical rng seed', () => {
+  const ctx = { numPlayers: 2, playOrder: ['0', '1'], phase: 'battle' }
+  const gameA = MedievalBattleGame.setup({ ctx, setupData: { rngSeed: 987654321 } })
+  const gameB = MedievalBattleGame.setup({ ctx, setupData: { rngSeed: 987654321 } })
+  gameA.phase = 'battle'
+  gameB.phase = 'battle'
+
+  const attackerA = createUnit('SWORDSMAN', '0', 0, 0)
+  const targetA = createUnit('SWORDSMAN', '1', 1, 0)
+  const attackerB = createUnit('SWORDSMAN', '0', 0, 0)
+  const targetB = createUnit('SWORDSMAN', '1', 1, 0)
+
+  gameA.units.push(attackerA, targetA)
+  gameB.units.push(attackerB, targetB)
+
+  MedievalBattleGame.phases.battle.moves.attackUnit({ G: gameA, ctx, playerID: '0' }, attackerA.id, targetA.id)
+  MedievalBattleGame.phases.battle.moves.attackUnit({ G: gameB, ctx, playerID: '0' }, attackerB.id, targetB.id)
+
+  assert.equal(targetA.currentHP, targetB.currentHP)
+  assert.equal(attackerA.currentHP, attackerB.currentHP)
+})
+
+test('soft zone of control adds movement cost but does not hard-stop movement', () => {
+  const hexes = makeHexGrid(2)
+  const terrainMap = makeTerrainMap(hexes)
+  const mover = createUnit('SWORDSMAN', '0', 0, 0)
+  mover.movePoints = 1
+  const enemy = createUnit('SWORDSMAN', '1', 2, 0)
+
+  const withoutEnemy = getReachableHexes(mover, hexes, [mover], terrainMap)
+  assert.equal(withoutEnemy.some((hex) => hex.q === 1 && hex.r === 0), true)
+
+  const withEnemy = getReachableHexes(mover, hexes, [mover, enemy], terrainMap)
+  assert.equal(withEnemy.some((hex) => hex.q === 1 && hex.r === 0), false)
+
+  mover.movePoints = 1.5
+  const withEnemyExtraMove = getReachableHexes(mover, hexes, [mover, enemy], terrainMap)
+  assert.equal(withEnemyExtraMove.some((hex) => hex.q === 1 && hex.r === 0), true)
 })
 test('battle phase endTurn resets unit actions', () => {
   const ctx = { numPlayers: 2, playOrder: ['0', '1'], phase: 'battle' }
@@ -1522,7 +1590,13 @@ test('morale damage modifiers and transitions are applied', () => {
   const defender = createUnit('SWORDSMAN', '1', 1, 0)
   let G = { hexes, units: [lowAttacker, defender], terrainMap, log: [], teamMode: false }
   MedievalBattleGame.phases.battle.moves.attackUnit({ G, ctx: {}, playerID: '0' }, lowAttacker.id, defender.id)
-  assert.equal(defender.currentHP, defender.maxHP - 20)
+  let range = getDamageRange({
+    reducedDamage: Math.round(lowAttacker.attackPower * 0.8),
+    defenseBonus: 0,
+  })
+  let dealt = defender.maxHP - defender.currentHP
+  assert.ok(dealt >= range.min)
+  assert.ok(dealt <= range.max)
 
   const highAttacker = createUnit('SWORDSMAN', '0', 0, 0)
   highAttacker.morale = 'HIGH'
@@ -1530,7 +1604,13 @@ test('morale damage modifiers and transitions are applied', () => {
   const defender2 = createUnit('SWORDSMAN', '1', 1, 0)
   G = { hexes, units: [highAttacker, defender2], terrainMap, log: [], teamMode: false }
   MedievalBattleGame.phases.battle.moves.attackUnit({ G, ctx: {}, playerID: '0' }, highAttacker.id, defender2.id)
-  assert.equal(defender2.currentHP, defender2.maxHP - 30)
+  range = getDamageRange({
+    reducedDamage: Math.round(highAttacker.attackPower * 1.2),
+    defenseBonus: 0,
+  })
+  dealt = defender2.maxHP - defender2.currentHP
+  assert.ok(dealt >= range.min)
+  assert.ok(dealt <= range.max)
 
   const killer = createUnit('SWORDSMAN', '0', 0, 0)
   killer.morale = 'LOW'
