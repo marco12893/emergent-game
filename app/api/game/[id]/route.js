@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
-import { getGames, getGame } from '@/lib/gameState'
+import { getGames, getGame, setGame } from '@/lib/gameState'
 import { sanitizeGameId } from '@/lib/inputSanitization'
+import { advanceTurn, hasTurnTimedOut, setTurnTimerForCurrentPlayer } from '@/lib/turnTimer'
 
 // Handle OPTIONS requests for CORS preflight
 export async function OPTIONS() {
@@ -76,6 +77,24 @@ export async function GET(request, { params }) {
     }
     
     if (game) {
+      if (game.phase === 'battle') {
+        let changed = false
+        if (!game.turnStartedAt || !game.turnTimeLimitSeconds) {
+          setTurnTimerForCurrentPlayer(game)
+          changed = true
+        }
+
+        if (hasTurnTimedOut(game)) {
+          const timedOutPlayer = game.currentPlayer
+          advanceTurn({ game, endingPlayerID: timedOutPlayer, forcedByTimer: true })
+          changed = true
+        }
+
+        if (changed) {
+          await setGame(sanitizedGameId, game)
+        }
+      }
+
       return NextResponse.json(game, {
         headers: {
           'Access-Control-Allow-Origin': '*',
