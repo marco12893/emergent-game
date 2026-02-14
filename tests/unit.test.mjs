@@ -171,6 +171,13 @@ test('generateMapData loads static MAP_4 data and deployment zones', () => {
   assert.ok((map.deploymentZones?.red || []).length > 0)
 })
 
+
+
+test('MAP_4 has no plain grass tile override that breaks winter visuals', () => {
+  const map = generateMapData('MAP_4')
+  const hasGrassOverride = Object.values(map.tileMap || {}).some((path) => path === '/tiles/Grass_5.png')
+  assert.equal(hasGrassOverride, false)
+})
 test('map 4 objective capture is paused by contest and resumes without reset', () => {
   const G = {
     units: [{ id: 'r1', ownerID: '1', q: 0, r: 0, currentHP: 100 }],
@@ -1149,6 +1156,33 @@ test('battle phase attackUnit applies hill bonus for archers', () => {
   assert.equal(target.currentHP, target.maxHP - expectedDamage)
 })
 
+
+
+test('battle phase knight spends 2 move points entering city tile', () => {
+  const ctx = { numPlayers: 2, playOrder: ['0', '1'], phase: 'battle' }
+  const game = MedievalBattleGame.setup({ ctx, setupData: {} })
+  game.phase = 'battle'
+  const knight = createUnit('KNIGHT', '0', 0, 0)
+  knight.movePoints = 1
+  game.terrainMap['1,0'] = 'CITY'
+  game.units.push(knight)
+  const reachable = getReachableHexes(knight, game.hexes, game.units, game.terrainMap)
+  assert.equal(reachable.some((hex) => hex.q === 1 && hex.r === 0), false)
+})
+
+test('battle phase knight does 25% less damage while attacking from city tile', () => {
+  const ctx = { numPlayers: 2, playOrder: ['0', '1'], phase: 'battle' }
+  const game = MedievalBattleGame.setup({ ctx, setupData: {} })
+  game.phase = 'battle'
+  const attacker = createUnit('KNIGHT', '0', 0, 0)
+  const target = createUnit('SWORDSMAN', '1', 1, 0)
+  game.terrainMap['0,0'] = 'CITY'
+  game.units.push(attacker, target)
+  const moves = MedievalBattleGame.phases.battle.moves
+  moves.attackUnit({ G: game, ctx, playerID: '0' }, attacker.id, target.id)
+  const expectedDamage = Math.max(1, Math.round(attacker.attackPower * 0.75) - TERRAIN_TYPES.PLAIN.defenseBonus)
+  assert.equal(target.currentHP, target.maxHP - expectedDamage)
+})
 test('battle phase endTurn resets unit actions', () => {
   const ctx = { numPlayers: 2, playOrder: ['0', '1'], phase: 'battle' }
   const game = MedievalBattleGame.setup({ ctx, setupData: {} })
