@@ -480,9 +480,9 @@ export default function HTTPMultiplayerPage() {
   }, [])
 
   const turnTimer = useMemo(() => {
-    const startedAt = gameState?.turnStartedAt
-    const limitSeconds = gameState?.turnTimeLimitSeconds
-    if (gameState?.phase !== 'battle' || typeof startedAt !== 'number' || typeof limitSeconds !== 'number') {
+    const startedAt = Number(gameState?.turnStartedAt)
+    const limitSeconds = Number(gameState?.turnTimeLimitSeconds)
+    if (gameState?.phase !== 'battle' || !Number.isFinite(startedAt) || !Number.isFinite(limitSeconds) || limitSeconds <= 0) {
       return null
     }
 
