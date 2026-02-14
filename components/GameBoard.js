@@ -711,17 +711,17 @@ const GameBoard = ({
                         }}
                       />
                     )}
-                    {inBlueDeployZone && (
+                    {showSpawnZones && inBlueDeployZone && (
                       <polygon
                         points="0,-5.5 4.76,-2.75 4.76,2.75 0,5.5 -4.76,2.75 -4.76,-2.75"
-                        fill="rgba(59,130,246,0.2)"
+                        fill="rgba(37,99,235,0.2)"
                         style={{ pointerEvents: 'none' }}
                       />
                     )}
-                    {inRedDeployZone && (
+                    {showSpawnZones && inRedDeployZone && (
                       <polygon
                         points="0,-5.5 4.76,-2.75 4.76,2.75 0,5.5 -4.76,2.75 -4.76,-2.75"
-                        fill="rgba(239,68,68,0.2)"
+                        fill="rgba(220,38,38,0.24)"
                         style={{ pointerEvents: 'none' }}
                       />
                     )}
