@@ -951,6 +951,15 @@ export default function HTTPMultiplayerPage() {
     await sendAction('startBattle', { playerID })
   }
 
+  const kickParticipant = async (targetPlayerID) => {
+    if (!joined) return
+    const result = await sendAction('kickParticipant', { playerID, targetPlayerID })
+    if (result?.success && targetPlayerID === playerID) {
+      setPlayerID('spectator')
+      setForceLobbySelection(false)
+    }
+  }
+
   const confirmReadyForBattle = () => {
     setShowReadyConfirm(false)
     sendAction('readyForBattle', { playerID })
@@ -1258,6 +1267,7 @@ export default function HTTPMultiplayerPage() {
     const playerCount = Object.keys(lobbyPlayers).length
     const canStartMatch = playerID === lobbyLeaderId && playerCount >= 2
     const canToggleFog = playerID === lobbyLeaderId && playerID !== 'spectator'
+    const canKickParticipants = playerID === lobbyLeaderId && playerID !== 'spectator'
     const lobbyFogEnabled = Boolean(gameState?.fogOfWarEnabled)
 
     return (
@@ -1296,24 +1306,34 @@ export default function HTTPMultiplayerPage() {
                   return (
                     <div
                       key={slot.id}
-                      className={`flex items-center justify-between gap-3 rounded-xl border p-4 ${
+                      className={`rounded-xl border p-4 ${
                         isCurrent ? 'border-amber-400/70 bg-amber-400/10' : 'border-slate-700 bg-slate-800/60'
                       }`}
                     >
-                      <div>
-                        <div className="text-sm font-semibold text-white">{slot.label}</div>
-                        <div className="text-xs text-slate-400">
-                          {occupant ? occupant.name : 'Add the player'}
-                          {isLeader && <span className="ml-2 text-amber-300">(Leader)</span>}
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold text-white">{slot.label}</div>
+                          <div className="text-xs text-slate-400">
+                            {occupant ? occupant.name : 'Add the player'}
+                            {isLeader && <span className="ml-2 text-amber-300">(Leader)</span>}
+                          </div>
                         </div>
+                        <button
+                          onClick={() => claimSlot(slot.id)}
+                          disabled={isSpectator}
+                          className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
+                        >
+                          {isCurrent ? 'Your Slot' : isOccupied ? 'Claim' : isSpectator ? 'Spectator' : 'Join'}
+                        </button>
                       </div>
-                      <button
-                        onClick={() => claimSlot(slot.id)}
-                        disabled={isSpectator}
-                        className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
-                      >
-                        {isCurrent ? 'Your Slot' : isOccupied ? 'Claim' : isSpectator ? 'Spectator' : 'Join'}
-                      </button>
+                      {isOccupied && canKickParticipants && (
+                        <button
+                          onClick={() => kickParticipant(slot.id)}
+                          className="mt-2 rounded-full bg-rose-500/20 px-3 py-1 text-xs font-semibold text-rose-200 transition hover:bg-rose-500/30"
+                        >
+                          Kick
+                        </button>
+                      )}
                     </div>
                   )
                 })}
@@ -1398,24 +1418,34 @@ export default function HTTPMultiplayerPage() {
                   return (
                     <div
                       key={slot.id}
-                      className={`flex items-center justify-between gap-3 rounded-xl border p-4 ${
+                      className={`rounded-xl border p-4 ${
                         isCurrent ? 'border-amber-400/70 bg-amber-400/10' : 'border-slate-700 bg-slate-800/60'
                       }`}
                     >
-                      <div>
-                        <div className="text-sm font-semibold text-white">{slot.label}</div>
-                        <div className="text-xs text-slate-400">
-                          {occupant ? occupant.name : 'Add the player'}
-                          {isLeader && <span className="ml-2 text-amber-300">(Leader)</span>}
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold text-white">{slot.label}</div>
+                          <div className="text-xs text-slate-400">
+                            {occupant ? occupant.name : 'Add the player'}
+                            {isLeader && <span className="ml-2 text-amber-300">(Leader)</span>}
+                          </div>
                         </div>
+                        <button
+                          onClick={() => claimSlot(slot.id)}
+                          disabled={isSpectator}
+                          className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
+                        >
+                          {isCurrent ? 'Your Slot' : isOccupied ? 'Claim' : isSpectator ? 'Spectator' : 'Join'}
+                        </button>
                       </div>
-                      <button
-                        onClick={() => claimSlot(slot.id)}
-                        disabled={isSpectator}
-                        className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
-                      >
-                        {isCurrent ? 'Your Slot' : isOccupied ? 'Claim' : isSpectator ? 'Spectator' : 'Join'}
-                      </button>
+                      {isOccupied && canKickParticipants && (
+                        <button
+                          onClick={() => kickParticipant(slot.id)}
+                          className="mt-2 rounded-full bg-rose-500/20 px-3 py-1 text-xs font-semibold text-rose-200 transition hover:bg-rose-500/30"
+                        >
+                          Kick
+                        </button>
+                      )}
                     </div>
                   )
                 })}
@@ -1449,7 +1479,17 @@ export default function HTTPMultiplayerPage() {
               ) : (
                 <ul className="mt-2 space-y-1 text-slate-400">
                   {lobbySpectators.map(spectator => (
-                    <li key={spectator.id}>{spectator.name}</li>
+                    <li key={spectator.id} className="flex items-center justify-between gap-2 rounded border border-slate-700/60 bg-slate-800/40 px-2 py-1">
+                      <span>{spectator.name}</span>
+                      {canKickParticipants && (
+                        <button
+                          onClick={() => kickParticipant(spectator.id)}
+                          className="rounded-full bg-rose-500/20 px-2 py-0.5 text-[11px] font-semibold text-rose-200 transition hover:bg-rose-500/30"
+                        >
+                          Kick
+                        </button>
+                      )}
+                    </li>
                   ))}
                 </ul>
               )}

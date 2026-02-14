@@ -97,6 +97,15 @@ const getGamePlayOrder = (game) => {
   return teamMode ? getTeamPlayOrder(maxPlayers) : ['0', '1']
 }
 
+const pickRandomPlayerId = (players = {}) => {
+  const playerIds = Object.keys(players)
+  if (playerIds.length === 0) {
+    return null
+  }
+  const randomIndex = Math.floor(Math.random() * playerIds.length)
+  return playerIds[randomIndex]
+}
+
 const TRANSPORT_STATS = {
   name: 'Transport',
   image: 'transport',
@@ -950,6 +959,101 @@ export async function POST(request) {
           game.inactivePlayers = playOrder.filter(id => !activePlayers.includes(id))
           game.currentPlayer = activePlayers[0] || '0'
           game.log.push(`⚔️ BATTLE PHASE BEGINS! Player ${game.currentPlayer} gets the first turn.`)
+          game.lastUpdate = Date.now()
+          break
+        }
+
+        case 'kickParticipant': {
+          const kickSchema = {
+            playerID: { required: true, sanitize: sanitizePlayerID },
+            targetPlayerID: { required: true },
+          }
+          const kickValidation = validatePayload(payload, kickSchema)
+          if (kickValidation.error) {
+            return NextResponse.json({
+              error: 'Invalid payload for kickParticipant: ' + kickValidation.error,
+            }, {
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          const { playerID: kickByPlayerID, targetPlayerID } = kickValidation.sanitized
+          const normalizedTargetPlayerID = String(targetPlayerID)
+
+          if (!kickByPlayerID || kickByPlayerID === 'spectator' || !isValidPlayerForGame(kickByPlayerID, game)) {
+            return NextResponse.json({
+              error: 'Invalid playerID for kickParticipant'
+            }, {
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          if (game.phase !== 'lobby') {
+            return NextResponse.json({
+              error: 'Players can only be kicked while in the lobby',
+            }, {
+              status: 409,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          if (!game.leaderId || game.leaderId !== kickByPlayerID) {
+            return NextResponse.json({
+              error: 'Only the lobby leader can kick participants',
+            }, {
+              status: 403,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          const kickedPlayer = game.players?.[normalizedTargetPlayerID]
+          const spectatorIndex = (game.spectators || []).findIndex(s => s.id === normalizedTargetPlayerID)
+          const kickedSpectator = spectatorIndex >= 0 ? game.spectators[spectatorIndex] : null
+
+          if (!kickedPlayer && !kickedSpectator) {
+            return NextResponse.json({
+              error: 'Target participant is not in this lobby',
+            }, {
+              status: 404,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
+          if (kickedPlayer) {
+            delete game.players[normalizedTargetPlayerID]
+          }
+          if (kickedSpectator && spectatorIndex >= 0) {
+            game.spectators.splice(spectatorIndex, 1)
+          }
+
+          if (game.leaderId === normalizedTargetPlayerID) {
+            game.leaderId = pickRandomPlayerId(game.players)
+          }
+
+          const targetName = kickedPlayer?.name || kickedSpectator?.name || `Player ${normalizedTargetPlayerID}`
+          game.log.push(`🚪 ${targetName} was kicked from the lobby by ${game.players?.[kickByPlayerID]?.name || `Player ${kickByPlayerID}`}.`)
           game.lastUpdate = Date.now()
           break
         }
