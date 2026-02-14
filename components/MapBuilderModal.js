@@ -121,6 +121,7 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
   const [editorHexRadius, setEditorHexRadius] = useState(100)
   const [isSavingCustomTile, setIsSavingCustomTile] = useState(false)
   const [isPanning, setIsPanning] = useState(false)
+  const [editorViewportSize, setEditorViewportSize] = useState({ width: 420, height: 420 })
   const panStartRef = useRef({ x: 0, y: 0 })
   const offsetStartRef = useRef({ x: 0, y: 0 })
 
@@ -134,6 +135,21 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
       else ctx.lineTo(x, y)
     }
     ctx.closePath()
+  }
+
+
+  const getOverlayHexPoints = () => {
+    const centerX = editorViewportSize.width / 2
+    const centerY = editorViewportSize.height / 2
+
+    return Array.from({ length: 6 })
+      .map((_, i) => {
+        const angle = ((60 * i - 90) * Math.PI) / 180
+        const x = centerX + Math.cos(angle) * editorHexRadius
+        const y = centerY + Math.sin(angle) * editorHexRadius
+        return `${x},${y}`
+      })
+      .join(' ')
   }
 
   const reloadTiles = async () => {
@@ -190,6 +206,21 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
         URL.revokeObjectURL(customImageEditor.src)
       }
     }
+  }, [customImageEditor])
+
+  useEffect(() => {
+    if (!customImageEditor || !editorViewportRef.current) return
+
+    const element = editorViewportRef.current
+    const updateViewportSize = () => {
+      setEditorViewportSize({ width: element.clientWidth, height: element.clientHeight })
+    }
+
+    updateViewportSize()
+    const observer = new ResizeObserver(updateViewportSize)
+    observer.observe(element)
+
+    return () => observer.disconnect()
   }, [customImageEditor])
 
   useEffect(() => {
@@ -344,7 +375,7 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
     const drawX = (viewportRect.width - drawWidth) / 2 + editorOffset.x
     const drawY = (viewportRect.height - drawHeight) / 2 + editorOffset.y
 
-    const outputSize = Math.max(128, Math.round(editorHexRadius * 2))
+    const outputSize = Math.max(8, Math.round(editorHexRadius * 2))
     const outputCenter = outputSize / 2
     const sourceCenterX = viewportRect.width / 2
     const sourceCenterY = viewportRect.height / 2
@@ -559,7 +590,7 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
               onMouseLeave={() => setIsPanning(false)}
               onWheel={(event) => {
                 event.preventDefault()
-                setEditorHexRadius((current) => Math.max(40, Math.min(180, current - event.deltaY * 0.05)))
+                setEditorHexRadius((current) => Math.max(8, current - event.deltaY * 0.05))
               }}
             >
               <img
@@ -573,24 +604,14 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
                   <mask id="hex-mask-overlay">
                     <rect width="100%" height="100%" fill="white" />
                     <polygon
-                      points={Array.from({ length: 6 }).map((_, i) => {
-                        const angle = ((60 * i - 90) * Math.PI) / 180
-                        const x = 50 + (Math.cos(angle) * editorHexRadius * 100) / 420
-                        const y = 50 + (Math.sin(angle) * editorHexRadius * 100) / 420
-                        return `${x},${y}`
-                      }).join(' ')}
+                      points={getOverlayHexPoints()}
                       fill="black"
                     />
                   </mask>
                 </defs>
                 <rect width="100%" height="100%" fill="rgba(15,23,42,0.58)" mask="url(#hex-mask-overlay)" />
                 <polygon
-                  points={Array.from({ length: 6 }).map((_, i) => {
-                    const angle = ((60 * i - 90) * Math.PI) / 180
-                    const x = 50 + (Math.cos(angle) * editorHexRadius * 100) / 420
-                    const y = 50 + (Math.sin(angle) * editorHexRadius * 100) / 420
-                    return `${x},${y}`
-                  }).join(' ')}
+                  points={getOverlayHexPoints()}
                   fill="none"
                   stroke="#f8fafc"
                   strokeWidth="0.6"
@@ -601,14 +622,15 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
               <label className="flex items-center gap-2">
                 Hex size
                 <input
-                  type="range"
-                  min={40}
-                  max={180}
-                  value={editorHexRadius}
-                  onChange={(e) => setEditorHexRadius(Number(e.target.value))}
+                  type="number"
+                  min={8}
+                  step={5}
+                  value={Math.round(editorHexRadius)}
+                  onChange={(e) => setEditorHexRadius(Math.max(8, Number(e.target.value) || 8))}
+                  className="w-24 rounded bg-slate-800 px-2 py-1"
                 />
               </label>
-              <div className="text-slate-400">Drag to pan image. Use mouse wheel or slider to resize hex.</div>
+              <div className="text-slate-400">Drag to pan image. Use mouse wheel or number input to resize hex (no max limit).</div>
               <button
                 onClick={saveCustomHexTile}
                 disabled={isSavingCustomTile}
