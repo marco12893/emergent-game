@@ -178,6 +178,18 @@ export default function HTTPMultiplayerPage() {
   const teamMode = Boolean(gameState?.teamMode)
   const chatMessages = gameState?.chatMessages || []
   const shouldShowLobbySelection = forceLobbySelection || gameState?.phase === 'lobby'
+
+  const handleKickedOut = ({ message }) => {
+    setJoined(false)
+    setGameState(null)
+    setPlayerID('')
+    setForceLobbySelection(false)
+    setKickedOutNotice(message || 'You were kicked from the match.')
+    setStoredSession(null)
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('lobbySession')
+    }
+  }
   const fogOfWarEnabled = Boolean(gameState?.fogOfWarEnabled)
   const fogActive = fogOfWarEnabled && gameState?.phase !== 'lobby' && !isSpectator
 
@@ -407,14 +419,8 @@ export default function HTTPMultiplayerPage() {
           const currentPlayers = state?.players || {}
           const wasKickedFromPlayerSlot = playerID && playerID !== 'spectator' && !currentPlayers[playerID]
           if (wasKickedFromPlayerSlot) {
-            setPlayerID('spectator')
-            setForceLobbySelection(true)
-            setKickedOutNotice('You were kicked from your player slot and moved back to the match lobby.')
-            const nextSession = { matchID, playerID: 'spectator', playerName }
-            setStoredSession(nextSession)
-            if (typeof window !== 'undefined') {
-              sessionStorage.setItem('lobbySession', JSON.stringify(nextSession))
-            }
+            handleKickedOut({ message: 'You were kicked from this match. Rejoin from the lobby if you want to play again.' })
+            return
           }
           
           // Update highlighting when game state changes
@@ -1347,9 +1353,7 @@ export default function HTTPMultiplayerPage() {
       if (!joined || !canKickFromLobby) return
       const result = await sendAction('kickParticipant', { playerID, targetID })
       if (result?.success && targetID === playerID) {
-        setPlayerID('spectator')
-        setForceLobbySelection(true)
-        setKickedOutNotice('You kicked yourself from the player slot and returned to the match lobby.')
+        handleKickedOut({ message: 'You kicked yourself from this match. Rejoin from the lobby if you want to play again.' })
       }
     }
 

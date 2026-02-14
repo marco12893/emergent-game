@@ -9,6 +9,7 @@ import {
   sanitizeAction,
   sanitizeChatMessage,
   sanitizePlayerName,
+  sanitizeParticipantID,
   validatePayload 
 } from '@/lib/inputSanitization'
 import { isInSpawnZone } from '@/game/GameLogic'
@@ -873,7 +874,7 @@ export async function POST(request) {
         case 'kickParticipant': {
           const kickSchema = {
             playerID: { required: true, sanitize: sanitizePlayerID },
-            targetID: { required: true, sanitize: sanitizePlayerID },
+            targetID: { required: true, sanitize: sanitizeParticipantID },
           }
 
           const kickValidation = validatePayload(payload, kickSchema)

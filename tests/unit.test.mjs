@@ -8,6 +8,7 @@ import {
   sanitizeCoordinate,
   sanitizeGameId,
   sanitizeMapId,
+  sanitizeParticipantID,
   sanitizePlayerID,
   sanitizePlayerName,
   sanitizeTeamModeFlag,
@@ -105,6 +106,14 @@ test('sanitizePlayerID only accepts allowed values', () => {
   assert.equal(sanitizePlayerID('3'), '3')
   assert.equal(sanitizePlayerID('spectator'), 'spectator')
   assert.equal(sanitizePlayerID('5'), null)
+})
+
+
+test('sanitizeParticipantID accepts spectator and generated ids', () => {
+  assert.equal(sanitizeParticipantID('spectator'), 'spectator')
+  assert.equal(sanitizeParticipantID('1700-abcd'), '1700-abcd')
+  assert.equal(sanitizeParticipantID(' user_01 '), 'user_01')
+  assert.equal(sanitizeParticipantID('bad id'), null)
 })
 
 test('sanitizePlayerName strips invalid chars and length', () => {
