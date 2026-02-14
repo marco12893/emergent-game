@@ -8,6 +8,7 @@ import {
   sanitizeCoordinate,
   sanitizeGameId,
   sanitizeMapId,
+  sanitizeParticipantID,
   sanitizePlayerID,
   sanitizePlayerName,
   sanitizeTeamModeFlag,
@@ -107,6 +108,14 @@ test('sanitizePlayerID only accepts allowed values', () => {
   assert.equal(sanitizePlayerID('5'), null)
 })
 
+
+test('sanitizeParticipantID accepts spectator and generated ids', () => {
+  assert.equal(sanitizeParticipantID('spectator'), 'spectator')
+  assert.equal(sanitizeParticipantID('1700-abcd'), '1700-abcd')
+  assert.equal(sanitizeParticipantID(' user_01 '), 'user_01')
+  assert.equal(sanitizeParticipantID('bad id'), null)
+})
+
 test('sanitizePlayerName strips invalid chars and length', () => {
   assert.equal(sanitizePlayerName('Alice'), 'Alice')
   assert.equal(sanitizePlayerName(' Bob <script> '), 'Bob script')
@@ -136,6 +145,7 @@ test('sanitizeAction validates allowed action names', () => {
   assert.equal(sanitizeAction('attackUnit'), 'attackUnit')
   assert.equal(sanitizeAction('attackTerrain'), 'attackTerrain')
   assert.equal(sanitizeAction('setFogOfWar'), 'setFogOfWar')
+  assert.equal(sanitizeAction('kickParticipant'), 'kickParticipant')
   assert.equal(sanitizeAction('invalidAction'), null)
 })
 
@@ -962,6 +972,7 @@ test('attackTerrain damages wall and converts destroyed wall to floor', () => {
     hexes,
     units: [attacker],
     terrainMap: makeTerrainMap(hexes, { '1,0': 'WALL' }),
+    tileMap: { '1,0': '/tiles/walls/walls_1.png' },
     terrainHealth: { '1,0': 40 },
     teamMode: false,
     log: [],
@@ -976,6 +987,7 @@ test('attackTerrain damages wall and converts destroyed wall to floor', () => {
 
   assert.equal(G.terrainMap['1,0'], 'FLOOR')
   assert.equal(G.terrainHealth['1,0'], undefined)
+  assert.equal(G.tileMap['1,0'], '/tiles/floor.png')
   assert.equal(attacker.hasAttacked, true)
 })
 

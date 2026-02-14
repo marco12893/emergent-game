@@ -168,6 +168,7 @@ export default function HTTPMultiplayerPage() {
   const [chatInput, setChatInput] = useState('')
   const [isChatOpen, setIsChatOpen] = useState(false)
   const [forceLobbySelection, setForceLobbySelection] = useState(false)
+  const [kickedOutNotice, setKickedOutNotice] = useState('')
   const [nowTs, setNowTs] = useState(Date.now())
   const chatInputRef = useRef(null)
   const isSpectator = playerID === 'spectator'
@@ -177,6 +178,18 @@ export default function HTTPMultiplayerPage() {
   const teamMode = Boolean(gameState?.teamMode)
   const chatMessages = gameState?.chatMessages || []
   const shouldShowLobbySelection = forceLobbySelection || gameState?.phase === 'lobby'
+
+  const handleKickedOut = ({ message }) => {
+    setJoined(false)
+    setGameState(null)
+    setPlayerID('')
+    setForceLobbySelection(false)
+    setKickedOutNotice(message || 'You were kicked from the match.')
+    setStoredSession(null)
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('lobbySession')
+    }
+  }
   const fogOfWarEnabled = Boolean(gameState?.fogOfWarEnabled)
   const fogActive = fogOfWarEnabled && gameState?.phase !== 'lobby' && !isSpectator
 
@@ -402,6 +415,13 @@ export default function HTTPMultiplayerPage() {
         if (response.ok) {
           const state = await response.json()
           setGameState(state)
+
+          const currentPlayers = state?.players || {}
+          const wasKickedFromPlayerSlot = playerID && playerID !== 'spectator' && !currentPlayers[playerID]
+          if (wasKickedFromPlayerSlot) {
+            handleKickedOut({ message: 'You were kicked from this match. Rejoin from the lobby if you want to play again.' })
+            return
+          }
           
           // Update highlighting when game state changes
           if (state.phase === 'battle' && state.selectedUnitId) {
@@ -469,7 +489,7 @@ export default function HTTPMultiplayerPage() {
     }, 1000) // Poll every second
 
     return () => clearInterval(pollInterval)
-  }, [joined, matchID, playerID])
+  }, [joined, matchID, playerID, playerName])
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -671,6 +691,7 @@ export default function HTTPMultiplayerPage() {
         setPlayerID(data.playerID)
         setMatchID(gameId)
         setJoined(true)
+        setKickedOutNotice('')
         setForceLobbySelection(
           data.playerID !== 'spectator' && data.gameState?.phase !== 'lobby'
         )
@@ -1036,6 +1057,12 @@ export default function HTTPMultiplayerPage() {
             </div>
           </div>
 
+          {kickedOutNotice && (
+            <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">
+              {kickedOutNotice}
+            </div>
+          )}
+
           {error && (
             <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
               {error}
@@ -1320,6 +1347,16 @@ export default function HTTPMultiplayerPage() {
     const canToggleFog = playerID === lobbyLeaderId && playerID !== 'spectator'
     const lobbyFogEnabled = Boolean(gameState?.fogOfWarEnabled)
 
+    const canKickFromLobby = !isSpectator && playerID === lobbyLeaderId
+
+    const kickParticipant = async (targetID) => {
+      if (!joined || !canKickFromLobby) return
+      const result = await sendAction('kickParticipant', { playerID, targetID })
+      if (result?.success && targetID === playerID) {
+        handleKickedOut({ message: 'You kicked yourself from this match. Rejoin from the lobby if you want to play again.' })
+      }
+    }
+
     return (
       <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-10">
@@ -1337,6 +1374,12 @@ export default function HTTPMultiplayerPage() {
               <span className="rounded-full bg-slate-800/80 px-3 py-1">Map: {lobbyMap?.name}</span>
             </div>
           </div>
+
+          {kickedOutNotice && (
+            <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">
+              {kickedOutNotice}
+            </div>
+          )}
 
           {error && (
             <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
@@ -1367,13 +1410,23 @@ export default function HTTPMultiplayerPage() {
                           {isLeader && <span className="ml-2 text-amber-300">(Leader)</span>}
                         </div>
                       </div>
-                      <button
-                        onClick={() => claimSlot(slot.id)}
-                        disabled={isSpectator}
-                        className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
-                      >
-                        {isCurrent ? 'Your Slot' : isOccupied ? 'Claim' : isSpectator ? 'Spectator' : 'Join'}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => claimSlot(slot.id)}
+                          disabled={isSpectator}
+                          className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
+                        >
+                          {isCurrent ? 'Your Slot' : isOccupied ? 'Claim' : isSpectator ? 'Spectator' : 'Join'}
+                        </button>
+                        {isOccupied && canKickFromLobby && (
+                          <button
+                            onClick={() => kickParticipant(slot.id)}
+                            className="rounded-full bg-rose-700 px-3 py-1 text-xs font-semibold text-white transition hover:bg-rose-600"
+                          >
+                            Kick
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )
                 })}
@@ -1469,13 +1522,23 @@ export default function HTTPMultiplayerPage() {
                           {isLeader && <span className="ml-2 text-amber-300">(Leader)</span>}
                         </div>
                       </div>
-                      <button
-                        onClick={() => claimSlot(slot.id)}
-                        disabled={isSpectator}
-                        className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
-                      >
-                        {isCurrent ? 'Your Slot' : isOccupied ? 'Claim' : isSpectator ? 'Spectator' : 'Join'}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => claimSlot(slot.id)}
+                          disabled={isSpectator}
+                          className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
+                        >
+                          {isCurrent ? 'Your Slot' : isOccupied ? 'Claim' : isSpectator ? 'Spectator' : 'Join'}
+                        </button>
+                        {isOccupied && canKickFromLobby && (
+                          <button
+                            onClick={() => kickParticipant(slot.id)}
+                            className="rounded-full bg-rose-700 px-3 py-1 text-xs font-semibold text-white transition hover:bg-rose-600"
+                          >
+                            Kick
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )
                 })}
@@ -1509,7 +1572,17 @@ export default function HTTPMultiplayerPage() {
               ) : (
                 <ul className="mt-2 space-y-1 text-slate-400">
                   {lobbySpectators.map(spectator => (
-                    <li key={spectator.id}>{spectator.name}</li>
+                    <li key={spectator.id} className="flex items-center justify-between gap-2">
+                      <span>{spectator.name}</span>
+                      {canKickFromLobby && (
+                        <button
+                          onClick={() => kickParticipant(spectator.id)}
+                          className="rounded-full bg-rose-700 px-2 py-0.5 text-[11px] font-semibold text-white transition hover:bg-rose-600"
+                        >
+                          Kick
+                        </button>
+                      )}
+                    </li>
                   ))}
                 </ul>
               )}
