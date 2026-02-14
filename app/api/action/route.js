@@ -12,8 +12,9 @@ import {
   validatePayload 
 } from '@/lib/inputSanitization'
 import { isInSpawnZone } from '@/game/GameLogic'
-import { areAllies, getTeamId, getTeamLabel, getTeamPlayOrder } from '@/game/teamUtils'
-import { createMap4ObjectiveState, getMap4VictoryInfo, updateMap4ObjectiveState } from '@/game/map4Objectives'
+import { areAllies, getTeamId, getTeamLabel } from '@/game/teamUtils'
+import { createMap4ObjectiveState, getMap4VictoryInfo } from '@/game/map4Objectives'
+import { advanceTurn, getGamePlayOrder, hasTurnTimedOut, setTurnTimerForCurrentPlayer } from '@/lib/turnTimer'
 
 // ============================================
 // UNIT & TERRAIN DEFINITIONS
@@ -89,12 +90,6 @@ const isValidPlayerForGame = (playerID, game) => {
   const numericId = Number(playerID)
   if (!Number.isInteger(numericId)) return false
   return numericId >= 0 && numericId < maxPlayers
-}
-
-const getGamePlayOrder = (game) => {
-  const teamMode = Boolean(game.teamMode)
-  const maxPlayers = game.maxPlayers || (teamMode ? 4 : 2)
-  return teamMode ? getTeamPlayOrder(maxPlayers) : ['0', '1']
 }
 
 const TRANSPORT_STATS = {
@@ -677,6 +672,16 @@ export async function POST(request) {
     if (!Array.isArray(game.retreatedUnitIds)) {
       game.retreatedUnitIds = []
     }
+
+    if (game.phase === 'battle') {
+      if (!game.turnStartedAt || !game.turnTimeLimitSeconds) {
+        setTurnTimerForCurrentPlayer(game)
+      }
+      if (hasTurnTimedOut(game)) {
+        const timedOutPlayer = game.currentPlayer
+        advanceTurn({ game, endingPlayerID: timedOutPlayer, forcedByTimer: true })
+      }
+    }
     
     // Handle different game actions
     try {
@@ -950,6 +955,7 @@ export async function POST(request) {
           game.inactivePlayers = playOrder.filter(id => !activePlayers.includes(id))
           game.currentPlayer = activePlayers[0] || '0'
           game.log.push(`⚔️ BATTLE PHASE BEGINS! Player ${game.currentPlayer} gets the first turn.`)
+          setTurnTimerForCurrentPlayer(game)
           game.lastUpdate = Date.now()
           break
         }
@@ -1973,78 +1979,7 @@ export async function POST(request) {
             return endTurnError
           }
           
-          const playOrder = getGamePlayOrder(game)
-          const setupPlayers = playOrder.filter(id => game.players?.[id])
-          const activePlayers = game.phase === 'setup'
-            ? setupPlayers
-            : playOrder.filter(id =>
-                game.units.some(unit => unit.ownerID === id && unit.currentHP > 0)
-              )
-          if (teamMode) {
-            game.inactivePlayers = playOrder.filter(id => !activePlayers.includes(id))
-          }
-          const effectiveOrder = teamMode
-            ? (activePlayers.length > 0 ? activePlayers : playOrder)
-            : (activePlayers.length > 0 ? activePlayers : playOrder)
-          const currentIndex = Math.max(0, effectiveOrder.indexOf(game.currentPlayer))
-          const nextIndex = (currentIndex + 1) % effectiveOrder.length
-          const nextPlayer = effectiveOrder[nextIndex]
-          const roundStartPlayer = effectiveOrder[0]
-
-          // Increment turn at start of new round
-          if (game.currentPlayer === effectiveOrder[effectiveOrder.length - 1] && endTurnPlayerID === game.currentPlayer) {
-            if (game.turn === undefined) {
-              game.turn = 1
-            } else {
-              game.turn += 1
-            }
-            game.log.push(`=== Turn ${game.turn} ===`)
-            
-            // Check objective control for Attack & Defend mode
-            if (game.gameMode === 'ATTACK_DEFEND') {
-              const aliveUnits = game.units.filter(u => u.currentHP > 0)
-              
-              // Check who controls the objective hexes
-              let attackerControls = 0
-              let defenderControls = 0
-              
-              game.objectiveHexes.forEach(objHex => {
-                const unitOnHex = aliveUnits.find(u => u.q === sanitizeCoordinate(objHex.q) && u.r === sanitizeCoordinate(objHex.r))
-                if (unitOnHex) {
-                  const teamId = teamMode ? getTeamId(unitOnHex.ownerID) : unitOnHex.ownerID
-                  if (teamId === game.attackerId) attackerControls++
-                  if (teamId === game.defenderId) defenderControls++
-                }
-              })
-              
-              // If one player controls all objective hexes, increment their control counter
-              if (attackerControls === game.objectiveHexes.length) {
-                game.objectiveControl[game.attackerId]++
-                game.log.push(`${getTeamLabel(game.attackerId)} holds Paris! (${game.objectiveControl[game.attackerId]} turns)`)
-              } else if (defenderControls === game.objectiveHexes.length) {
-                game.objectiveControl[game.defenderId]++
-                game.log.push(`${getTeamLabel(game.defenderId)} holds Paris! (${game.objectiveControl[game.defenderId]} turns)`)
-              } else {
-                game.log.push('Paris is contested!')
-              }
-            }
-
-            if (game.map4ObjectiveState?.enabled) {
-              updateMap4ObjectiveState({ G: game, teamMode })
-            }
-          }
-          
-          game.currentPlayer = nextPlayer || roundStartPlayer
-          game.units.forEach(unit => {
-            unit.hasMoved = false
-            unit.hasAttacked = false
-            unit.movePoints = unit.maxMovePoints // Reset movement points
-            unit.hasMovedOrAttacked = false // Reset catapult move-or-attack restriction
-            unit.lastMove = null
-          })
-          game.selectedUnitId = null
-          game.log.push(`Player ${endTurnPlayerID} ended turn. Player ${game.currentPlayer}'s turn begins.`)
-          game.lastUpdate = Date.now()
+          advanceTurn({ game, endingPlayerID: endTurnPlayerID })
           break
           
         case 'readyForBattle':
@@ -2125,6 +2060,7 @@ export async function POST(request) {
             game.inactivePlayers = readyPlayOrder.filter(id => !readyActivePlayers.includes(id))
             game.currentPlayer = readyActivePlayers[0] || readyEligiblePlayers[0] || '0'
             game.log.push(`⚔️ BATTLE PHASE BEGINS! Player ${game.currentPlayer} gets the first turn.`)
+            setTurnTimerForCurrentPlayer(game)
           } else {
             // Auto end turn after ready for battle in setup phase
             const turnOrder = readyEligiblePlayers.length > 0 ? readyEligiblePlayers : readyPlayOrder

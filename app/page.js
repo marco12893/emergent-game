@@ -168,6 +168,7 @@ export default function HTTPMultiplayerPage() {
   const [chatInput, setChatInput] = useState('')
   const [isChatOpen, setIsChatOpen] = useState(false)
   const [forceLobbySelection, setForceLobbySelection] = useState(false)
+  const [nowTs, setNowTs] = useState(Date.now())
   const chatInputRef = useRef(null)
   const isSpectator = playerID === 'spectator'
   const isMyTurn = !isSpectator && gameState?.currentPlayer === playerID
@@ -452,6 +453,48 @@ export default function HTTPMultiplayerPage() {
 
     return () => clearInterval(pollInterval)
   }, [joined, matchID, playerID])
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setNowTs(Date.now())
+    }, 250)
+
+    return () => clearInterval(interval)
+  }, [])
+
+  const turnTimer = useMemo(() => {
+    const startedAt = gameState?.turnStartedAt
+    const limitSeconds = gameState?.turnTimeLimitSeconds
+    if (gameState?.phase !== 'battle' || typeof startedAt !== 'number' || typeof limitSeconds !== 'number') {
+      return null
+    }
+
+    const endAt = startedAt + (limitSeconds * 1000)
+    const remainingMs = Math.max(0, endAt - nowTs)
+    const remainingSeconds = Math.ceil(remainingMs / 1000)
+
+    return {
+      remainingSeconds,
+      totalSeconds: limitSeconds,
+      percent: limitSeconds > 0 ? (remainingMs / (limitSeconds * 1000)) * 100 : 0,
+    }
+  }, [gameState?.phase, gameState?.turnStartedAt, gameState?.turnTimeLimitSeconds, nowTs])
+
+  const currentTurnColorClass = useMemo(() => {
+    const color = getPlayerColor(gameState?.currentPlayer)
+    if (color === 'blue') return 'text-blue-400'
+    if (color === 'green') return 'text-green-400'
+    if (color === 'yellow') return 'text-yellow-300'
+    return 'text-red-400'
+  }, [gameState?.currentPlayer])
+
+  const currentTurnBarClass = useMemo(() => {
+    const color = getPlayerColor(gameState?.currentPlayer)
+    if (color === 'blue') return 'bg-blue-500'
+    if (color === 'green') return 'bg-green-500'
+    if (color === 'yellow') return 'bg-yellow-400'
+    return 'bg-red-500'
+  }, [gameState?.currentPlayer])
 
   useEffect(() => {
     if (!gameState || gameState.phase !== 'setup') return
@@ -1537,6 +1580,22 @@ export default function HTTPMultiplayerPage() {
         </div>
       </div>
       }
+
+      {gameState?.phase === 'battle' && turnTimer && (
+        <div className={`fixed top-[4.65rem] left-1/2 -translate-x-1/2 z-20 transition-all duration-300 ${(gameState?.phase === 'setup' && !isLeftPanelCollapsed) ? 'hidden lg:block' : 'block'}`}>
+          <div className="min-w-[220px] rounded-lg border border-slate-600 bg-slate-800/90 px-4 py-2 text-center shadow-xl backdrop-blur-sm">
+            <div className={`text-lg font-extrabold tabular-nums ${currentTurnColorClass}`}>
+              ⏱ {turnTimer.remainingSeconds}s
+            </div>
+            <div className="mt-1 h-1.5 w-full overflow-hidden rounded bg-slate-700">
+              <div
+                className={`h-full transition-all duration-200 ${currentTurnBarClass}`}
+                style={{ width: `${Math.max(0, Math.min(100, turnTimer.percent))}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Left Panel - Only visible during setup phase */}
       {gameState?.phase === 'setup' && !isSpectator && (
