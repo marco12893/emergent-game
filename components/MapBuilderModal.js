@@ -114,6 +114,40 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
   const [customQ, setCustomQ] = useState(0)
   const [customR, setCustomR] = useState(0)
   const importInputRef = useRef(null)
+  const customImageInputRef = useRef(null)
+  const editorViewportRef = useRef(null)
+  const [customImageEditor, setCustomImageEditor] = useState(null)
+  const [editorOffset, setEditorOffset] = useState({ x: 0, y: 0 })
+  const [editorHexRadius, setEditorHexRadius] = useState(100)
+  const [isSavingCustomTile, setIsSavingCustomTile] = useState(false)
+  const [isPanning, setIsPanning] = useState(false)
+  const panStartRef = useRef({ x: 0, y: 0 })
+  const offsetStartRef = useRef({ x: 0, y: 0 })
+
+  const buildHexPath = (ctx, centerX, centerY, radius) => {
+    ctx.beginPath()
+    for (let i = 0; i < 6; i += 1) {
+      const angle = ((60 * i - 90) * Math.PI) / 180
+      const x = centerX + radius * Math.cos(angle)
+      const y = centerY + radius * Math.sin(angle)
+      if (i === 0) ctx.moveTo(x, y)
+      else ctx.lineTo(x, y)
+    }
+    ctx.closePath()
+  }
+
+  const reloadTiles = async () => {
+    try {
+      const res = await fetch(`/api/tiles?ts=${Date.now()}`, { cache: 'no-store' })
+      const data = await res.json()
+      const list = data?.tiles || []
+      setTiles(list)
+      return list
+    } catch {
+      setTiles([])
+      return []
+    }
+  }
 
   const filteredTiles = useMemo(
     () => tiles.filter((tile) => getTileTerrainType(tile) === selectedTerrain),
@@ -139,21 +173,24 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
 
   useEffect(() => {
     if (!open) return
-    fetch(`/api/tiles?ts=${Date.now()}`, { cache: 'no-store' })
-      .then((res) => res.json())
-      .then((data) => {
-        const list = data?.tiles || []
-        setTiles(list)
-        if (!list.length) {
-          setSelectedTile('')
-          return
-        }
+    reloadTiles().then((list) => {
+      if (!list.length) {
+        setSelectedTile('')
+        return
+      }
 
-        const matching = list.find((tile) => getTileTerrainType(tile) === selectedTerrain)
-        setSelectedTile(matching || list[0])
-      })
-      .catch(() => setTiles([]))
+      const matching = list.find((tile) => getTileTerrainType(tile) === selectedTerrain)
+      setSelectedTile(matching || list[0])
+    })
   }, [open, selectedTerrain])
+
+  useEffect(() => {
+    return () => {
+      if (customImageEditor?.src) {
+        URL.revokeObjectURL(customImageEditor.src)
+      }
+    }
+  }, [customImageEditor])
 
   useEffect(() => {
     if (!open || !filteredTiles.length) return
@@ -274,6 +311,82 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
     }
   }
 
+  const openCustomImageEditor = async (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    const src = URL.createObjectURL(file)
+    const image = new Image()
+    image.src = src
+    await image.decode()
+
+    if (customImageEditor?.src) {
+      URL.revokeObjectURL(customImageEditor.src)
+    }
+
+    setCustomImageEditor({ src, name: file.name, width: image.naturalWidth, height: image.naturalHeight })
+    setEditorOffset({ x: 0, y: 0 })
+    setEditorHexRadius(100)
+    event.target.value = ''
+  }
+
+  const saveCustomHexTile = async () => {
+    if (!customImageEditor || !editorViewportRef.current || isSavingCustomTile) return
+
+    const image = new Image()
+    image.src = customImageEditor.src
+    await image.decode()
+
+    const viewportRect = editorViewportRef.current.getBoundingClientRect()
+    const baseScale = Math.min(viewportRect.width / image.naturalWidth, viewportRect.height / image.naturalHeight)
+    const drawWidth = image.naturalWidth * baseScale
+    const drawHeight = image.naturalHeight * baseScale
+    const drawX = (viewportRect.width - drawWidth) / 2 + editorOffset.x
+    const drawY = (viewportRect.height - drawHeight) / 2 + editorOffset.y
+
+    const outputSize = Math.max(128, Math.round(editorHexRadius * 2))
+    const outputCenter = outputSize / 2
+    const sourceCenterX = viewportRect.width / 2
+    const sourceCenterY = viewportRect.height / 2
+
+    const canvas = document.createElement('canvas')
+    canvas.width = outputSize
+    canvas.height = outputSize
+    const ctx = canvas.getContext('2d')
+
+    ctx.clearRect(0, 0, outputSize, outputSize)
+    buildHexPath(ctx, outputCenter, outputCenter, outputCenter - 2)
+    ctx.clip()
+
+    const translatedX = outputCenter - sourceCenterX + drawX
+    const translatedY = outputCenter - sourceCenterY + drawY
+    ctx.drawImage(image, translatedX, translatedY, drawWidth, drawHeight)
+
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
+    if (!blob) return
+
+    const formData = new FormData()
+    formData.append('file', blob, `custom_hex_${Date.now()}.png`)
+
+    setIsSavingCustomTile(true)
+    try {
+      const res = await fetch('/api/tiles/upload', {
+        method: 'POST',
+        body: formData,
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      const list = await reloadTiles()
+      if (data?.tilePath && list.includes(data.tilePath)) {
+        setSelectedTile(data.tilePath)
+      }
+      setCustomImageEditor(null)
+      setSelectedTerrain('PLAIN')
+    } finally {
+      setIsSavingCustomTile(false)
+    }
+  }
+
   if (!open) return null
 
   return (
@@ -379,6 +492,19 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
             <div className="mb-2 text-xs text-slate-400">
               Textures for {selectedTerrain} from /public/tiles
             </div>
+            <input
+              ref={customImageInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={openCustomImageEditor}
+              className="hidden"
+            />
+            <button
+              onClick={() => customImageInputRef.current?.click()}
+              className="mb-2 w-full rounded bg-violet-700 px-2 py-1 text-xs"
+            >
+              Add Custom Image Tile
+            </button>
             <div className="grid grid-cols-2 gap-2">
               {filteredTiles.map((tile) => (
                 <button key={tile} onClick={() => setSelectedTile(tile)} className={`rounded border p-1 ${selectedTile === tile ? 'border-amber-400' : 'border-slate-700'}`}>
@@ -407,6 +533,93 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
           </div>
         </div>
       </div>
+
+      {customImageEditor && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4">
+          <div className="w-full max-w-4xl rounded-xl border border-slate-600 bg-slate-900 p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <div className="text-sm">Position the transparent hex over your image, then save.</div>
+              <button onClick={() => setCustomImageEditor(null)} className="rounded bg-slate-700 px-2 py-1 text-xs">Close</button>
+            </div>
+            <div
+              ref={editorViewportRef}
+              className="relative mx-auto h-[420px] w-[420px] max-w-full cursor-grab overflow-hidden rounded border border-slate-700 bg-slate-950"
+              onMouseDown={(event) => {
+                setIsPanning(true)
+                panStartRef.current = { x: event.clientX, y: event.clientY }
+                offsetStartRef.current = { ...editorOffset }
+              }}
+              onMouseMove={(event) => {
+                if (!isPanning) return
+                const dx = event.clientX - panStartRef.current.x
+                const dy = event.clientY - panStartRef.current.y
+                setEditorOffset({ x: offsetStartRef.current.x + dx, y: offsetStartRef.current.y + dy })
+              }}
+              onMouseUp={() => setIsPanning(false)}
+              onMouseLeave={() => setIsPanning(false)}
+              onWheel={(event) => {
+                event.preventDefault()
+                setEditorHexRadius((current) => Math.max(40, Math.min(180, current - event.deltaY * 0.05)))
+              }}
+            >
+              <img
+                src={customImageEditor.src}
+                alt="Custom tile editor"
+                className="pointer-events-none absolute left-1/2 top-1/2 max-h-full max-w-full -translate-x-1/2 -translate-y-1/2 select-none"
+                style={{ transform: `translate(calc(-50% + ${editorOffset.x}px), calc(-50% + ${editorOffset.y}px))` }}
+              />
+              <svg className="pointer-events-none absolute inset-0 h-full w-full">
+                <defs>
+                  <mask id="hex-mask-overlay">
+                    <rect width="100%" height="100%" fill="white" />
+                    <polygon
+                      points={Array.from({ length: 6 }).map((_, i) => {
+                        const angle = ((60 * i - 90) * Math.PI) / 180
+                        const x = 50 + (Math.cos(angle) * editorHexRadius * 100) / 420
+                        const y = 50 + (Math.sin(angle) * editorHexRadius * 100) / 420
+                        return `${x},${y}`
+                      }).join(' ')}
+                      fill="black"
+                    />
+                  </mask>
+                </defs>
+                <rect width="100%" height="100%" fill="rgba(15,23,42,0.58)" mask="url(#hex-mask-overlay)" />
+                <polygon
+                  points={Array.from({ length: 6 }).map((_, i) => {
+                    const angle = ((60 * i - 90) * Math.PI) / 180
+                    const x = 50 + (Math.cos(angle) * editorHexRadius * 100) / 420
+                    const y = 50 + (Math.sin(angle) * editorHexRadius * 100) / 420
+                    return `${x},${y}`
+                  }).join(' ')}
+                  fill="none"
+                  stroke="#f8fafc"
+                  strokeWidth="0.6"
+                />
+              </svg>
+            </div>
+            <div className="mt-3 flex items-center gap-3 text-xs">
+              <label className="flex items-center gap-2">
+                Hex size
+                <input
+                  type="range"
+                  min={40}
+                  max={180}
+                  value={editorHexRadius}
+                  onChange={(e) => setEditorHexRadius(Number(e.target.value))}
+                />
+              </label>
+              <div className="text-slate-400">Drag to pan image. Use mouse wheel or slider to resize hex.</div>
+              <button
+                onClick={saveCustomHexTile}
+                disabled={isSavingCustomTile}
+                className="ml-auto rounded bg-emerald-700 px-3 py-1 disabled:opacity-60"
+              >
+                {isSavingCustomTile ? 'Saving...' : 'Save as Tile'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
