@@ -1320,6 +1320,16 @@ export default function HTTPMultiplayerPage() {
     const canToggleFog = playerID === lobbyLeaderId && playerID !== 'spectator'
     const lobbyFogEnabled = Boolean(gameState?.fogOfWarEnabled)
 
+    const canKickFromLobby = !isSpectator && playerID === lobbyLeaderId
+
+    const kickParticipant = async (targetID) => {
+      if (!joined || !canKickFromLobby) return
+      const result = await sendAction('kickParticipant', { playerID, targetID })
+      if (result?.success && targetID === playerID) {
+        setPlayerID('spectator')
+      }
+    }
+
     return (
       <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-10">
@@ -1367,13 +1377,23 @@ export default function HTTPMultiplayerPage() {
                           {isLeader && <span className="ml-2 text-amber-300">(Leader)</span>}
                         </div>
                       </div>
-                      <button
-                        onClick={() => claimSlot(slot.id)}
-                        disabled={isSpectator}
-                        className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
-                      >
-                        {isCurrent ? 'Your Slot' : isOccupied ? 'Claim' : isSpectator ? 'Spectator' : 'Join'}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => claimSlot(slot.id)}
+                          disabled={isSpectator}
+                          className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
+                        >
+                          {isCurrent ? 'Your Slot' : isOccupied ? 'Claim' : isSpectator ? 'Spectator' : 'Join'}
+                        </button>
+                        {isOccupied && canKickFromLobby && (
+                          <button
+                            onClick={() => kickParticipant(slot.id)}
+                            className="rounded-full bg-rose-700 px-3 py-1 text-xs font-semibold text-white transition hover:bg-rose-600"
+                          >
+                            Kick
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )
                 })}
@@ -1469,13 +1489,23 @@ export default function HTTPMultiplayerPage() {
                           {isLeader && <span className="ml-2 text-amber-300">(Leader)</span>}
                         </div>
                       </div>
-                      <button
-                        onClick={() => claimSlot(slot.id)}
-                        disabled={isSpectator}
-                        className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
-                      >
-                        {isCurrent ? 'Your Slot' : isOccupied ? 'Claim' : isSpectator ? 'Spectator' : 'Join'}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => claimSlot(slot.id)}
+                          disabled={isSpectator}
+                          className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
+                        >
+                          {isCurrent ? 'Your Slot' : isOccupied ? 'Claim' : isSpectator ? 'Spectator' : 'Join'}
+                        </button>
+                        {isOccupied && canKickFromLobby && (
+                          <button
+                            onClick={() => kickParticipant(slot.id)}
+                            className="rounded-full bg-rose-700 px-3 py-1 text-xs font-semibold text-white transition hover:bg-rose-600"
+                          >
+                            Kick
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )
                 })}
@@ -1509,7 +1539,17 @@ export default function HTTPMultiplayerPage() {
               ) : (
                 <ul className="mt-2 space-y-1 text-slate-400">
                   {lobbySpectators.map(spectator => (
-                    <li key={spectator.id}>{spectator.name}</li>
+                    <li key={spectator.id} className="flex items-center justify-between gap-2">
+                      <span>{spectator.name}</span>
+                      {canKickFromLobby && (
+                        <button
+                          onClick={() => kickParticipant(spectator.id)}
+                          className="rounded-full bg-rose-700 px-2 py-0.5 text-[11px] font-semibold text-white transition hover:bg-rose-600"
+                        >
+                          Kick
+                        </button>
+                      )}
+                    </li>
                   ))}
                 </ul>
               )}

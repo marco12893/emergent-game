@@ -92,6 +92,15 @@ const isValidPlayerForGame = (playerID, game) => {
   return numericId >= 0 && numericId < maxPlayers
 }
 
+const pickRandomLeader = (players = {}, excludedId = null) => {
+  const eligiblePlayers = Object.keys(players).filter(playerId => playerId !== excludedId)
+  if (eligiblePlayers.length === 0) {
+    return null
+  }
+  const randomIndex = Math.floor(Math.random() * eligiblePlayers.length)
+  return eligiblePlayers[randomIndex]
+}
+
 const TRANSPORT_STATS = {
   name: 'Transport',
   image: 'transport',
@@ -299,6 +308,9 @@ const applyTerrainDamage = (game, attacker, targetQ, targetR) => {
 
   if (nextWallHP <= 0) {
     game.terrainMap[terrainKey] = 'FLOOR'
+    if (game.tileMap && typeof game.tileMap === 'object') {
+      game.tileMap[terrainKey] = '/tiles/floor.png'
+    }
     delete game.terrainHealth[terrainKey]
     game.log.push(`Wall at (${targetQ}, ${targetR}) was destroyed and became floor.`)
   }
@@ -826,8 +838,7 @@ export async function POST(request) {
             })
             delete game.players[claimPlayerID]
             if (game.leaderId === claimPlayerID) {
-              const remainingPlayers = Object.keys(game.players || {})
-              game.leaderId = remainingPlayers.length > 0 ? remainingPlayers[0] : null
+              game.leaderId = pickRandomLeader(game.players, claimPlayerID)
             }
           } else {
             const desiredSlotId = String(desiredIndex)
@@ -852,6 +863,83 @@ export async function POST(request) {
             if (!game.leaderId) {
               game.leaderId = desiredSlotId
             }
+          }
+
+          game.lastUpdate = Date.now()
+          break
+        }
+
+
+        case 'kickParticipant': {
+          const kickSchema = {
+            playerID: { required: true, sanitize: sanitizePlayerID },
+            targetID: { required: true, sanitize: sanitizePlayerID },
+          }
+
+          const kickValidation = validatePayload(payload, kickSchema)
+          if (kickValidation.error) {
+            return NextResponse.json({
+              error: 'Invalid payload for kickParticipant: ' + kickValidation.error
+            }, {
+              status: 400,
+              headers: ACTION_CORS_HEADERS,
+            })
+          }
+
+          const { playerID: actingPlayerID, targetID } = kickValidation.sanitized
+
+          if (!actingPlayerID || actingPlayerID === 'spectator' || !isValidPlayerForGame(actingPlayerID, game)) {
+            return NextResponse.json({
+              error: 'Invalid playerID for kickParticipant'
+            }, {
+              status: 400,
+              headers: ACTION_CORS_HEADERS,
+            })
+          }
+
+          if (game.phase !== 'lobby') {
+            return NextResponse.json({
+              error: 'Players can only be kicked while in the lobby'
+            }, {
+              status: 409,
+              headers: ACTION_CORS_HEADERS,
+            })
+          }
+
+          if (!game.leaderId || game.leaderId !== actingPlayerID) {
+            return NextResponse.json({
+              error: 'Only the lobby leader can kick participants'
+            }, {
+              status: 403,
+              headers: ACTION_CORS_HEADERS,
+            })
+          }
+
+          const targetIsPlayer = Boolean(game.players?.[targetID])
+          const targetSpectatorIndex = (game.spectators || []).findIndex(spectator => spectator?.id === targetID)
+
+          if (!targetIsPlayer && targetSpectatorIndex === -1) {
+            return NextResponse.json({
+              error: 'Kick target was not found in this lobby'
+            }, {
+              status: 404,
+              headers: ACTION_CORS_HEADERS,
+            })
+          }
+
+          if (targetIsPlayer) {
+            const targetName = game.players[targetID]?.name || `Player ${targetID}`
+            delete game.players[targetID]
+
+            if (game.leaderId === targetID) {
+              game.leaderId = pickRandomLeader(game.players, targetID)
+            }
+
+            game.log.push(`${targetName} was kicked from the lobby.`)
+          } else {
+            const [removedSpectator] = game.spectators.splice(targetSpectatorIndex, 1)
+            const spectatorName = removedSpectator?.name || 'Spectator'
+            game.log.push(`${spectatorName} was kicked from spectators.`)
           }
 
           game.lastUpdate = Date.now()

@@ -1527,6 +1527,9 @@ const applyTerrainDamage = (G, attacker, targetQ, targetR) => {
 
   if (nextHP <= 0) {
     G.terrainMap[targetKey] = 'FLOOR'
+    if (G.tileMap && typeof G.tileMap === 'object') {
+      G.tileMap[targetKey] = '/tiles/floor.png'
+    }
     delete G.terrainHealth[targetKey]
     G.log.push(`Wall at (${targetQ}, ${targetR}) was destroyed and became floor.`)
   }
