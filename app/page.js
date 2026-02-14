@@ -410,7 +410,7 @@ export default function HTTPMultiplayerPage() {
                 ? []
                 : getReachableHexes(selectedUnit, state.hexes, state.units, state.terrainMap)
 
-              // Calculate attackable hexes
+              // Calculate attackable hexes (enemy units + destructible walls)
               const isFogActive = Boolean(state.fogOfWarEnabled) && state.phase === 'battle' && playerID !== 'spectator'
               const currentVisibleUnits = isFogActive
                 ? getVisibleUnitsForPlayer({
@@ -422,18 +422,35 @@ export default function HTTPMultiplayerPage() {
                   })
                 : state.units
               const attackable = []
-              for (const unit of currentVisibleUnits) {
-                if (unit.currentHP <= 0) continue
-                if (teamMode ? areAllies(unit.ownerID, playerID) : unit.ownerID === playerID) continue
 
-                const distance = Math.max(
-                  Math.abs(selectedUnit.q - unit.q),
-                  Math.abs(selectedUnit.r - unit.r),
-                  Math.abs(selectedUnit.s - unit.s)
-                )
-                
-                if (distance <= selectedUnit.range && !selectedUnit.hasAttacked) {
-                  attackable.push({ q: unit.q, r: unit.r, s: unit.s })
+              if (!selectedUnit.hasAttacked) {
+                for (const unit of currentVisibleUnits) {
+                  if (unit.currentHP <= 0) continue
+                  if (teamMode ? areAllies(unit.ownerID, playerID) : unit.ownerID === playerID) continue
+
+                  const distance = Math.max(
+                    Math.abs(selectedUnit.q - unit.q),
+                    Math.abs(selectedUnit.r - unit.r),
+                    Math.abs(selectedUnit.s - unit.s)
+                  )
+
+                  if (distance <= selectedUnit.range) {
+                    attackable.push({ q: unit.q, r: unit.r, s: unit.s })
+                  }
+                }
+
+                for (const hex of state.hexes) {
+                  if ((state.terrainMap[`${hex.q},${hex.r}`] || 'PLAIN') !== 'WALL') continue
+
+                  const distance = Math.max(
+                    Math.abs(selectedUnit.q - hex.q),
+                    Math.abs(selectedUnit.r - hex.r),
+                    Math.abs(selectedUnit.s - hex.s)
+                  )
+
+                  if (distance <= selectedUnit.range) {
+                    attackable.push({ q: hex.q, r: hex.r, s: hex.s })
+                  }
                 }
               }
               

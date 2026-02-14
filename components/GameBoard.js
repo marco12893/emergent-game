@@ -144,7 +144,8 @@ const GameBoard = ({
       const nextUnit = nextUnits.get(unitId)
       if (nextUnit) {
         const damageTaken = prevUnit.currentHP - nextUnit.currentHP
-        if (damageTaken > 0) {
+        const wasTransportToggle = prevUnit.isTransport !== nextUnit.isTransport
+        if (damageTaken > 0 && !wasTransportToggle) {
           newEvents.push({
             id: `${unitId}-${createdAt}-${Math.random()}`,
             unitId,
