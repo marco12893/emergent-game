@@ -869,6 +869,48 @@ test('terrain defense bonuses reduce incoming damage', () => {
   assert.equal(defender.currentHP, defender.maxHP - 15)
 })
 
+
+test('city-like terrains match city movement and defense values', () => {
+  const cityLikeTerrains = ['BARRACKS', 'CASTLE', 'CATHEDRAL', 'FARM', 'LIBRARY', 'MOSQUE', 'HOSPITAL', 'UNIVERSITY']
+  cityLikeTerrains.forEach((terrain) => {
+    assert.equal(TERRAIN_TYPES[terrain].defenseBonus, TERRAIN_TYPES.CITY.defenseBonus)
+    assert.equal(TERRAIN_TYPES[terrain].moveCost, TERRAIN_TYPES.CITY.moveCost)
+    assert.equal(TERRAIN_TYPES[terrain].passable, TERRAIN_TYPES.CITY.passable)
+  })
+})
+
+test('walls are impassable and floor has fast movement cost', () => {
+  assert.equal(TERRAIN_TYPES.WALL.passable, false)
+  assert.equal(TERRAIN_TYPES.WALL.moveCost, Infinity)
+  assert.equal(TERRAIN_TYPES.WALL.maxHP, 100)
+  assert.equal(TERRAIN_TYPES.FLOOR.defenseBonus, 0)
+  assert.equal(TERRAIN_TYPES.FLOOR.moveCost, 0.5)
+})
+
+test('attackTerrain damages wall and converts destroyed wall to floor', () => {
+  const hexes = makeHexGrid(1)
+  const attacker = createUnit('CATAPULT', '0', 0, 0)
+  const G = {
+    hexes,
+    units: [attacker],
+    terrainMap: makeTerrainMap(hexes, { '1,0': 'WALL' }),
+    terrainHealth: { '1,0': 40 },
+    teamMode: false,
+    log: [],
+  }
+
+  MedievalBattleGame.phases.battle.moves.attackTerrain(
+    { G, ctx: {}, playerID: '0' },
+    attacker.id,
+    1,
+    0
+  )
+
+  assert.equal(G.terrainMap['1,0'], 'FLOOR')
+  assert.equal(G.terrainHealth['1,0'], undefined)
+  assert.equal(attacker.hasAttacked, true)
+})
+
 test('team spawn zones share deployment areas within teams and differ between teams', () => {
   const mapWidth = 6
   assert.equal(isInSpawnZone(-4, 0, '0', mapWidth, true), true)

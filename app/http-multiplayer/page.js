@@ -235,7 +235,18 @@ export default function HTTPMultiplayerPage() {
                       PLAIN: { moveCost: 1, passable: true, waterOnly: false },
                       FOREST: { moveCost: 1, passable: true, waterOnly: false },
                       HILLS: { moveCost: 2, passable: true, waterOnly: false },
+                      CITY: { moveCost: 1, passable: true, waterOnly: false },
+                      BARRACKS: { moveCost: 1, passable: true, waterOnly: false },
+                      CASTLE: { moveCost: 1, passable: true, waterOnly: false },
+                      CATHEDRAL: { moveCost: 1, passable: true, waterOnly: false },
+                      FARM: { moveCost: 1, passable: true, waterOnly: false },
+                      LIBRARY: { moveCost: 1, passable: true, waterOnly: false },
+                      MOSQUE: { moveCost: 1, passable: true, waterOnly: false },
+                      HOSPITAL: { moveCost: 1, passable: true, waterOnly: false },
+                      UNIVERSITY: { moveCost: 1, passable: true, waterOnly: false },
                       MOUNTAIN: { moveCost: Infinity, passable: false, waterOnly: false },
+                      WALL: { moveCost: Infinity, passable: false, waterOnly: false },
+                      FLOOR: { moveCost: 0.5, passable: true, waterOnly: false },
                       WATER: { moveCost: 1, passable: true, waterOnly: true },
                     }
                     const terrainData = terrainTypes[terrain]
@@ -593,6 +604,25 @@ export default function HTTPMultiplayerPage() {
               attackerId: selectedUnit.id, 
               targetId: unitOnHex.id, 
               playerID 
+            })
+            return
+          }
+        }
+
+        // Check if clicking on wall terrain to attack it
+        const clickedTerrain = gameState.terrainMap[`${hex.q},${hex.r}`] || 'PLAIN'
+        if (!unitOnHex && clickedTerrain === 'WALL') {
+          const distance = Math.max(
+            Math.abs(selectedUnit.q - hex.q),
+            Math.abs(selectedUnit.r - hex.r),
+            Math.abs(selectedUnit.s - hex.s)
+          )
+          if (distance <= selectedUnit.range && !selectedUnit.hasAttacked) {
+            sendAction('attackTerrain', {
+              attackerId: selectedUnit.id,
+              targetQ: hex.q,
+              targetR: hex.r,
+              playerID,
             })
             return
           }
@@ -1135,6 +1165,7 @@ export default function HTTPMultiplayerPage() {
                 hexes={gameState?.hexes || []}
                 mapSize={gameState?.mapSize || null}
                 terrainMap={gameState?.terrainMap || {}}
+                terrainHealth={gameState?.terrainHealth || {}}
                 phase={gameState?.phase || null}
                 selectedUnitId={gameState?.selectedUnitId || null}
                 currentPlayerID={playerID}

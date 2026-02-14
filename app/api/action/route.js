@@ -137,7 +137,18 @@ const GAME_MODES = {
 const TERRAIN_TYPES = {
   PLAIN: { name: 'Plain', defenseBonus: 0, moveCost: 1, passable: true, waterOnly: false },
   FOREST: { name: 'Forest', defenseBonus: 10, moveCost: 1, passable: true, waterOnly: false },
+  CITY: { name: 'City', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  BARRACKS: { name: 'Barracks', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  CASTLE: { name: 'Castle', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  CATHEDRAL: { name: 'Cathedral', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  FARM: { name: 'Farm', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  LIBRARY: { name: 'Library', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  MOSQUE: { name: 'Mosque', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  HOSPITAL: { name: 'Hospital', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  UNIVERSITY: { name: 'University', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
   MOUNTAIN: { name: 'Mountain', defenseBonus: 0, moveCost: Infinity, passable: false, waterOnly: false },
+  WALL: { name: 'Wall', defenseBonus: 0, moveCost: Infinity, passable: false, waterOnly: false, maxHP: 100 },
+  FLOOR: { name: 'Floor', defenseBonus: 0, moveCost: 0.5, passable: true, waterOnly: false },
   WATER: { name: 'Water', defenseBonus: 0, moveCost: 1, passable: true, waterOnly: true },
   HILLS: { name: 'Hills', defenseBonus: 8, moveCost: 2, passable: true, waterOnly: false },
 }
@@ -233,6 +244,48 @@ const restoreFromTransport = (unit, { resetMovePoints } = {}) => {
 }
 
 
+
+
+const applyTerrainDamage = (game, attacker, targetQ, targetR) => {
+  const terrainKey = `${sanitizeCoordinate(targetQ)},${sanitizeCoordinate(targetR)}`
+  if ((game.terrainMap[terrainKey] || 'PLAIN') !== 'WALL') {
+    return { ok: false, error: 'Target terrain is not destructible' }
+  }
+
+  const attackerTerrainKey = `${sanitizeCoordinate(attacker.q)},${sanitizeCoordinate(attacker.r)}`
+  const attackerTerrain = game.terrainMap[attackerTerrainKey] || 'PLAIN'
+  const hillBonus = attackerTerrain === 'HILLS' && ['ARCHER', 'CATAPULT'].includes(attacker.type) ? 5 : 0
+  const baseDamage = attacker.attackPower + hillBonus
+  const hpPercentage = attacker.currentHP / attacker.maxHP
+  let damageMultiplier = 1.0
+  if (hpPercentage > 0.75) damageMultiplier = 1.0
+  else if (hpPercentage > 0.5) damageMultiplier = 0.85
+  else if (hpPercentage > 0.25) damageMultiplier = 0.70
+  else damageMultiplier = 0.50
+
+  const moraleMultiplier = getMoraleMultiplier(attacker.morale)
+  const damage = Math.max(1, Math.round(baseDamage * damageMultiplier * moraleMultiplier))
+
+  if (!game.terrainHealth || typeof game.terrainHealth !== 'object') game.terrainHealth = {}
+  const maxWallHP = TERRAIN_TYPES.WALL.maxHP || 100
+  const currentWallHP = game.terrainHealth[terrainKey] ?? maxWallHP
+  const nextWallHP = Math.max(0, currentWallHP - damage)
+  game.terrainHealth[terrainKey] = nextWallHP
+
+  attacker.hasAttacked = true
+  attacker.lastMove = null
+  if (attacker.type === 'CATAPULT' && !attacker.isTransport) attacker.hasMovedOrAttacked = true
+
+  game.log.push(`Player ${attacker.ownerID}'s ${attacker.name} damaged wall at (${targetQ}, ${targetR}) for ${damage}.`)
+
+  if (nextWallHP <= 0) {
+    game.terrainMap[terrainKey] = 'FLOOR'
+    delete game.terrainHealth[terrainKey]
+    game.log.push(`Wall at (${targetQ}, ${targetR}) was destroyed and became floor.`)
+  }
+
+  return { ok: true }
+}
 const getRetreatActivationTurn = (mapId = 'MAP_1') => {
   return mapId === 'MAP_2' ? 13 : 9
 }
@@ -1474,6 +1527,52 @@ export async function POST(request) {
           game.lastUpdate = Date.now()
           break
           
+        case 'attackTerrain':
+          const attackTerrainSchema = {
+            attackerId: { required: true, sanitize: sanitizeUnitId },
+            targetQ: { required: true, sanitize: sanitizeCoordinate },
+            targetR: { required: true, sanitize: sanitizeCoordinate },
+            playerID: { required: true, sanitize: sanitizePlayerID }
+          }
+
+          const attackTerrainValidation = validatePayload(payload, attackTerrainSchema)
+          if (attackTerrainValidation.error) {
+            return NextResponse.json({ error: 'Invalid payload for attackTerrain: ' + attackTerrainValidation.error }, { status: 400, headers: ACTION_CORS_HEADERS })
+          }
+
+          const { attackerId: terrainAttackerId, targetQ: terrainTargetQ, targetR: terrainTargetR, playerID: terrainPlayerID } = attackTerrainValidation.sanitized
+          if (terrainPlayerID === 'spectator') return spectatorActionResponse()
+          if (!isValidPlayerForGame(terrainPlayerID, game)) return NextResponse.json({ error: 'Invalid playerID for this lobby' }, { status: 400, headers: ACTION_CORS_HEADERS })
+          const terrainTurnError = ensurePlayersTurn(terrainPlayerID, game, 'attack terrain')
+          if (terrainTurnError) return terrainTurnError
+
+          const terrainAttacker = game.units.find(u => u.id === terrainAttackerId)
+          if (!terrainAttacker || terrainAttacker.ownerID !== terrainPlayerID || terrainAttacker.hasAttacked) {
+            return NextResponse.json({ error: 'Attack failed (unit not found or already attacked)' }, { status: 400, headers: ACTION_CORS_HEADERS })
+          }
+
+          if (terrainAttacker.type === 'CATAPULT' && !terrainAttacker.isTransport && terrainAttacker.hasMovedOrAttacked) {
+            return NextResponse.json({ error: 'Catapult cannot attack after moving this turn' }, { status: 400, headers: ACTION_CORS_HEADERS })
+          }
+
+          const terrainDistance = Math.max(
+            Math.abs(terrainAttacker.q - terrainTargetQ),
+            Math.abs(terrainAttacker.r - terrainTargetR),
+            Math.abs(terrainAttacker.s - (-terrainTargetQ - terrainTargetR))
+          )
+          if (terrainDistance > terrainAttacker.range) {
+            return NextResponse.json({ error: 'Target terrain is out of range' }, { status: 400, headers: ACTION_CORS_HEADERS })
+          }
+
+          const terrainAttackResult = applyTerrainDamage(game, terrainAttacker, terrainTargetQ, terrainTargetR)
+          if (!terrainAttackResult.ok) {
+            return NextResponse.json({ error: terrainAttackResult.error }, { status: 400, headers: ACTION_CORS_HEADERS })
+          }
+
+          applyEncirclementMorale(game.units, teamMode)
+          game.lastUpdate = Date.now()
+          break
+
         case 'attackUnit':
           if (!payload?.attackerId || !payload?.targetId) {
             return NextResponse.json({ 

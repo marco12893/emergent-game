@@ -118,7 +118,17 @@ export const TERRAIN_TYPES = {
   PLAIN: { name: 'Plain', defenseBonus: 0, moveCost: 1, passable: true, waterOnly: false },
   FOREST: { name: 'Forest', defenseBonus: 10, moveCost: 1, passable: true, waterOnly: false },
   CITY: { name: 'City', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  BARRACKS: { name: 'Barracks', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  CASTLE: { name: 'Castle', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  CATHEDRAL: { name: 'Cathedral', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  FARM: { name: 'Farm', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  LIBRARY: { name: 'Library', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  MOSQUE: { name: 'Mosque', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  HOSPITAL: { name: 'Hospital', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  UNIVERSITY: { name: 'University', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
   MOUNTAIN: { name: 'Mountain', defenseBonus: 0, moveCost: Infinity, passable: false, waterOnly: false },
+  WALL: { name: 'Wall', defenseBonus: 0, moveCost: Infinity, passable: false, waterOnly: false, maxHP: 100 },
+  FLOOR: { name: 'Floor', defenseBonus: 0, moveCost: 0.5, passable: true, waterOnly: false },
   WATER: { name: 'Water', defenseBonus: 0, moveCost: 1, passable: true, waterOnly: true },
   HILLS: { name: 'Hills', defenseBonus: 8, moveCost: 2, passable: true, waterOnly: false },
 }
@@ -845,6 +855,23 @@ const battlePhase = {
       G.log.push(`Player ${playerID}'s ${unit.name} undid their move.`)
     },
     
+    attackTerrain: ({ G, playerID }, attackerId, targetQ, targetR) => {
+      const attacker = G.units.find(u => u.id === attackerId)
+      if (!attacker || attacker.ownerID !== playerID || attacker.hasAttacked) return INVALID_MOVE
+      if (attacker.type === 'CATAPULT' && !attacker.isTransport && attacker.hasMovedOrAttacked) return INVALID_MOVE
+
+      const distance = Math.max(
+        Math.abs(attacker.q - targetQ),
+        Math.abs(attacker.r - targetR),
+        Math.abs(attacker.s - (-targetQ - targetR))
+      )
+      if (distance > attacker.range) return INVALID_MOVE
+
+      if (!applyTerrainDamage(G, attacker, targetQ, targetR)) return INVALID_MOVE
+
+      applyEncirclementMorale(G.units, G.teamMode)
+    },
+
     attackUnit: ({ G, ctx, playerID }, attackerId, targetId) => {
       const attacker = G.units.find(u => u.id === attackerId)
       const target = G.units.find(u => u.id === targetId)
@@ -1116,6 +1143,7 @@ export const MedievalBattleGame = {
     return {
       hexes,
       terrainMap,
+      terrainHealth: Object.fromEntries(Object.entries(terrainMap).filter(([, terrain]) => terrain === 'WALL').map(([key]) => [key, TERRAIN_TYPES.WALL.maxHP])),
       units: [],
       selectedUnitId: null,
       playersReady,
@@ -1432,3 +1460,39 @@ export const MedievalBattleGame = {
 }
 
 export default MedievalBattleGame
+
+const applyTerrainDamage = (G, attacker, targetQ, targetR) => {
+  const targetKey = `${targetQ},${targetR}`
+  if ((G.terrainMap[targetKey] || 'PLAIN') !== 'WALL') return false
+
+  const attackerTerrain = G.terrainMap[`${attacker.q},${attacker.r}`] || 'PLAIN'
+  const hillBonus = attackerTerrain === 'HILLS' && ['ARCHER', 'CATAPULT'].includes(attacker.type) ? 5 : 0
+  const baseDamage = attacker.attackPower + hillBonus
+  const damageMultiplier = getDamageMultiplier(attacker.currentHP, attacker.maxHP)
+  const moraleMultiplier = getMoraleMultiplier(attacker.morale)
+  const reducedDamage = Math.round(baseDamage * damageMultiplier * moraleMultiplier)
+  const damage = Math.max(1, reducedDamage)
+
+  if (!G.terrainHealth) G.terrainHealth = {}
+  const maxWallHP = TERRAIN_TYPES.WALL.maxHP || 100
+  const currentHP = G.terrainHealth[targetKey] ?? maxWallHP
+  const nextHP = Math.max(0, currentHP - damage)
+  G.terrainHealth[targetKey] = nextHP
+
+  attacker.hasAttacked = true
+  attacker.lastMove = null
+  if (attacker.type === 'CATAPULT' && !attacker.isTransport) {
+    attacker.hasMovedOrAttacked = true
+  }
+
+  G.log.push(`Player ${attacker.ownerID}'s ${attacker.name} damaged wall at (${targetQ}, ${targetR}) for ${damage}.`)
+
+  if (nextHP <= 0) {
+    G.terrainMap[targetKey] = 'FLOOR'
+    delete G.terrainHealth[targetKey]
+    G.log.push(`Wall at (${targetQ}, ${targetR}) was destroyed and became floor.`)
+  }
+
+  return true
+}
+
