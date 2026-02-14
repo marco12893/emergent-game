@@ -81,16 +81,6 @@ const UNIT_TYPES = {
     isNaval: true,
     description: 'Naval unit that can only move on water.',
   },
-  TEST_RAIDER: {
-    type: 'TEST_RAIDER',
-    name: 'Test Raider',
-    image: 'militia',
-    maxHP: 1,
-    attackPower: 200,
-    movePoints: 30,
-    range: 1,
-    description: 'High-mobility testing unit.',
-  },
 }
 
 const isValidPlayerForGame = (playerID, game) => {
