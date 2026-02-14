@@ -13,6 +13,7 @@ import {
 } from '@/lib/inputSanitization'
 import { isInSpawnZone } from '@/game/GameLogic'
 import { areAllies, getTeamId, getTeamLabel, getTeamPlayOrder } from '@/game/teamUtils'
+import { createMap4ObjectiveState, getMap4VictoryInfo, updateMap4ObjectiveState } from '@/game/map4Objectives'
 
 // ============================================
 // UNIT & TERRAIN DEFINITIONS
@@ -287,6 +288,7 @@ const applyTerrainDamage = (game, attacker, targetQ, targetR) => {
   return { ok: true }
 }
 const getRetreatActivationTurn = (mapId = 'MAP_1') => {
+  if (mapId === 'MAP_4') return 25
   return mapId === 'MAP_2' ? 13 : 9
 }
 
@@ -632,6 +634,10 @@ export async function POST(request) {
     }
     if (!game.objectiveControl) {
       game.objectiveControl = { [game.attackerId]: 0, [game.defenderId]: 0 }
+    }
+
+    if (!game.map4ObjectiveState && game.mapId === 'MAP_4') {
+      game.map4ObjectiveState = createMap4ObjectiveState({ terrainMap: game.terrainMap || {}, teamMode: Boolean(game.teamMode) })
     }
     if (!game.spectators) {
       game.spectators = []
@@ -1970,7 +1976,7 @@ export async function POST(request) {
             game.log.push(`=== Turn ${game.turn} ===`)
             
             // Check objective control for Attack & Defend mode
-            if (game.gameMode === 'ATTACK_DEFEND') {
+            if (!victoryInfo && game.gameMode === 'ATTACK_DEFEND') {
               const aliveUnits = game.units.filter(u => u.currentHP > 0)
               
               // Check who controls the objective hexes
@@ -1996,6 +2002,10 @@ export async function POST(request) {
               } else {
                 game.log.push('Paris is contested!')
               }
+            }
+
+            if (game.map4ObjectiveState?.enabled) {
+              updateMap4ObjectiveState({ G: game, teamMode })
             }
           }
           
@@ -2256,9 +2266,13 @@ export async function POST(request) {
       const teamRedYellowAlive = aliveUnits.filter(u => getTeamId(u.ownerID) === 'red-yellow').length
       
       let victoryInfo = null
+
+      if (game.map4ObjectiveState?.enabled) {
+        victoryInfo = getMap4VictoryInfo({ G: game, teamMode, turn: game.turn || 1 })
+      }
       
       // Attack & Defend mode victory conditions
-      if (game.gameMode === 'ATTACK_DEFEND') {
+      if (!victoryInfo && game.gameMode === 'ATTACK_DEFEND') {
         // Defender (Player 1) wins if they hold objective for required turns
         if (game.objectiveControl[game.defenderId] >= game.turnLimit) {
           victoryInfo = {

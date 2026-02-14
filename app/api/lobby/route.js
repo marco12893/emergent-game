@@ -40,6 +40,7 @@ export async function GET() {
         MAP_1: 'Map 1 (Heartland)',
         MAP_2: 'Map 2 (Northern Coast)',
         MAP_3: 'Map 3 (Open Sea)',
+        MAP_4: 'Map 4 (Cathedral Siege)',
       }
 
       return {

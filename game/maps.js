@@ -1,5 +1,7 @@
 export const DEFAULT_MAP_ID = 'MAP_1'
 
+import map4Data from './map4Data.js'
+
 export const MAPS = {
   MAP_1: {
     id: 'MAP_1',
@@ -19,6 +21,13 @@ export const MAPS = {
     description: 'An expansive ocean map for full naval engagements.',
     size: { width: 6, height: 4 },
   },
+  MAP_4: {
+    id: 'MAP_4',
+    name: 'Map 4 (Cathedral Siege)',
+    description: 'Attack/defend siege with cathedral, barracks, and castle objectives.',
+    size: map4Data.size,
+    deploymentZones: map4Data.deploymentZones,
+  },
 }
 
 export const getMapConfig = (mapId) => MAPS[mapId] || MAPS[DEFAULT_MAP_ID]
@@ -28,6 +37,27 @@ export const generateMapData = (mapId = DEFAULT_MAP_ID) => {
   const { width: MAP_WIDTH, height: MAP_HEIGHT } = mapConfig.size
   const hexes = []
   const terrainMap = {}
+  const tileMap = {}
+
+
+  if (mapConfig.id === 'MAP_4') {
+    map4Data.hexes.forEach((hex) => {
+      hexes.push({ q: hex.q, r: hex.r, s: hex.s ?? (-hex.q - hex.r) })
+    })
+    Object.entries(map4Data.terrainMap || {}).forEach(([key, terrain]) => {
+      terrainMap[key] = terrain
+    })
+    Object.entries(map4Data.tileMap || {}).forEach(([key, tile]) => {
+      tileMap[key] = tile
+    })
+    return {
+      hexes,
+      terrainMap,
+      tileMap,
+      deploymentZones: map4Data.deploymentZones || null,
+      mapConfig,
+    }
+  }
 
   const map2Forests = new Set([
     '-6,1', '-5,1', '-4,1', '-5,0','-4,0',
@@ -104,6 +134,8 @@ export const generateMapData = (mapId = DEFAULT_MAP_ID) => {
   return {
     hexes,
     terrainMap,
+    tileMap: Object.keys(tileMap).length > 0 ? tileMap : null,
+    deploymentZones: mapConfig.deploymentZones || null,
     mapConfig,
   }
 }

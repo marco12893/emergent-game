@@ -83,6 +83,7 @@ const GameBoard = ({
   retreatedUnitIds = [],
   deploymentZones = null,
   allowUnboundedCamera = false,
+  objectiveBuildingOwners = null,
 }) => {
   const DAMAGE_DISPLAY_DURATION = 3000
   const mapWidth = mapSize?.width || Math.max(6, ...hexes.map(hex => Math.abs(hex.q)))
@@ -601,9 +602,26 @@ const GameBoard = ({
     }
     if (showSpawnZones && hex.spawnZone === 0) return { stroke: '#3B82F6', strokeWidth: 0.2 } // P0 Spawn
     if (showSpawnZones && hex.spawnZone === 1) return { stroke: '#EF4444', strokeWidth: 0.2 } // P1 Spawn
+
+    const objectiveBuilding = objectiveBuildingByHex.get(`${hex.q},${hex.r}`)
+    if (objectiveBuilding?.owner) {
+      const ownerColor = objectiveBuilding.owner === 'blue-green' || objectiveBuilding.owner === '0' ? '#3B82F6' : '#EF4444'
+      return { stroke: ownerColor, strokeWidth: 0.2 }
+    }
     
     return { stroke: '#1E293B', strokeWidth: 0.06 } // Default Border
   }
+
+  const objectiveBuildingByHex = useMemo(() => {
+    const index = new Map()
+    if (!objectiveBuildingOwners || typeof objectiveBuildingOwners !== 'object') return index
+    Object.values(objectiveBuildingOwners).forEach((building) => {
+      ;(building?.hexes || []).forEach((hex) => {
+        index.set(`${hex.q},${hex.r}`, building)
+      })
+    })
+    return index
+  }, [objectiveBuildingOwners])
 
   const getUnitOnHex = (hex) => {
     return units.find(u => u.q === hex.q && u.r === hex.r)
