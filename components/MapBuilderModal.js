@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import GameBoard from '@/components/GameBoard'
 
 const TERRAIN_OPTIONS = ['PLAIN', 'FOREST', 'MOUNTAIN', 'HILLS', 'WATER', 'CITY', 'BARRACKS', 'CASTLE', 'CATHEDRAL', 'FARM', 'LIBRARY', 'WALLS', 'FLOOR']
@@ -119,6 +119,8 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
   const [editMode, setEditMode] = useState('terrain')
   const [customQ, setCustomQ] = useState(0)
   const [customR, setCustomR] = useState(0)
+  const [importError, setImportError] = useState('')
+  const importInputRef = useRef(null)
 
   const filteredTiles = useMemo(
     () => tiles.filter((tile) => getTileTerrainType(tile) === selectedTerrain),
@@ -127,6 +129,7 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
 
   useEffect(() => {
     if (!open) return
+    setImportError('')
     if (initialMap?.size?.width && initialMap?.size?.height) {
       setWidth(initialMap.size.width)
       setHeight(initialMap.size.height)
@@ -144,6 +147,7 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
 
   useEffect(() => {
     if (!open) return
+    setImportError('')
     fetch(`/api/tiles?ts=${Date.now()}`, { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
@@ -257,6 +261,39 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
     URL.revokeObjectURL(url)
   }
 
+  const triggerImport = () => {
+    if (importInputRef.current) {
+      importInputRef.current.value = ''
+      importInputRef.current.click()
+    }
+  }
+
+  const onImportMapFile = async (event) => {
+    const file = event?.target?.files?.[0]
+    if (!file) return
+
+    try {
+      const text = await file.text()
+      const parsed = JSON.parse(text)
+      const normalized = normalizeCustomMap({
+        ...parsed,
+        tileMap: parsed?.tileMap || {},
+        deploymentZones: parsed?.deploymentZones || { blue: [], red: [] },
+      })
+
+      if (!Array.isArray(normalized.hexes) || normalized.hexes.length === 0) {
+        throw new Error('Map tidak punya hex yang valid.')
+      }
+
+      setMapData(normalized)
+      setWidth(normalized.size?.width || 6)
+      setHeight(normalized.size?.height || 4)
+      setImportError('')
+    } catch (error) {
+      setImportError(error?.message || 'Gagal import map JSON.')
+    }
+  }
+
   if (!open) return null
 
   return (
@@ -295,10 +332,19 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
           >
             Shape Hexes
           </button>
+          <button onClick={triggerImport} className="rounded bg-cyan-700 px-2 py-1 text-xs">Import JSON</button>
           <button onClick={exportMap} className="rounded bg-emerald-700 px-2 py-1 text-xs">Export JSON</button>
           <button onClick={() => onApply(mapData)} className="rounded bg-amber-600 px-2 py-1 text-xs">Use In Lobby</button>
           <button onClick={onClose} className="ml-auto rounded bg-slate-700 px-2 py-1 text-xs">Close</button>
         </div>
+
+        <input
+          ref={importInputRef}
+          type="file"
+          accept="application/json,.json"
+          onChange={onImportMapFile}
+          className="hidden"
+        />
 
         <div className="grid flex-1 gap-3 lg:grid-cols-[260px_1fr]">
           <div className="overflow-auto rounded border border-slate-700 p-2">
@@ -346,6 +392,11 @@ export default function MapBuilderModal({ open, onClose, onApply, initialMap }) 
                 </button>
               ))}
             </div>
+            {importError && (
+              <div className="mb-2 rounded border border-rose-500/60 bg-rose-900/30 p-2 text-xs text-rose-200">
+                {importError}
+              </div>
+            )}
             <div className="mb-2 text-xs text-slate-400">
               Textures for {selectedTerrain} from /public/tiles
             </div>
