@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useRef, useMemo } from 'react'
-import { UNIT_TYPES, TERRAIN_TYPES, getDeployableHexes, getVisibleHexesForPlayer, getVisibleUnitsForPlayer, getRetreatActivationTurn, getRetreatZoneForPlayer } from '@/game/GameLogic'
+import { UNIT_TYPES, TERRAIN_TYPES, getDeployableHexes, getReachableHexes, getVisibleHexesForPlayer, getVisibleUnitsForPlayer, getRetreatActivationTurn, getRetreatZoneForPlayer } from '@/game/GameLogic'
 import { areAllies, getPlayerColor, getUnitSpriteProps } from '@/game/teamUtils'
 import { DEFAULT_MAP_ID, MAPS } from '@/game/maps'
 import GameBoard from '@/components/GameBoard'
@@ -121,6 +121,22 @@ const UnitInfoPanel = ({ unit, isSelected }) => {
   )
 }
 
+
+const KNIGHT_PENALTY_TERRAINS = new Set(['CITY', 'CASTLE', 'BARRACKS', 'CATHEDRAL', 'MOSQUE', 'HOSPITAL', 'UNIVERSITY', 'LIBRARY', 'FARM'])
+
+const getUnitSpecialNotes = (unitType) => {
+  if (unitType === 'ARCHER' || unitType === 'CATAPULT') return ['+5 attack while standing on Hills.']
+  if (unitType === 'KNIGHT') {
+    return [
+      'Deals 25% less damage on City/Building tiles.',
+      'Moving into City/Building tiles costs 2 movement points.',
+    ]
+  }
+  return []
+}
+
+const getObjectiveText = (mapId) => (['MAP_1', 'MAP_2', 'MAP_3'].includes(mapId) ? 'Defeat the enemy force.' : null)
+
 export default function HTTPMultiplayerPage() {
   const [gameState, setGameState] = useState(null)
   const [playerID, setPlayerID] = useState('')
@@ -222,6 +238,11 @@ export default function HTTPMultiplayerPage() {
   }, [selectedOwnedUnit, gameState?.phase, retreatHexes])
 
   const map4ObjectivePanel = useMemo(() => {
+    const mapObjectiveText = getObjectiveText(gameState?.mapId)
+    if (mapObjectiveText && gameState?.phase === 'battle') {
+      return { title: mapObjectiveText, buildings: [] }
+    }
+
     const objectiveState = gameState?.map4ObjectiveState
     if (!objectiveState?.enabled) return null
 
@@ -253,7 +274,7 @@ export default function HTTPMultiplayerPage() {
         }
       }),
     }
-  }, [gameState?.map4ObjectiveState, playerID, teamMode])
+  }, [gameState?.map4ObjectiveState, gameState?.mapId, gameState?.phase, playerID, teamMode])
 
   const getChatSenderClass = (message) => {
     if (message?.playerID === '0') return 'text-blue-400'
@@ -385,101 +406,10 @@ export default function HTTPMultiplayerPage() {
           if (state.phase === 'battle' && state.selectedUnitId) {
             const selectedUnit = state.units.find(u => u.id === state.selectedUnitId)
             if (selectedUnit && selectedUnit.ownerID === playerID) {
-              // Calculate reachable hexes based on unit movement points and terrain
-              const reachable = []
-              
-              // BFS for movement calculation with terrain costs
-              const visited = new Set()
-              const queue = [{ q: selectedUnit.q, r: selectedUnit.r, s: selectedUnit.s, remainingMove: selectedUnit.movePoints }]
-              visited.add(`${selectedUnit.q},${selectedUnit.r}`)
-              
-              while (queue.length > 0) {
-                const current = queue.shift()
-                
-                // Check all 6 directions
-                const directions = [
-                  { q: 1, r: 0, s: -1 },
-                  { q: 1, r: -1, s: 0 },
-                  { q: 0, r: -1, s: 1 },
-                  { q: -1, r: 0, s: 1 },
-                  { q: -1, r: 1, s: 0 },
-                  { q: 0, r: 1, s: -1 },
-                ]
-                
-                for (const dir of directions) {
-                  const targetQ = current.q + dir.q
-                  const targetR = current.r + dir.r
-                  const targetS = current.s + dir.s
-                  const key = `${targetQ},${targetR}`
-                  
-                  if (visited.has(key)) continue
-                  
-                  // Check if hex exists and is not occupied
-                  const hexExists = state.hexes.some(h => h.q === targetQ && h.r === targetR)
-                  const isOccupied = state.units.some(u => u.q === targetQ && u.r === targetR)
-                  
-                  if (hexExists && !isOccupied && !selectedUnit.hasMoved) {
-                    // Check terrain costs
-                    const terrain = state.terrainMap[key] || 'PLAIN'
-                    const terrainTypes = {
-                      PLAIN: { moveCost: 1, passable: true, waterOnly: false },
-                      FOREST: { moveCost: 1, passable: true, waterOnly: false },
-                      HILLS: { moveCost: 2, passable: true, waterOnly: false },
-                      CITY: { moveCost: 1, passable: true, waterOnly: false },
-                      BARRACKS: { moveCost: 1, passable: true, waterOnly: false },
-                      CASTLE: { moveCost: 1, passable: true, waterOnly: false },
-                      CATHEDRAL: { moveCost: 1, passable: true, waterOnly: false },
-                      FARM: { moveCost: 1, passable: true, waterOnly: false },
-                      LIBRARY: { moveCost: 1, passable: true, waterOnly: false },
-                      MOSQUE: { moveCost: 1, passable: true, waterOnly: false },
-                      HOSPITAL: { moveCost: 1, passable: true, waterOnly: false },
-                      UNIVERSITY: { moveCost: 1, passable: true, waterOnly: false },
-                      MOUNTAIN: { moveCost: Infinity, passable: false, waterOnly: false },
-                      WALL: { moveCost: Infinity, passable: false, waterOnly: false },
-                      FLOOR: { moveCost: 0.5, passable: true, waterOnly: false },
-                      WATER: { moveCost: 1, passable: true, waterOnly: true },
-                    }
-                    const terrainData = terrainTypes[terrain]
-                    if (!terrainData) continue
-                    
-                    const isNaval = selectedUnit.isNaval || false
-                    const isTransport = selectedUnit.isTransport || false
-                    const canEmbark = !isNaval && !isTransport && selectedUnit.movePoints >= selectedUnit.maxMovePoints
-                    const canDisembark = isTransport && selectedUnit.movePoints >= selectedUnit.maxMovePoints
-                    const embarking = terrainData.waterOnly && !isNaval && !isTransport
-                    const disembarking = !terrainData.waterOnly && isTransport
+              const reachable = selectedUnit.hasMoved
+                ? []
+                : getReachableHexes(selectedUnit, state.hexes, state.units, state.terrainMap)
 
-                    if (embarking && !canEmbark) continue
-                    if (!terrainData.waterOnly && isNaval && !isTransport) continue
-                    if (disembarking && !canDisembark) continue
-                    if (!terrainData.passable) continue
-                    
-                    let moveCost = embarking || disembarking
-                      ? selectedUnit.maxMovePoints
-                      : terrainData.moveCost
-                    if (
-                      !embarking &&
-                      !disembarking &&
-                      (selectedUnit.baseType === 'CATAPULT' || selectedUnit.type === 'CATAPULT') &&
-                      terrain === 'HILLS'
-                    ) {
-                      moveCost = 1
-                    }
-                    const remainingAfterMove = current.remainingMove - moveCost
-                    
-                    if (remainingAfterMove >= 0) {
-                      visited.add(key)
-                      reachable.push({ q: targetQ, r: targetR, s: targetS })
-                      
-                      // Continue exploring if we have movement left
-                      if (remainingAfterMove > 0) {
-                        queue.push({ q: targetQ, r: targetR, s: targetS, remainingMove: remainingAfterMove })
-                      }
-                    }
-                  }
-                }
-              }
-              
               // Calculate attackable hexes
               const isFogActive = Boolean(state.fogOfWarEnabled) && state.phase === 'battle' && playerID !== 'spectator'
               const currentVisibleUnits = isFogActive
@@ -587,7 +517,8 @@ export default function HTTPMultiplayerPage() {
     const hillBonus = attackerTerrain === 'HILLS' && ['ARCHER', 'CATAPULT'].includes(selectedUnit.type)
       ? 5
       : 0
-    const baseDamage = selectedUnit.attackPower + hillBonus
+    const knightTerrainPenalty = selectedUnit.type === 'KNIGHT' && KNIGHT_PENALTY_TERRAINS.has(attackerTerrain) ? 0.75 : 1
+    const baseDamage = Math.round((selectedUnit.attackPower + hillBonus) * knightTerrainPenalty)
 
     const hpPercentage = selectedUnit.currentHP / selectedUnit.maxHP
     let damageMultiplier = 1.0
@@ -1728,16 +1659,18 @@ export default function HTTPMultiplayerPage() {
         <div className="fixed top-4 left-4 z-30 w-80 max-w-[85vw] rounded-lg border border-slate-600 bg-slate-900/85 p-3 text-xs shadow-lg backdrop-blur">
           <div className="font-semibold text-amber-300">Objective</div>
           <div className="mt-1 text-slate-200">{map4ObjectivePanel.title}</div>
-          <div className="mt-2 space-y-1 text-slate-100">
-            {map4ObjectivePanel.buildings.map((building) => (
-              <div key={building.label} className="flex items-center justify-between">
-                <span>{building.label} ({building.progress}/{building.captureTurns})</span>
-                <span className={building.owner === 'blue-green' || building.owner === '0' ? 'text-blue-300' : 'text-red-300'}>
-                  {building.owner === 'blue-green' || building.owner === '0' ? 'Blue-owned' : 'Red-owned'}
-                </span>
-              </div>
-            ))}
-          </div>
+          {map4ObjectivePanel.buildings.length > 0 && (
+            <div className="mt-2 space-y-1 text-slate-100">
+              {map4ObjectivePanel.buildings.map((building) => (
+                <div key={building.label} className="flex items-center justify-between">
+                  <span>{building.label} ({building.progress}/{building.captureTurns})</span>
+                  <span className={building.owner === 'blue-green' || building.owner === '0' ? 'text-blue-300' : 'text-red-300'}>
+                    {building.owner === 'blue-green' || building.owner === '0' ? 'Blue-owned' : 'Red-owned'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
       
@@ -1980,6 +1913,9 @@ export default function HTTPMultiplayerPage() {
               <div className="mb-1">• Max Movement: {showUnitInfoPopup.movePoints} tiles per turn</div>
               <div className="mb-1">• Range: {showUnitInfoPopup.range === 1 ? 'Melee only' : `${showUnitInfoPopup.range} tiles`}</div>
               <div>• Type: {showUnitInfoPopup.type} unit</div>
+              {getUnitSpecialNotes(showUnitInfoPopup.type).map((note) => (
+                <div key={note}>• {note}</div>
+              ))}
             </div>
             
             {/* Close Button */}
