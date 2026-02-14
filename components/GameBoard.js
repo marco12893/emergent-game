@@ -603,11 +603,11 @@ const GameBoard = ({
     if (retreatHexes.some(h => h.q === hex.q && h.r === hex.r)) {
       return { stroke: '#FACC15', strokeWidth: 0.22 } // Retreat zone (Yellow)
     }
-    if (showSpawnZones && hex.spawnZone === 0) return { stroke: '#3B82F6', strokeWidth: 0.2 } // P0 Spawn
-    if (showSpawnZones && hex.spawnZone === 1) return { stroke: '#EF4444', strokeWidth: 0.2 } // P1 Spawn
+    if (showSpawnZones && canSeeBlueDeployZone && hex.spawnZone === 0) return { stroke: '#3B82F6', strokeWidth: 0.2 } // P0 Spawn
+    if (showSpawnZones && canSeeRedDeployZone && hex.spawnZone === 1) return { stroke: '#EF4444', strokeWidth: 0.2 } // P1 Spawn
 
     const objectiveBuilding = objectiveBuildingByHex.get(`${hex.q},${hex.r}`)
-    if (objectiveBuilding?.owner) {
+    if (phase === 'battle' && objectiveBuilding?.owner) {
       const ownerColor = objectiveBuilding.owner === 'blue-green' || objectiveBuilding.owner === '0' ? '#3B82F6' : '#EF4444'
       return { stroke: ownerColor, strokeWidth: 0.2 }
     }
@@ -729,7 +729,7 @@ const GameBoard = ({
                       />
                     )}
                     {hex.terrain === 'WALL' && (
-                      <g transform="translate(-4.8, -5.4)" style={{ filter: 'drop-shadow(0 0 1.5px rgba(0,0,0,1))' }}>
+                      <g transform="translate(-4.8, 3.8)" style={{ filter: 'drop-shadow(0 0 1.5px rgba(0,0,0,1))' }}>
                         <rect x="0" y="0" width="9.6" height="1.35" fill="rgba(15, 23, 42, 0.95)" stroke="#E2E8F0" strokeWidth="0.12" rx="0.35" />
                         <rect
                           x="0"

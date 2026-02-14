@@ -1986,7 +1986,7 @@ export async function POST(request) {
             game.log.push(`=== Turn ${game.turn} ===`)
             
             // Check objective control for Attack & Defend mode
-            if (!victoryInfo && game.gameMode === 'ATTACK_DEFEND') {
+            if (game.gameMode === 'ATTACK_DEFEND') {
               const aliveUnits = game.units.filter(u => u.currentHP > 0)
               
               // Check who controls the objective hexes
