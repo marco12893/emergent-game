@@ -2,7 +2,7 @@
 
 import React, { useMemo, useCallback, useState, useRef, useEffect } from 'react'
 import { HexGrid, Layout, Hexagon } from 'react-hexgrid'
-import { getTeamId, getUnitSpriteProps } from '@/game/teamUtils'
+import { getUnitSpriteProps } from '@/game/teamUtils'
 import { shouldEmitDamageOnRemoval } from '@/game/GameLogic'
 import { shouldShowUnitActionRing } from '@/game/unitActionIndicators'
 
@@ -89,9 +89,6 @@ const GameBoard = ({
   const mapWidth = mapSize?.width || Math.max(6, ...hexes.map(hex => Math.abs(hex.q)))
   const mapHeight = mapSize?.height || Math.max(4, ...hexes.map(hex => Math.abs(hex.r)))
   const HEX_SIZE = 5.5 
-  const viewerTeamId = teamMode ? getTeamId(currentPlayerID) : currentPlayerID
-  const canSeeBlueDeployZone = viewerTeamId === '0' || viewerTeamId === 'blue-green'
-  const canSeeRedDeployZone = viewerTeamId === '1' || viewerTeamId === 'red-yellow'
   
   // Camera state
   const [cameraOffset, setCameraOffset] = useState({ x: 0, y: 0 })
@@ -603,9 +600,6 @@ const GameBoard = ({
     if (retreatHexes.some(h => h.q === hex.q && h.r === hex.r)) {
       return { stroke: '#FACC15', strokeWidth: 0.22 } // Retreat zone (Yellow)
     }
-    if (showSpawnZones && canSeeBlueDeployZone && hex.spawnZone === 0) return { stroke: '#3B82F6', strokeWidth: 0.2 } // P0 Spawn
-    if (showSpawnZones && canSeeRedDeployZone && hex.spawnZone === 1) return { stroke: '#EF4444', strokeWidth: 0.2 } // P1 Spawn
-
     const objectiveBuilding = objectiveBuildingByHex.get(`${hex.q},${hex.r}`)
     if (phase === 'battle' && objectiveBuilding?.owner) {
       const ownerColor = objectiveBuilding.owner === 'blue-green' || objectiveBuilding.owner === '0' ? '#3B82F6' : '#EF4444'
@@ -677,8 +671,6 @@ const GameBoard = ({
               const isVisible = isHexVisible(hex)
               const isRetreat = retreatHexes.some(h => h.q === hex.q && h.r === hex.r)
               const highlightFilter = isReachable ? 'brightness(1.3)' : isAttackable ? 'brightness(1.2)' : isRetreat ? 'brightness(1.15)' : 'none'
-              const inBlueDeployZone = Array.isArray(deploymentZones?.blue) && deploymentZones.blue.some(h => h.q === hex.q && h.r === hex.r)
-              const inRedDeployZone = Array.isArray(deploymentZones?.red) && deploymentZones.red.some(h => h.q === hex.q && h.r === hex.r)
               
               return (
                 <g key={`${hex.q}-${hex.r}-${hex.s}`} data-hex-q={hex.q} data-hex-r={hex.r}>
@@ -714,22 +706,8 @@ const GameBoard = ({
                         }}
                       />
                     )}
-                    {showSpawnZones && canSeeBlueDeployZone && inBlueDeployZone && (
-                      <polygon
-                        points="0,-5.5 4.76,-2.75 4.76,2.75 0,5.5 -4.76,2.75 -4.76,-2.75"
-                        fill="rgba(37,99,235,0.2)"
-                        style={{ pointerEvents: 'none' }}
-                      />
-                    )}
-                    {showSpawnZones && canSeeRedDeployZone && inRedDeployZone && (
-                      <polygon
-                        points="0,-5.5 4.76,-2.75 4.76,2.75 0,5.5 -4.76,2.75 -4.76,-2.75"
-                        fill="rgba(220,38,38,0.24)"
-                        style={{ pointerEvents: 'none' }}
-                      />
-                    )}
                     {hex.terrain === 'WALL' && (
-                      <g transform="translate(-4.8, 3.8)" style={{ filter: 'drop-shadow(0 0 1.5px rgba(0,0,0,1))' }}>
+                      <g transform="translate(-4.8, 2.7)" style={{ filter: 'drop-shadow(0 0 1.5px rgba(0,0,0,1))' }}>
                         <rect x="0" y="0" width="9.6" height="1.35" fill="rgba(15, 23, 42, 0.95)" stroke="#E2E8F0" strokeWidth="0.12" rx="0.35" />
                         <rect
                           x="0"

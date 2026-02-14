@@ -238,11 +238,17 @@ export default function HTTPMultiplayerPage() {
     return {
       title,
       buildings: buildings.map((building) => {
-        const progressTeam = isDefenderView ? objectiveState.defenderId : objectiveState.attackerId
+        const viewerTeam = isDefenderView ? objectiveState.defenderId : objectiveState.attackerId
+        const enemyTeam = viewerTeam === objectiveState.defenderId ? objectiveState.attackerId : objectiveState.defenderId
+        const ownProgress = building.captureProgress?.[viewerTeam] || 0
+        const enemyProgress = building.captureProgress?.[enemyTeam] || 0
+        const progress = building.owner === viewerTeam
+          ? Math.max(0, objectiveState.captureTurns - enemyProgress)
+          : ownProgress
         return {
           label: building.label,
           owner: building.owner,
-          progress: building.captureProgress?.[progressTeam] || 0,
+          progress,
           captureTurns: objectiveState.captureTurns,
         }
       }),
