@@ -154,7 +154,6 @@ export default function HTTPMultiplayerPage() {
   const [isWinter, setIsWinter] = useState(false)
   const [teamModeEnabled, setTeamModeEnabled] = useState(false)
   const [storedSession, setStoredSession] = useState(null)
-  const [joinAsSpectator, setJoinAsSpectator] = useState(false)
   const [selectedUnitType, setSelectedUnitType] = useState('SWORDSMAN')
   const [error, setError] = useState('')
   const errorTimeoutRef = useRef(null)
@@ -515,7 +514,7 @@ export default function HTTPMultiplayerPage() {
                     units: state.units,
                     hexes: state.hexes,
                     terrainMap: state.terrainMap,
-                    playerID,
+                    playerID: isSpectator ? 'spectator' : playerID,
                     teamMode,
                   })
                 : state.units
@@ -803,7 +802,7 @@ export default function HTTPMultiplayerPage() {
     const newLobbyId = Array.from({ length: 4 }, () =>
       String.fromCharCode(65 + Math.floor(Math.random() * 26))
     ).join('')
-    await joinLobbyGame(newLobbyId, joinAsSpectator ? 'spectator' : undefined, selectedMapId, isWinter)
+    await joinLobbyGame(newLobbyId, undefined, selectedMapId, isWinter)
   }
 
   const sendAction = async (action, payload) => {
@@ -850,7 +849,7 @@ export default function HTTPMultiplayerPage() {
         action: 'sendChat',
         payload: {
           message: normalizedMessage,
-          playerID,
+          playerID: isSpectator ? 'spectator' : playerID,
           playerName: playerName || undefined,
         }
       }
@@ -1017,7 +1016,7 @@ export default function HTTPMultiplayerPage() {
               attackerId: selectedUnit.id,
               targetQ: hex.q,
               targetR: hex.r,
-              playerID,
+              playerID: isSpectator ? 'spectator' : playerID,
             })
             return
           }
@@ -1175,31 +1174,8 @@ export default function HTTPMultiplayerPage() {
 
                 <div className="rounded-xl border border-slate-700/80 bg-slate-800/60 p-4">
                   <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">Role</div>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    <button
-                      type="button"
-                      onClick={() => setJoinAsSpectator(false)}
-                      className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${
-                        joinAsSpectator
-                          ? 'border-slate-700 bg-slate-900 text-slate-300'
-                          : 'border-amber-400 bg-amber-400/10 text-amber-200'
-                      }`}
-                    >
-                      🛡️ Join as Player
-                      <p className="mt-1 text-xs font-normal text-slate-400">Pick any slot once you enter the lobby.</p>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setJoinAsSpectator(true)}
-                      className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${
-                        joinAsSpectator
-                          ? 'border-emerald-400 bg-emerald-400/10 text-emerald-200'
-                          : 'border-slate-700 bg-slate-900 text-slate-300'
-                      }`}
-                    >
-                      👁️ Watch as Spectator
-                      <p className="mt-1 text-xs font-normal text-slate-400">Observe the battle live.</p>
-                    </button>
+                  <div className="mt-2 text-sm text-slate-300">
+                    Enter the lobby and pick any open role there (player, spectator, or waitlist).
                   </div>
                 </div>
 
@@ -1294,7 +1270,7 @@ export default function HTTPMultiplayerPage() {
                       disabled={loading}
                       className="rounded-xl bg-amber-500 px-4 py-3 text-sm font-bold text-white transition hover:bg-amber-400 disabled:bg-slate-600"
                     >
-                      {loading ? '🔄 Creating lobby...' : joinAsSpectator ? '👀 Create & Watch' : '➕ Create New Lobby'}
+                      {loading ? '🔄 Creating lobby...' : '➕ Create New Lobby'}
                     </button>
                     <button
                       onClick={fetchLobbyGames}
@@ -1367,21 +1343,12 @@ export default function HTTPMultiplayerPage() {
                         </div>
                         <div className="mt-4 flex flex-wrap gap-2">
                           <button
-                            onClick={() => joinLobbyGame(game.id, joinAsSpectator ? 'spectator' : undefined)}
+                            onClick={() => joinLobbyGame(game.id, undefined)}
                             disabled={loading}
                             className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:bg-slate-600"
                           >
-                            {joinAsSpectator ? '👀 Watch Lobby' : '🎯 Enter Lobby'}
+                            🎯 Enter Lobby
                           </button>
-                          {!joinAsSpectator && (
-                            <button
-                              onClick={() => joinLobbyGame(game.id, 'spectator')}
-                              disabled={loading}
-                              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-800"
-                            >
-                              👁️ Spectate
-                            </button>
-                          )}
                         </div>
                       </div>
                     )
@@ -1696,7 +1663,7 @@ export default function HTTPMultiplayerPage() {
                         <div className="flex items-center gap-1">
                           <span className="text-[11px] text-slate-500">Pick a team slot above</span>
                           {canKickFromLobby && (
-                            <button onClick={() => moveParticipant(entry.id, 'spectator')} className="rounded-full bg-slate-700 px-2 py-0.5 text-[11px] font-semibold text-white">Spectate</button>
+                            <button onClick={() => kickParticipant(entry.id)} className="rounded-full bg-rose-700 px-2 py-0.5 text-[11px] font-semibold text-white transition hover:bg-rose-600">Kick</button>
                           )}
                         </div>
                       </li>
