@@ -1247,22 +1247,24 @@ test('battle phase attack RNG is deterministic with identical rng seed', () => {
   assert.equal(attackerA.currentHP, attackerB.currentHP)
 })
 
-test('soft zone of control adds movement cost but does not hard-stop movement', () => {
-  const hexes = makeHexGrid(2)
+test('soft zone of control penalty applies only when moving from ZoC hex to another ZoC hex', () => {
+  const hexes = makeHexGrid(3)
   const terrainMap = makeTerrainMap(hexes)
   const mover = createUnit('SWORDSMAN', '0', 0, 0)
+  const enemyA = createUnit('SWORDSMAN', '1', 2, -1)
+  const enemyB = createUnit('SWORDSMAN', '1', 3, 0)
+
   mover.movePoints = 1
-  const enemy = createUnit('SWORDSMAN', '1', 2, 0)
+  let reachable = getReachableHexes(mover, hexes, [mover, enemyA, enemyB], terrainMap)
+  assert.equal(reachable.some((hex) => hex.q === 1 && hex.r === 0), true)
 
-  const withoutEnemy = getReachableHexes(mover, hexes, [mover], terrainMap)
-  assert.equal(withoutEnemy.some((hex) => hex.q === 1 && hex.r === 0), true)
+  mover.movePoints = 2
+  reachable = getReachableHexes(mover, hexes, [mover, enemyA, enemyB], terrainMap)
+  assert.equal(reachable.some((hex) => hex.q === 2 && hex.r === 0), false)
 
-  const withEnemy = getReachableHexes(mover, hexes, [mover, enemy], terrainMap)
-  assert.equal(withEnemy.some((hex) => hex.q === 1 && hex.r === 0), false)
-
-  mover.movePoints = 1.5
-  const withEnemyExtraMove = getReachableHexes(mover, hexes, [mover, enemy], terrainMap)
-  assert.equal(withEnemyExtraMove.some((hex) => hex.q === 1 && hex.r === 0), true)
+  mover.movePoints = 2.5
+  reachable = getReachableHexes(mover, hexes, [mover, enemyA, enemyB], terrainMap)
+  assert.equal(reachable.some((hex) => hex.q === 2 && hex.r === 0), true)
 })
 test('battle phase endTurn resets unit actions', () => {
   const ctx = { numPlayers: 2, playOrder: ['0', '1'], phase: 'battle' }

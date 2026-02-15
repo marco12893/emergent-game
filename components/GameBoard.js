@@ -814,12 +814,12 @@ const GameBoard = ({
                       >
                         {showAttackPreview
                           ? damagePreview.attackDamageMin !== undefined && damagePreview.attackDamageMax !== undefined
-                            ? `-${damagePreview.attackDamageMin}~${damagePreview.attackDamageMax}`
-                            : `-${damagePreview.attackDamage}`
+                            ? `~${Math.round((damagePreview.attackDamageMin + damagePreview.attackDamageMax) / 2)}`
+                            : `~${damagePreview.attackDamage}`
                           : damagePreview.counterDamageMin !== undefined && damagePreview.counterDamageMax !== undefined
-                            ? `-${damagePreview.counterDamageMin}~${damagePreview.counterDamageMax}`
+                            ? `~${Math.round((damagePreview.counterDamageMin + damagePreview.counterDamageMax) / 2)}`
                             : damagePreview.counterDamage > 0
-                              ? `-${damagePreview.counterDamage}`
+                              ? `~${damagePreview.counterDamage}`
                               : '0'}
                       </text>
                     )}

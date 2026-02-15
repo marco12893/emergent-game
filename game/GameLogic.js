@@ -289,14 +289,14 @@ const applyDamageVariance = ({ G, reducedDamage, defenseBonus = 0 }) => {
   }
 }
 
-const getSoftZoCSurcharge = ({ unit, targetHex, units = [], allHexes = [], teamMode = false }) => {
+const isHexInsideEnemyZoC = ({ unit, hex, units = [], allHexes = [], teamMode = false }) => {
   const adjacentHexes = getNeighbors({
-    q: targetHex.q,
-    r: targetHex.r,
-    s: -targetHex.q - targetHex.r,
+    q: hex.q,
+    r: hex.r,
+    s: -hex.q - hex.r,
   }, allHexes)
 
-  const hasEnemyZoC = adjacentHexes.some((adjacentHex) => {
+  return adjacentHexes.some((adjacentHex) => {
     const enemyUnit = getUnitAtHex(adjacentHex.q, adjacentHex.r, units)
     if (!enemyUnit || enemyUnit.currentHP <= 0) return false
     if (enemyUnit.id === unit.id) return false
@@ -304,8 +304,28 @@ const getSoftZoCSurcharge = ({ unit, targetHex, units = [], allHexes = [], teamM
     if (enemyUnit.isTransport) return false
     return enemyUnit.range >= 1
   })
+}
 
-  return hasEnemyZoC ? SOFT_ZOC_MOVE_PENALTY : 0
+const getSoftZoCSurcharge = ({ unit, fromHex, targetHex, units = [], allHexes = [], teamMode = false }) => {
+  const fromInsideZoC = isHexInsideEnemyZoC({
+    unit,
+    hex: fromHex,
+    units,
+    allHexes,
+    teamMode,
+  })
+
+  if (!fromInsideZoC) return 0
+
+  const targetInsideZoC = isHexInsideEnemyZoC({
+    unit,
+    hex: targetHex,
+    units,
+    allHexes,
+    teamMode,
+  })
+
+  return targetInsideZoC ? SOFT_ZOC_MOVE_PENALTY : 0
 }
 
 const getLowestMovementCost = ({ unit, start, target, allHexes, units, terrainMap, teamMode = false }) => {
@@ -345,6 +365,7 @@ const getLowestMovementCost = ({ unit, start, target, allHexes, units, terrainMa
       const baseMoveCost = getUnitMoveCost(unit, terrainData, terrainMap[key] || 'PLAIN', { embarking, disembarking })
       const zocSurcharge = getSoftZoCSurcharge({
         unit,
+        fromHex: current,
         targetHex: neighbor,
         units: occupiedUnits,
         allHexes,
@@ -708,6 +729,7 @@ export const getReachableHexes = (unit, allHexes, units, terrainMap, { teamMode 
       const baseMoveCost = getUnitMoveCost(unit, terrainData, terrainMap[`${neighbor.q},${neighbor.r}`] || 'PLAIN', { embarking, disembarking })
       const zocSurcharge = getSoftZoCSurcharge({
         unit,
+        fromHex: current,
         targetHex: neighbor,
         units: occupiedUnits,
         allHexes,

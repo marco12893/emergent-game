@@ -447,6 +447,7 @@ const getReachableHexes = (unit, allHexes, units, terrainMap, { teamMode = false
       const baseMoveCost = getUnitMoveCost(unit, terrainData, terrainMap[`${neighbor.q},${neighbor.r}`] || 'PLAIN', { embarking, disembarking })
       const zocSurcharge = getSoftZoCSurcharge({
         unit,
+        fromHex: current,
         targetHex: { q: sanitizedNeighborQ, r: sanitizedNeighborR },
         units: occupiedUnits,
         allHexes,
@@ -545,16 +546,22 @@ const applyDamageVariance = ({ game, reducedDamage, defenseBonus = 0 }) => {
   return { damage, roll }
 }
 
-const getSoftZoCSurcharge = ({ unit, targetHex, units = [], allHexes = [], teamMode = false }) => {
-  const adjacentHexes = getNeighbors({ q: targetHex.q, r: targetHex.r, s: -targetHex.q - targetHex.r }, allHexes)
-  const hasEnemyZoC = adjacentHexes.some((adjacentHex) => {
+const isHexInsideEnemyZoC = ({ unit, hex, units = [], allHexes = [], teamMode = false }) => {
+  const adjacentHexes = getNeighbors({ q: hex.q, r: hex.r, s: -hex.q - hex.r }, allHexes)
+  return adjacentHexes.some((adjacentHex) => {
     const enemyUnit = units.find((u) => u.q === adjacentHex.q && u.r === adjacentHex.r && u.currentHP > 0)
     if (!enemyUnit || enemyUnit.id === unit.id) return false
     if (!canUnitsFight(unit, enemyUnit, teamMode)) return false
     if (enemyUnit.isTransport) return false
     return enemyUnit.range >= 1
   })
-  return hasEnemyZoC ? SOFT_ZOC_MOVE_PENALTY : 0
+}
+
+const getSoftZoCSurcharge = ({ unit, fromHex, targetHex, units = [], allHexes = [], teamMode = false }) => {
+  const fromInsideZoC = isHexInsideEnemyZoC({ unit, hex: fromHex, units, allHexes, teamMode })
+  if (!fromInsideZoC) return 0
+  const targetInsideZoC = isHexInsideEnemyZoC({ unit, hex: targetHex, units, allHexes, teamMode })
+  return targetInsideZoC ? SOFT_ZOC_MOVE_PENALTY : 0
 }
 
 const getLowestMovementCost = ({ unit, start, target, allHexes, units, terrainMap, teamMode = false }) => {
@@ -587,7 +594,7 @@ const getLowestMovementCost = ({ unit, start, target, allHexes, units, terrainMa
       if (isHexOccupied(neighbor.q, neighbor.r, occupiedUnits)) continue
 
       const baseMoveCost = getUnitMoveCost(unit, terrainData, terrainMap[key] || 'PLAIN', { embarking, disembarking })
-      const zocSurcharge = getSoftZoCSurcharge({ unit, targetHex: neighbor, units: occupiedUnits, allHexes, teamMode })
+      const zocSurcharge = getSoftZoCSurcharge({ unit, fromHex: current, targetHex: neighbor, units: occupiedUnits, allHexes, teamMode })
       const nextCost = current.cost + baseMoveCost + zocSurcharge
       const existingCost = bestCostByHex.get(key)
       if (existingCost === undefined || nextCost < existingCost) {

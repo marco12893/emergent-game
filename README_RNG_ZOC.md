@@ -37,11 +37,11 @@ This document describes the two gameplay updates that were implemented:
 
 ### Rule implemented
 - Enemy units project a soft control zone around adjacent hexes.
-- Entering a hex that is adjacent to an enemy unit applies an additional movement surcharge.
+- Entering an enemy-ZoC hex applies the surcharge only when the unit is already in an enemy-ZoC hex (ZoC-to-ZoC movement).
 - Surcharge is currently **`+0.5` move points**.
 
 ### Design details
-- This is intentionally **soft** ZoC: movement is not blocked outright.
+- This is intentionally **soft** ZoC: movement is not blocked outright, and approaching from outside ZoC is not penalized.
 - If a unit has enough movement points, it can still move through threatened spaces.
 - ZoC is integrated into:
   - Reachability checks (highlighted/allowed moves)
