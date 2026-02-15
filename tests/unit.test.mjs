@@ -38,6 +38,12 @@ import {
   shouldShowUnitActionRing,
 } from '../game/unitActionIndicators.js'
 import {
+  DAMAGE_ANIMATION_DURATION,
+  DEATH_ANIMATION_DURATION,
+  getDamageAnimationFrame,
+  getDeathAnimationFrame,
+} from '../lib/unitAnimations.js'
+import {
   createUnit,
   getAttackableHexes,
   getDeployableHexes,
@@ -256,6 +262,32 @@ test('validatePayload sanitizes values and reports errors', () => {
 test('getMapConfig falls back to default map', () => {
   assert.equal(getMapConfig('MAP_1').id, 'MAP_1')
   assert.equal(getMapConfig('missing').id, DEFAULT_MAP_ID)
+})
+
+test('getDamageAnimationFrame returns animated shake and fades out by duration', () => {
+  const createdAt = 1000
+  const middleFrame = getDamageAnimationFrame({ now: createdAt + (DAMAGE_ANIMATION_DURATION / 2), createdAt })
+  assert.equal(middleFrame.active, true)
+  assert.ok(middleFrame.intensity > 0)
+  assert.ok(Math.abs(middleFrame.shakeX) <= 0.55)
+  assert.ok(middleFrame.flashOpacity > 0)
+
+  const expiredFrame = getDamageAnimationFrame({ now: createdAt + DAMAGE_ANIMATION_DURATION + 1, createdAt })
+  assert.equal(expiredFrame.active, false)
+})
+
+test('getDeathAnimationFrame expands ring and expires after configured duration', () => {
+  const createdAt = 500
+  const openingFrame = getDeathAnimationFrame({ now: createdAt + 1, createdAt })
+  const lateFrame = getDeathAnimationFrame({ now: createdAt + (DEATH_ANIMATION_DURATION * 0.8), createdAt })
+
+  assert.equal(openingFrame.active, true)
+  assert.equal(lateFrame.active, true)
+  assert.ok(lateFrame.ringRadius > openingFrame.ringRadius)
+  assert.ok(lateFrame.opacity < openingFrame.opacity)
+
+  const expired = getDeathAnimationFrame({ now: createdAt + DEATH_ANIMATION_DURATION + 1, createdAt })
+  assert.equal(expired.active, false)
 })
 
 test('generateMapData returns map config, hexes, and terrain', () => {
@@ -1325,18 +1357,24 @@ test('turn order playOrder skips inactive players in team mode', () => {
   assert.deepEqual(playOrder, ['0', '1', '3'])
 })
 
-test('getUnitVisionRange adjusts for hills and forests', () => {
+test('getUnitVisionRange adjusts for hills, forests, and dense urban terrain', () => {
   const unit = createUnit('SWORDSMAN', '0', 0, 0)
   const hexes = makeHexGrid(3)
   const terrainMap = makeTerrainMap(hexes, {
     '0,0': 'PLAIN',
     '1,0': 'FOREST',
     '2,0': 'HILLS',
+    '-1,0': 'CITY',
+    '-2,0': 'MOSQUE',
+    '-3,0': 'FLOOR',
   })
 
   assert.equal(getUnitVisionRange(unit, terrainMap), 3)
   assert.equal(getUnitVisionRange({ ...unit, q: 1, r: 0, s: -1 }, terrainMap), 2)
   assert.equal(getUnitVisionRange({ ...unit, q: 2, r: 0, s: -2 }, terrainMap), 5)
+  assert.equal(getUnitVisionRange({ ...unit, q: -1, r: 0, s: 1 }, terrainMap), 2)
+  assert.equal(getUnitVisionRange({ ...unit, q: -2, r: 0, s: 2 }, terrainMap), 2)
+  assert.equal(getUnitVisionRange({ ...unit, q: -3, r: 0, s: 3 }, terrainMap), 2)
 })
 
 test('getVisibleHexesForPlayer shares ally vision in team mode', () => {

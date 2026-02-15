@@ -5,6 +5,7 @@ import { HexGrid, Layout, Hexagon } from 'react-hexgrid'
 import { getUnitSpriteProps } from '@/game/teamUtils'
 import { shouldEmitDamageOnRemoval } from '@/game/GameLogic'
 import { shouldShowUnitActionRing } from '@/game/unitActionIndicators'
+import { getDamageAnimationFrame, getDeathAnimationFrame } from '@/lib/unitAnimations'
 
 // Terrain types with their properties
 const TERRAIN_TYPES = {
@@ -326,6 +327,7 @@ const GameBoard = ({
         if (damageTaken > 0 && !wasTransportToggle) {
           newEvents.push({
             id: `${unitId}-${createdAt}-${Math.random()}`,
+            type: 'damage',
             unitId,
             amount: damageTaken,
             createdAt,
@@ -337,6 +339,7 @@ const GameBoard = ({
       } else if (prevUnit.currentHP > 0 && shouldEmitDamageOnRemoval(phase, unitId, retreatedUnitIds)) {
         newEvents.push({
           id: `${unitId}-${createdAt}-${Math.random()}`,
+          type: 'death',
           unitId,
           amount: prevUnit.currentHP,
           createdAt,
@@ -955,6 +958,11 @@ const GameBoard = ({
                   ? '/units/high_morale.png'
                   : null
               const movementOffset = getMovementOffset(unit.id)
+              const activeDamageEvent = activeDamageEvents.find((event) => event.unitId === unit.id && event.type !== 'death')
+              const damageFrame = activeDamageEvent
+                ? getDamageAnimationFrame({ now, createdAt: activeDamageEvent.createdAt })
+                : { active: false }
+              const animatedUnitTransform = `translate(${movementOffset.x + (damageFrame.shakeX || 0)} ${movementOffset.y}) scale(${damageFrame.scale || 1})`
 
               return (
                 <g key={`unit-${hex.q}-${hex.r}-${hex.s}`} style={{ pointerEvents: 'none' }}>
@@ -967,7 +975,7 @@ const GameBoard = ({
                       stroke: 'none',
                     }}
                   >
-                    <g transform={`translate(${movementOffset.x} ${movementOffset.y})`}>
+                    <g transform={animatedUnitTransform}>
                       {/* Unit Image */}
                       <image
                         href={src}
@@ -981,6 +989,16 @@ const GameBoard = ({
                           opacity: unitOpacity,
                         }}
                       />
+
+                      {damageFrame.active && (
+                        <circle
+                          cx="0"
+                          cy="-0.3"
+                          r="5.9"
+                          fill="rgba(248, 113, 113, 0.26)"
+                          opacity={damageFrame.flashOpacity}
+                        />
+                      )}
                       
                       {(showAttackPreview || showCounterPreview) && (
                         <text
@@ -1059,6 +1077,9 @@ const GameBoard = ({
             {activeDamageEvents.map((event) => {
               const elapsed = now - event.createdAt
               const opacity = Math.max(0, 1 - elapsed / DAMAGE_DISPLAY_DURATION)
+              const deathFrame = event.type === 'death'
+                ? getDeathAnimationFrame({ now, createdAt: event.createdAt })
+                : { active: false }
               return (
                 <g key={`damage-${event.id}`} style={{ pointerEvents: 'none' }}>
                   <Hexagon
@@ -1081,6 +1102,31 @@ const GameBoard = ({
                     >
                       -{event.amount}
                     </text>
+
+                    {deathFrame.active && (
+                      <g transform={`translate(0 ${deathFrame.yOffset}) scale(${deathFrame.iconScale})`}>
+                        <circle
+                          cx="0"
+                          cy="-0.6"
+                          r={deathFrame.ringRadius}
+                          fill="none"
+                          stroke="rgba(248, 113, 113, 0.95)"
+                          strokeWidth={deathFrame.ringStrokeWidth}
+                          opacity={deathFrame.opacity}
+                        />
+                        <text
+                          x="0"
+                          y="-0.3"
+                          textAnchor="middle"
+                          fontSize="4.6"
+                          opacity={deathFrame.opacity}
+                          fill="rgba(254, 226, 226, 0.95)"
+                          style={{ fontWeight: '700' }}
+                        >
+                          ✖
+                        </text>
+                      </g>
+                    )}
                   </Hexagon>
                 </g>
               )

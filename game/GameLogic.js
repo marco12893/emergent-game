@@ -495,12 +495,15 @@ export const getHexesInRange = (centerHex, range, allHexes) => {
   })
 }
 
+const RESTRICTED_VISION_TERRAINS = new Set(['CITY', 'MOSQUE', 'BARRACKS', 'CATHEDRAL', 'CASTLE', 'FARM', 'HOSPITAL', 'LIBRARY', 'FLOOR', 'UNIVERSITY'])
+
 export const getUnitVisionRange = (unit, terrainMap = {}) => {
   if (!unit) return 0
   const terrainKey = `${unit.q},${unit.r}`
   const terrain = terrainMap[terrainKey] || 'PLAIN'
   if (terrain === 'HILLS') return 5
   if (terrain === 'FOREST') return 2
+  if (RESTRICTED_VISION_TERRAINS.has(terrain)) return 2
   return 3
 }
 
