@@ -108,14 +108,192 @@ const GameBoard = ({
   const containerRef = useRef(null)
   const previousUnitsRef = useRef(new Map())
   const [damageEvents, setDamageEvents] = useState([])
+  const [movementAnimations, setMovementAnimations] = useState({})
   const [now, setNow] = useState(Date.now())
+  const previousUnitPositionsRef = useRef(new Map())
+  const movementAnimationTimeoutsRef = useRef(new Map())
+
+  const getHexCenter = useCallback((q, r) => {
+    const spacing = 1.05
+    return {
+      x: HEX_SIZE * Math.sqrt(3) * (q + (r / 2)) * spacing,
+      y: HEX_SIZE * 1.5 * r * spacing,
+    }
+  }, [HEX_SIZE])
+
+  const getMovementPath = useCallback(({ unit, start, target, occupiedUnits }) => {
+    const startKey = `${start.q},${start.r}`
+    const targetKey = `${target.q},${target.r}`
+    const sourceHexes = hexes.length ? hexes : generateHexMap(mapWidth, mapHeight)
+    const hexLookup = new Map(sourceHexes.map((hex) => [`${hex.q},${hex.r}`, hex]))
+    const occupiedLookup = new Set(occupiedUnits.map((other) => `${other.q},${other.r}`))
+
+    const queue = [{ q: start.q, r: start.r, cost: 0 }]
+    const bestCostByHex = new Map([[startKey, 0]])
+    const previousByHex = new Map()
+
+    while (queue.length > 0) {
+      queue.sort((a, b) => a.cost - b.cost)
+      const current = queue.shift()
+      const currentKey = `${current.q},${current.r}`
+      if (bestCostByHex.get(currentKey) !== current.cost) continue
+
+      if (currentKey === targetKey) {
+        const path = [{ q: target.q, r: target.r }]
+        let walker = targetKey
+        while (previousByHex.has(walker)) {
+          const prev = previousByHex.get(walker)
+          path.unshift({ q: prev.q, r: prev.r })
+          walker = `${prev.q},${prev.r}`
+        }
+        return path
+      }
+
+      const neighbors = [
+        { q: current.q + 1, r: current.r },
+        { q: current.q - 1, r: current.r },
+        { q: current.q, r: current.r + 1 },
+        { q: current.q, r: current.r - 1 },
+        { q: current.q + 1, r: current.r - 1 },
+        { q: current.q - 1, r: current.r + 1 },
+      ]
+
+      for (const neighbor of neighbors) {
+        const neighborKey = `${neighbor.q},${neighbor.r}`
+        const neighborHex = hexLookup.get(neighborKey)
+        if (!neighborHex) continue
+        if (neighborKey !== targetKey && occupiedLookup.has(neighborKey)) continue
+
+        const terrainData = TERRAIN_TYPES[getTerrainType(neighbor.q, neighbor.r, terrainMap)] || TERRAIN_TYPES.PLAIN
+        const isWater = terrainData.name === 'Water'
+        const isNaval = unit.isNaval || false
+        const isTransport = unit.isTransport || false
+        const embarking = isWater && !isNaval && !isTransport
+        const disembarking = !isWater && isTransport
+
+        if ((terrainData.impassable && !isWater) || (isWater && !isNaval && !isTransport && unit.movePoints < unit.maxMovePoints)) continue
+        if (!isWater && isNaval && !isTransport) continue
+        if (disembarking && unit.movePoints < unit.maxMovePoints) continue
+
+        let moveCost = 1
+        if (unit.type === 'KNIGHT') {
+          const terrainKey = getTerrainType(neighbor.q, neighbor.r, terrainMap)
+          moveCost = ['CITY', 'BARRACKS', 'CASTLE', 'CATHEDRAL', 'FARM', 'LIBRARY', 'MOSQUE', 'HOSPITAL', 'UNIVERSITY'].includes(terrainKey) ? 2 : 1
+        }
+        if (embarking || disembarking) {
+          moveCost = unit.maxMovePoints
+        }
+
+        const nextCost = current.cost + moveCost
+        const previousBest = bestCostByHex.get(neighborKey)
+        if (previousBest === undefined || nextCost < previousBest) {
+          bestCostByHex.set(neighborKey, nextCost)
+          previousByHex.set(neighborKey, { q: current.q, r: current.r })
+          queue.push({ q: neighbor.q, r: neighbor.r, cost: nextCost })
+        }
+      }
+    }
+
+    return [{ q: start.q, r: start.r }, { q: target.q, r: target.r }]
+  }, [hexes, mapWidth, mapHeight, terrainMap])
 
   useEffect(() => {
     const interval = setInterval(() => {
       setNow(Date.now())
-    }, 100)
+    }, 16)
     return () => clearInterval(interval)
   }, [])
+
+  useEffect(() => {
+    return () => {
+      movementAnimationTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId))
+    }
+  }, [])
+
+  useEffect(() => {
+    const previousPositions = previousUnitPositionsRef.current
+    const nextPositions = new Map(units.map((unit) => [unit.id, { q: unit.q, r: unit.r }]))
+
+    if (previousPositions.size === 0) {
+      previousUnitPositionsRef.current = nextPositions
+      return
+    }
+
+    const nextAnimations = {}
+    units.forEach((unit) => {
+      const previous = previousPositions.get(unit.id)
+      if (!previous || (previous.q === unit.q && previous.r === unit.r)) return
+
+      const path = getMovementPath({
+        unit,
+        start: previous,
+        target: { q: unit.q, r: unit.r },
+        occupiedUnits: units.filter((other) => other.id !== unit.id),
+      })
+      if (path.length < 2) return
+
+      const targetCenter = getHexCenter(unit.q, unit.r)
+      const points = path.map((step) => {
+        const stepCenter = getHexCenter(step.q, step.r)
+        return {
+          x: stepCenter.x - targetCenter.x,
+          y: stepCenter.y - targetCenter.y,
+        }
+      })
+      const durationMs = Math.min(1200, Math.max(250, (path.length - 1) * 180))
+
+      const animationKey = `${unit.id}-${Date.now()}`
+      nextAnimations[unit.id] = {
+        animationKey,
+        points,
+        startedAt: Date.now(),
+        durationMs,
+      }
+
+      const existingTimeout = movementAnimationTimeoutsRef.current.get(unit.id)
+      if (existingTimeout) clearTimeout(existingTimeout)
+      const timeoutId = setTimeout(() => {
+        setMovementAnimations((current) => {
+          if (!current[unit.id] || current[unit.id].animationKey !== animationKey) {
+            return current
+          }
+          const updated = { ...current }
+          delete updated[unit.id]
+          return updated
+        })
+        movementAnimationTimeoutsRef.current.delete(unit.id)
+      }, durationMs + 80)
+      movementAnimationTimeoutsRef.current.set(unit.id, timeoutId)
+    })
+
+    if (Object.keys(nextAnimations).length > 0) {
+      setMovementAnimations((current) => ({ ...current, ...nextAnimations }))
+    }
+
+    previousUnitPositionsRef.current = nextPositions
+  }, [units, getHexCenter, getMovementPath])
+
+  const getMovementOffset = useCallback((unitId) => {
+    const animation = movementAnimations[unitId]
+    if (!animation || !Array.isArray(animation.points) || animation.points.length < 2) {
+      return { x: 0, y: 0 }
+    }
+
+    const elapsed = Math.max(0, now - animation.startedAt)
+    const progress = Math.min(1, elapsed / animation.durationMs)
+    const segmentCount = animation.points.length - 1
+    const rawSegment = progress * segmentCount
+    const segmentIndex = Math.min(segmentCount - 1, Math.floor(rawSegment))
+    const segmentProgress = rawSegment - segmentIndex
+
+    const from = animation.points[segmentIndex]
+    const to = animation.points[segmentIndex + 1]
+
+    return {
+      x: from.x + ((to.x - from.x) * segmentProgress),
+      y: from.y + ((to.y - from.y) * segmentProgress),
+    }
+  }, [movementAnimations, now])
 
   useEffect(() => {
     if (damageEvents.length === 0) return
@@ -776,6 +954,7 @@ const GameBoard = ({
                 : unit.morale === 'HIGH'
                   ? '/units/high_morale.png'
                   : null
+              const movementOffset = getMovementOffset(unit.id)
 
               return (
                 <g key={`unit-${hex.q}-${hex.r}-${hex.s}`} style={{ pointerEvents: 'none' }}>
@@ -788,87 +967,89 @@ const GameBoard = ({
                       stroke: 'none',
                     }}
                   >
-                    {/* Unit Image */}
-                    <image
-                      href={src}
-                      x={unit.isTransport ? '-6' : '-5'}
-                      y={unit.isTransport ? '-8' : '-7'}
-                      width={unit.isTransport ? '12' : '10'}
-                      height={unit.isTransport ? '16' : '14'}
-                      style={{ 
-                        pointerEvents: 'none',
-                        filter: filterStyle,
-                        opacity: unitOpacity,
-                      }}
-                    />
-                    
-                    {(showAttackPreview || showCounterPreview) && (
-                      <text
-                        x="0"
-                        y="-7.5"
-                        textAnchor="middle"
-                        fontSize="3"
-                        fill={showAttackPreview ? '#FCA5A5' : '#FCD34D'}
-                        opacity="0.6"
-                        style={{ pointerEvents: 'none', fontWeight: '700' }}
-                      >
-                        {showAttackPreview
-                          ? damagePreview.attackDamageMin !== undefined && damagePreview.attackDamageMax !== undefined
-                            ? `~${Math.round((damagePreview.attackDamageMin + damagePreview.attackDamageMax) / 2)}`
-                            : `~${damagePreview.attackDamage}`
-                          : damagePreview.counterDamageMin !== undefined && damagePreview.counterDamageMax !== undefined
-                            ? `~${Math.round((damagePreview.counterDamageMin + damagePreview.counterDamageMax) / 2)}`
-                            : damagePreview.counterDamage > 0
-                              ? `~${damagePreview.counterDamage}`
-                              : '0'}
-                      </text>
-                    )}
+                    <g transform={`translate(${movementOffset.x} ${movementOffset.y})`}>
+                      {/* Unit Image */}
+                      <image
+                        href={src}
+                        x={unit.isTransport ? '-6' : '-5'}
+                        y={unit.isTransport ? '-8' : '-7'}
+                        width={unit.isTransport ? '12' : '10'}
+                        height={unit.isTransport ? '16' : '14'}
+                        style={{ 
+                          pointerEvents: 'none',
+                          filter: filterStyle,
+                          opacity: unitOpacity,
+                        }}
+                      />
+                      
+                      {(showAttackPreview || showCounterPreview) && (
+                        <text
+                          x="0"
+                          y="-7.5"
+                          textAnchor="middle"
+                          fontSize="3"
+                          fill={showAttackPreview ? '#FCA5A5' : '#FCD34D'}
+                          opacity="0.6"
+                          style={{ pointerEvents: 'none', fontWeight: '700' }}
+                        >
+                          {showAttackPreview
+                            ? damagePreview.attackDamageMin !== undefined && damagePreview.attackDamageMax !== undefined
+                              ? `~${Math.round((damagePreview.attackDamageMin + damagePreview.attackDamageMax) / 2)}`
+                              : `~${damagePreview.attackDamage}`
+                            : damagePreview.counterDamageMin !== undefined && damagePreview.counterDamageMax !== undefined
+                              ? `~${Math.round((damagePreview.counterDamageMin + damagePreview.counterDamageMax) / 2)}`
+                              : damagePreview.counterDamage > 0
+                                ? `~${damagePreview.counterDamage}`
+                                : '0'}
+                        </text>
+                      )}
 
-                    {/* Selection indicator */}
-                    {isUnitSelected && (
-                      <circle
-                        cx="0"
-                        cy="0"
-                        r="6"
-                        fill="none"
-                        stroke="#FBBF24"
-                        strokeWidth="0.4"
-                        opacity="0.8"
-                      />
-                    )}
-                    
-                    {/* HP bar */}
-                    <g transform="translate(-5, 4.0)" style={{ filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.9))' }}>
-                      <rect
-                        x="0"
-                        y="0"
-                        width="10"
-                        height="1.6"
-                        fill="rgba(15, 23, 42, 0.9)"
-                        stroke="#E2E8F0"
-                        strokeWidth="0.1"
-                        rx="0.3"
-                      />
-                      <rect 
-                        x="0" 
-                        y="0" 
-                        width={10 * (unit.currentHP / unit.maxHP)} 
-                        height="1.6" 
-                        fill={unit.currentHP / unit.maxHP > 0.5 ? '#22C55E' : unit.currentHP / unit.maxHP > 0.25 ? '#EAB308' : '#EF4444'} 
-                        stroke="#F8FAFC"
-                        strokeWidth="0.08"
-                        rx="0.3" 
-                      />
-                      {moraleIconHref && (
-                        <image
-                          href={moraleIconHref}
-                          x="6.5"
-                          y="-3.8"
-                          width="3.6"
-                          height="3.6"
-                          style={{ pointerEvents: 'none' }}
+                      {/* Selection indicator */}
+                      {isUnitSelected && (
+                        <circle
+                          cx="0"
+                          cy="0"
+                          r="6"
+                          fill="none"
+                          stroke="#FBBF24"
+                          strokeWidth="0.4"
+                          opacity="0.8"
                         />
                       )}
+                      
+                      {/* HP bar */}
+                      <g transform="translate(-5, 4.0)" style={{ filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.9))' }}>
+                        <rect
+                          x="0"
+                          y="0"
+                          width="10"
+                          height="1.6"
+                          fill="rgba(15, 23, 42, 0.9)"
+                          stroke="#E2E8F0"
+                          strokeWidth="0.1"
+                          rx="0.3"
+                        />
+                        <rect 
+                          x="0" 
+                          y="0" 
+                          width={10 * (unit.currentHP / unit.maxHP)} 
+                          height="1.6" 
+                          fill={unit.currentHP / unit.maxHP > 0.5 ? '#22C55E' : unit.currentHP / unit.maxHP > 0.25 ? '#EAB308' : '#EF4444'} 
+                          stroke="#F8FAFC"
+                          strokeWidth="0.08"
+                          rx="0.3" 
+                        />
+                        {moraleIconHref && (
+                          <image
+                            href={moraleIconHref}
+                            x="6.5"
+                            y="-3.8"
+                            width="3.6"
+                            height="3.6"
+                            style={{ pointerEvents: 'none' }}
+                          />
+                        )}
+                      </g>
                     </g>
                   </Hexagon>
                 </g>
