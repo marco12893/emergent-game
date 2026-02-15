@@ -797,7 +797,7 @@ export async function POST(request) {
       game.leaderId = '0'
     }
     if (typeof game.fogOfWarEnabled !== 'boolean') {
-      game.fogOfWarEnabled = false
+      game.fogOfWarEnabled = true
     }
     if (!Array.isArray(game.retreatedUnits)) {
       game.retreatedUnits = []
@@ -819,6 +819,103 @@ export async function POST(request) {
     // Handle different game actions
     try {
       switch (gameAction) {
+        case 'setWinterMode': {
+          const winterSchema = {
+            playerID: { required: true, sanitize: sanitizePlayerID },
+          }
+          const winterValidation = validatePayload(payload, winterSchema)
+          if (winterValidation.error) {
+            return NextResponse.json({
+              error: 'Invalid payload for setWinterMode: ' + winterValidation.error
+            }, {
+              status: 400,
+              headers: ACTION_CORS_HEADERS
+            })
+          }
+
+          const { playerID: winterPlayerID } = winterValidation.sanitized
+          if (!winterPlayerID || winterPlayerID === 'spectator' || !isValidPlayerForGame(winterPlayerID, game)) {
+            return NextResponse.json({
+              error: 'Invalid playerID for setWinterMode'
+            }, { status: 400, headers: ACTION_CORS_HEADERS })
+          }
+
+          if (game.phase !== 'lobby') {
+            return NextResponse.json({
+              error: 'Winter mode can only be updated in the lobby'
+            }, { status: 400, headers: ACTION_CORS_HEADERS })
+          }
+
+          if (game.leaderId && game.leaderId !== winterPlayerID) {
+            return NextResponse.json({
+              error: 'Only the lobby leader can update winter mode settings'
+            }, { status: 403, headers: ACTION_CORS_HEADERS })
+          }
+
+          const enabled = Boolean(payload?.enabled)
+          game.isWinter = enabled
+          game.log.push(`Winter visuals ${enabled ? 'enabled' : 'disabled'} in the lobby.`)
+          break
+        }
+
+        case 'setTeamMode': {
+          const teamSchema = {
+            playerID: { required: true, sanitize: sanitizePlayerID },
+          }
+          const teamValidation = validatePayload(payload, teamSchema)
+          if (teamValidation.error) {
+            return NextResponse.json({
+              error: 'Invalid payload for setTeamMode: ' + teamValidation.error
+            }, {
+              status: 400,
+              headers: ACTION_CORS_HEADERS
+            })
+          }
+
+          const { playerID: teamPlayerID } = teamValidation.sanitized
+          if (!teamPlayerID || teamPlayerID === 'spectator' || !isValidPlayerForGame(teamPlayerID, game)) {
+            return NextResponse.json({
+              error: 'Invalid playerID for setTeamMode'
+            }, { status: 400, headers: ACTION_CORS_HEADERS })
+          }
+
+          if (game.phase !== 'lobby') {
+            return NextResponse.json({
+              error: 'Team mode can only be updated in the lobby'
+            }, { status: 400, headers: ACTION_CORS_HEADERS })
+          }
+
+          if (game.leaderId && game.leaderId !== teamPlayerID) {
+            return NextResponse.json({
+              error: 'Only the lobby leader can update team mode settings'
+            }, { status: 403, headers: ACTION_CORS_HEADERS })
+          }
+
+          const enabled = Boolean(payload?.enabled)
+          if (!enabled) {
+            const hasTeamTwoSlotsFilled = Object.keys(game.players || {}).some((id) => Number.parseInt(id, 10) >= 2)
+            if (hasTeamTwoSlotsFilled) {
+              return NextResponse.json({
+                error: 'Cannot disable team mode while players occupy Green/Yellow slots'
+              }, { status: 400, headers: ACTION_CORS_HEADERS })
+            }
+          }
+
+          game.teamMode = enabled
+          game.maxPlayers = enabled ? 4 : 2
+          game.attackerId = enabled ? 'blue-green' : '0'
+          game.defenderId = enabled ? 'red-yellow' : '1'
+
+          const nextPlayersReady = {}
+          for (let i = 0; i < game.maxPlayers; i += 1) {
+            nextPlayersReady[String(i)] = Boolean(game.playersReady?.[String(i)])
+          }
+          game.playersReady = nextPlayersReady
+
+          game.log.push(`Team mode ${enabled ? 'enabled (2v2)' : 'disabled (1v1)'} in the lobby.`)
+          break
+        }
+
         case 'setFogOfWar': {
           const fogSchema = {
             playerID: { required: true, sanitize: sanitizePlayerID },

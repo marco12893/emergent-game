@@ -151,8 +151,6 @@ export default function HTTPMultiplayerPage() {
   const [selectedMapId, setSelectedMapId] = useState(DEFAULT_MAP_ID)
   const [customMapConfig, setCustomMapConfig] = useState(null)
   const [showMapBuilder, setShowMapBuilder] = useState(false)
-  const [isWinter, setIsWinter] = useState(false)
-  const [teamModeEnabled, setTeamModeEnabled] = useState(false)
   const [storedSession, setStoredSession] = useState(null)
   const [selectedUnitType, setSelectedUnitType] = useState('SWORDSMAN')
   const [error, setError] = useState('')
@@ -739,7 +737,7 @@ export default function HTTPMultiplayerPage() {
     })
   }, [gameState, hoveredHex, isMyTurn, playerID, teamMode, visibleUnits])
 
-  const joinLobbyGame = async (gameId, requestedPlayerID, mapId, winter) => {
+  const joinLobbyGame = async (gameId, requestedPlayerID, mapId) => {
     if (!gameId) {
       setError('Lobby ID not found.')
       return
@@ -756,8 +754,6 @@ export default function HTTPMultiplayerPage() {
         gameId,
         playerName: playerName || undefined,
         mapId: mapId || undefined,
-        winter: typeof winter === 'boolean' ? winter : undefined,
-        teamMode: teamModeEnabled,
       }
       if (mapId === 'CUSTOM' && customMapConfig) {
         payload.customMap = customMapConfig
@@ -808,7 +804,7 @@ export default function HTTPMultiplayerPage() {
     const newLobbyId = Array.from({ length: 4 }, () =>
       String.fromCharCode(65 + Math.floor(Math.random() * 26))
     ).join('')
-    await joinLobbyGame(newLobbyId, undefined, selectedMapId, isWinter)
+    await joinLobbyGame(newLobbyId, undefined, selectedMapId)
   }
 
   const sendAction = async (action, payload) => {
@@ -1139,9 +1135,8 @@ export default function HTTPMultiplayerPage() {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
-              <span className="rounded-full bg-slate-800/80 px-3 py-1">Mode: {teamModeEnabled ? '2v2 Team Battle' : '1v1 Duel'}</span>
               <span className="rounded-full bg-slate-800/80 px-3 py-1">Map: {selectedMapId === 'CUSTOM' ? (customMapConfig?.name || 'Custom Map') : MAPS[selectedMapId]?.name}</span>
-              <span className="rounded-full bg-slate-800/80 px-3 py-1">Season: {isWinter ? 'Winter' : 'Standard'}</span>
+              <span className="rounded-full bg-slate-800/80 px-3 py-1">Mode/Season: Set by lobby leader</span>
             </div>
           </div>
 
@@ -1178,13 +1173,6 @@ export default function HTTPMultiplayerPage() {
                   />
                 </div>
 
-                <div className="rounded-xl border border-slate-700/80 bg-slate-800/60 p-4">
-                  <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">Role</div>
-                  <div className="mt-2 text-sm text-slate-300">
-                    Enter the lobby and pick any open role there (player, spectator, or waitlist).
-                  </div>
-                </div>
-
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
                     Map selection
@@ -1204,34 +1192,6 @@ export default function HTTPMultiplayerPage() {
                   <p className="mt-2 text-xs text-slate-400">
                     {selectedMapId === 'CUSTOM' ? (customMapConfig?.description || 'Use map builder to create/import map JSON.') : MAPS[selectedMapId]?.description}
                   </p>
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="flex h-full items-start gap-2 rounded-xl border border-slate-700/80 bg-slate-800/60 p-4 text-sm text-slate-200">
-                    <input
-                      type="checkbox"
-                      checked={isWinter}
-                      onChange={(e) => setIsWinter(e.target.checked)}
-                      className="mt-0.5 h-4 w-4 rounded border-slate-500 bg-slate-700 text-amber-400 focus:ring-amber-400"
-                    />
-                    <span>
-                      <span className="block font-semibold text-slate-100">Winter visuals</span>
-                      <span className="text-xs text-slate-400">Snowy map art only.</span>
-                    </span>
-                  </label>
-
-                  <label className="flex h-full items-start gap-2 rounded-xl border border-slate-700/80 bg-slate-800/60 p-4 text-sm text-slate-200">
-                    <input
-                      type="checkbox"
-                      checked={teamModeEnabled}
-                      onChange={(e) => setTeamModeEnabled(e.target.checked)}
-                      className="mt-0.5 h-4 w-4 rounded border-slate-500 bg-slate-700 text-amber-400 focus:ring-amber-400"
-                    />
-                    <span>
-                      <span className="block font-semibold text-slate-100">2v2 Team battle</span>
-                      <span className="text-xs text-slate-400">Supports up to 4 players.</span>
-                    </span>
-                  </label>
                 </div>
 
                 <div className="grid gap-3">
@@ -1402,8 +1362,12 @@ export default function HTTPMultiplayerPage() {
     const teamTwoSlots = teamSlotConfig.filter(slot => slot.team === 'TEAM 2')
     const playerCount = Object.keys(lobbyPlayers).length
     const canStartMatch = playerID === lobbyLeaderId && playerCount >= 2
-    const canToggleFog = playerID === lobbyLeaderId && playerID !== 'spectator'
+    const canChangeLobbySettings = playerID === lobbyLeaderId && playerID !== 'spectator'
     const lobbyFogEnabled = Boolean(gameState?.fogOfWarEnabled)
+    const lobbyIsWinter = Boolean(gameState?.isWinter)
+    const canDisableTeamMode = teamMode
+      ? !Object.keys(lobbyPlayers).some((id) => Number.parseInt(id, 10) >= 2)
+      : true
 
     const canKickFromLobby = !isObserver && playerID === lobbyLeaderId
 
@@ -1517,25 +1481,66 @@ export default function HTTPMultiplayerPage() {
                 </div>
                 <div className="flex items-center justify-between rounded-lg bg-slate-800/70 px-3 py-2">
                   <div>
+                    <div className="text-slate-200">Winter visuals</div>
+                    <div className="text-[11px] text-slate-400">Snowy map art only.</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => sendAction('setWinterMode', { playerID, enabled: !lobbyIsWinter })}
+                    disabled={!canChangeLobbySettings}
+                    className={`rounded-full px-3 py-1 text-[11px] font-semibold transition ${
+                      lobbyIsWinter
+                        ? 'bg-cyan-500/20 text-cyan-200'
+                        : 'bg-slate-700 text-slate-200'
+                    } ${canChangeLobbySettings ? 'hover:bg-cyan-500/30' : 'opacity-60 cursor-not-allowed'}`}
+                  >
+                    {lobbyIsWinter ? 'Winter' : 'Standard'}
+                  </button>
+                </div>
+                <div className="flex items-center justify-between rounded-lg bg-slate-800/70 px-3 py-2">
+                  <div>
+                    <div className="text-slate-200">Game mode</div>
+                    <div className="text-[11px] text-slate-400">Duel (1v1) or Team Battle (2v2).</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => sendAction('setTeamMode', { playerID, enabled: !teamMode })}
+                    disabled={!canChangeLobbySettings || (teamMode && !canDisableTeamMode)}
+                    className={`rounded-full px-3 py-1 text-[11px] font-semibold transition ${
+                      teamMode
+                        ? 'bg-blue-500/20 text-blue-200'
+                        : 'bg-slate-700 text-slate-200'
+                    } ${(canChangeLobbySettings && (canDisableTeamMode || !teamMode)) ? 'hover:bg-blue-500/30' : 'opacity-60 cursor-not-allowed'}`}
+                  >
+                    {teamMode ? '2v2 Enabled' : '1v1 Enabled'}
+                  </button>
+                </div>
+                <div className="flex items-center justify-between rounded-lg bg-slate-800/70 px-3 py-2">
+                  <div>
                     <div className="text-slate-200">Fog of war</div>
                     <div className="text-[11px] text-slate-400">Shared team vision + concealment.</div>
                   </div>
                   <button
                     type="button"
                     onClick={() => sendAction('setFogOfWar', { playerID, enabled: !lobbyFogEnabled })}
-                    disabled={!canToggleFog}
+                    disabled={!canChangeLobbySettings}
                     className={`rounded-full px-3 py-1 text-[11px] font-semibold transition ${
                       lobbyFogEnabled
                         ? 'bg-emerald-500/20 text-emerald-200'
                         : 'bg-slate-700 text-slate-200'
-                    } ${canToggleFog ? 'hover:bg-emerald-500/30' : 'opacity-60 cursor-not-allowed'}`}
+                    } ${canChangeLobbySettings ? 'hover:bg-emerald-500/30' : 'opacity-60 cursor-not-allowed'}`}
                   >
                     {lobbyFogEnabled ? 'Enabled' : 'Disabled'}
                   </button>
                 </div>
-                {!canToggleFog && (
+                {!canChangeLobbySettings && (
                   <div className="text-[11px] text-slate-500">
-                    Only the lobby leader can change fog settings.
+                    Only the lobby leader can change lobby settings.
+                  </div>
+                )}
+                {teamMode && !canDisableTeamMode && (
+                  <div className="text-[11px] text-slate-500">
+                    2v2 cannot be disabled while players occupy Green/Yellow slots.
                   </div>
                 )}
               </div>
