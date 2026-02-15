@@ -1,29 +1,126 @@
 'use client'
 
 import React, { useMemo, useCallback, useState, useRef, useEffect } from 'react'
-import { HexGrid, Layout, Hexagon } from 'react-hexgrid'
+import { HexGrid, Layout, Hexagon, HexUtils } from 'react-hexgrid'
 import { getUnitSpriteProps } from '@/game/teamUtils'
 import { shouldEmitDamageOnRemoval } from '@/game/GameLogic'
 import { shouldShowUnitActionRing } from '@/game/unitActionIndicators'
 
 // Terrain types with their properties
 const TERRAIN_TYPES = {
-  PLAIN: { name: 'Plain', color: '#8B9556', defenseBonus: 0 },
-  FOREST: { name: 'Forest', color: '#2D5A27', defenseBonus: 2 },
-  CITY: { name: 'City', color: '#7C2D12', defenseBonus: 5 },
-  BARRACKS: { name: 'Barracks', color: '#7C2D12', defenseBonus: 5 },
-  CASTLE: { name: 'Castle', color: '#7C2D12', defenseBonus: 5 },
-  CATHEDRAL: { name: 'Cathedral', color: '#7C2D12', defenseBonus: 5 },
-  FARM: { name: 'Farm', color: '#7C2D12', defenseBonus: 5 },
-  LIBRARY: { name: 'Library', color: '#7C2D12', defenseBonus: 5 },
-  MOSQUE: { name: 'Mosque', color: '#7C2D12', defenseBonus: 5 },
-  HOSPITAL: { name: 'Hospital', color: '#7C2D12', defenseBonus: 5 },
-  UNIVERSITY: { name: 'University', color: '#7C2D12', defenseBonus: 5 },
-  MOUNTAIN: { name: 'Mountain', color: '#6B7280', impassable: true },
-  HILLS: { name: 'Hills', color: '#A16207', defenseBonus: 1 },
-  WALL: { name: 'Wall', color: '#64748B', impassable: true, maxHP: 100 },
-  FLOOR: { name: 'Floor', color: '#9CA3AF', defenseBonus: 0 },
-  WATER: { name: 'Water', color: '#2563EB', impassable: true },
+  PLAIN: { name: 'Plain', color: '#8B9556', defenseBonus: 0, moveCost: 1, passable: true, waterOnly: false },
+  FOREST: { name: 'Forest', color: '#2D5A27', defenseBonus: 2, moveCost: 2, passable: true, waterOnly: false },
+  CITY: { name: 'City', color: '#7C2D12', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  BARRACKS: { name: 'Barracks', color: '#7C2D12', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  CASTLE: { name: 'Castle', color: '#7C2D12', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  CATHEDRAL: { name: 'Cathedral', color: '#7C2D12', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  FARM: { name: 'Farm', color: '#7C2D12', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  LIBRARY: { name: 'Library', color: '#7C2D12', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  MOSQUE: { name: 'Mosque', color: '#7C2D12', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  HOSPITAL: { name: 'Hospital', color: '#7C2D12', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  UNIVERSITY: { name: 'University', color: '#7C2D12', defenseBonus: 5, moveCost: 1, passable: true, waterOnly: false },
+  MOUNTAIN: { name: 'Mountain', color: '#6B7280', impassable: true, moveCost: Infinity, passable: false, waterOnly: false },
+  HILLS: { name: 'Hills', color: '#A16207', defenseBonus: 1, moveCost: 2, passable: true, waterOnly: false },
+  WALL: { name: 'Wall', color: '#64748B', impassable: true, maxHP: 100, moveCost: Infinity, passable: false, waterOnly: false },
+  FLOOR: { name: 'Floor', color: '#9CA3AF', defenseBonus: 0, moveCost: 0.5, passable: true, waterOnly: false },
+  WATER: { name: 'Water', color: '#2563EB', impassable: true, moveCost: 1, passable: true, waterOnly: true },
+}
+
+const KNIGHT_PENALTY_TERRAINS = new Set(['CITY', 'CASTLE', 'BARRACKS', 'CATHEDRAL', 'MOSQUE', 'HOSPITAL', 'UNIVERSITY', 'LIBRARY', 'FARM'])
+const CATAPULT_TYPE = 'CATAPULT'
+const KNIGHT_TYPE = 'KNIGHT'
+
+const getTerrainDataForAnimation = (terrainMap, q, r) => {
+  const terrainType = terrainMap?.[`${q},${r}`] || 'PLAIN'
+  return {
+    terrainType,
+    terrainData: TERRAIN_TYPES[terrainType] || TERRAIN_TYPES.PLAIN,
+  }
+}
+
+const getMoveCostForAnimation = (unit, terrainData, terrainType, { embarking, disembarking }) => {
+  if (embarking || disembarking) return unit.maxMovePoints || 1
+
+  const isCatapult = unit.baseType === CATAPULT_TYPE || unit.type === CATAPULT_TYPE
+  if (isCatapult && terrainType === 'HILLS') return 1
+
+  const isKnight = unit.baseType === KNIGHT_TYPE || unit.type === KNIGHT_TYPE
+  if (isKnight && KNIGHT_PENALTY_TERRAINS.has(terrainType)) return 2
+
+  return terrainData.moveCost
+}
+
+const findUnitMovementPath = ({ unit, from, to, allHexes, allUnits, terrainMap }) => {
+  if (from.q === to.q && from.r === to.r) return [from]
+
+  const validHexes = new Set(allHexes.map((hex) => `${hex.q},${hex.r}`))
+  const occupied = new Set(
+    allUnits
+      .filter((candidate) => candidate.id !== unit.id && candidate.currentHP > 0)
+      .map((candidate) => `${candidate.q},${candidate.r}`)
+  )
+
+  occupied.delete(`${to.q},${to.r}`)
+
+  const bestCost = new Map()
+  const parent = new Map()
+  const queue = [{ ...from, s: -from.q - from.r, cost: 0 }]
+  bestCost.set(`${from.q},${from.r}`, 0)
+
+  while (queue.length > 0) {
+    queue.sort((a, b) => a.cost - b.cost)
+    const current = queue.shift()
+    const currentKey = `${current.q},${current.r}`
+    if (bestCost.get(currentKey) !== current.cost) continue
+    if (current.q === to.q && current.r === to.r) break
+
+    const neighbors = [
+      { q: current.q + 1, r: current.r },
+      { q: current.q + 1, r: current.r - 1 },
+      { q: current.q, r: current.r - 1 },
+      { q: current.q - 1, r: current.r },
+      { q: current.q - 1, r: current.r + 1 },
+      { q: current.q, r: current.r + 1 },
+    ]
+
+    neighbors.forEach((neighbor) => {
+      const neighborKey = `${neighbor.q},${neighbor.r}`
+      if (!validHexes.has(neighborKey)) return
+      if (occupied.has(neighborKey)) return
+
+      const { terrainType, terrainData } = getTerrainDataForAnimation(terrainMap, neighbor.q, neighbor.r)
+      if (!terrainData.passable) return
+
+      const isWater = terrainData.waterOnly
+      const isNaval = unit.isNaval || false
+      const isTransport = unit.isTransport || false
+      const embarking = isWater && !isNaval && !isTransport
+      const disembarking = !isWater && isTransport
+
+      if (isWater && !isNaval && !isTransport) return
+      if (!isWater && isNaval && !isTransport) return
+
+      const nextCost = current.cost + getMoveCostForAnimation(unit, terrainData, terrainType, { embarking, disembarking })
+      const previousBest = bestCost.get(neighborKey)
+      if (previousBest !== undefined && previousBest <= nextCost) return
+
+      bestCost.set(neighborKey, nextCost)
+      parent.set(neighborKey, currentKey)
+      queue.push({ ...neighbor, s: -neighbor.q - neighbor.r, cost: nextCost })
+    })
+  }
+
+  if (!parent.has(`${to.q},${to.r}`)) return [from, to]
+
+  const path = []
+  let currentKey = `${to.q},${to.r}`
+  while (currentKey) {
+    const [q, r] = currentKey.split(',').map(Number)
+    path.unshift({ q, r, s: -q - r })
+    currentKey = parent.get(currentKey)
+  }
+
+  return path
 }
 
 // Generate hex coordinates for a rectangular-ish hex map
@@ -109,6 +206,8 @@ const GameBoard = ({
   const previousUnitsRef = useRef(new Map())
   const [damageEvents, setDamageEvents] = useState([])
   const [now, setNow] = useState(Date.now())
+  const previousUnitsForAnimationRef = useRef(new Map())
+  const [movementAnimations, setMovementAnimations] = useState(new Map())
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -187,6 +286,76 @@ const GameBoard = ({
     })
     return Array.from(activeMap.values())
   }, [damageEvents, now, DAMAGE_DISPLAY_DURATION])
+
+  useEffect(() => {
+    const previousUnits = previousUnitsForAnimationRef.current
+    const nextUnits = new Map(units.map((unit) => [unit.id, unit]))
+
+    if (previousUnits.size === 0) {
+      previousUnitsForAnimationRef.current = nextUnits
+      return
+    }
+
+    const createdAt = Date.now()
+    const nextAnimations = new Map()
+
+    units.forEach((unit) => {
+      const previousUnit = previousUnits.get(unit.id)
+      if (!previousUnit || previousUnit.currentHP <= 0 || unit.currentHP <= 0) return
+      if (previousUnit.q === unit.q && previousUnit.r === unit.r) return
+
+      const path = findUnitMovementPath({
+        unit: previousUnit,
+        from: { q: previousUnit.q, r: previousUnit.r, s: previousUnit.s },
+        to: { q: unit.q, r: unit.r, s: unit.s },
+        allHexes: hexData,
+        allUnits: Array.from(previousUnits.values()),
+        terrainMap,
+      })
+
+      const segments = Math.max(1, path.length - 1)
+      const durationMs = Math.min(1200, Math.max(180, segments * 160))
+      nextAnimations.set(unit.id, {
+        path,
+        startedAt: createdAt,
+        durationMs,
+      })
+    })
+
+    if (nextAnimations.size > 0) {
+      setMovementAnimations(nextAnimations)
+    }
+
+    previousUnitsForAnimationRef.current = nextUnits
+  }, [units, hexData, terrainMap])
+
+  useEffect(() => {
+    if (movementAnimations.size === 0) return
+    let animationFrame
+
+    const tick = () => {
+      setNow(Date.now())
+      animationFrame = requestAnimationFrame(tick)
+    }
+
+    animationFrame = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(animationFrame)
+  }, [movementAnimations])
+
+  useEffect(() => {
+    if (movementAnimations.size === 0) return
+
+    const active = new Map()
+    movementAnimations.forEach((animation, unitId) => {
+      if (now - animation.startedAt < animation.durationMs) {
+        active.set(unitId, animation)
+      }
+    })
+
+    if (active.size !== movementAnimations.size) {
+      setMovementAnimations(active)
+    }
+  }, [movementAnimations, now])
 
   const visibleHexSet = useMemo(() => {
     if (!fogOfWarEnabled || !visibleHexes) return null
@@ -777,17 +946,42 @@ const GameBoard = ({
                   ? '/units/high_morale.png'
                   : null
 
+              const activeAnimation = movementAnimations.get(unit.id)
+              let animatedPixel = null
+              if (activeAnimation) {
+                const elapsed = Math.min(activeAnimation.durationMs, Math.max(0, now - activeAnimation.startedAt))
+                const pathLength = Math.max(1, activeAnimation.path.length - 1)
+                const rawProgress = elapsed / activeAnimation.durationMs
+                const segmentProgress = rawProgress * pathLength
+                const segmentIndex = Math.min(pathLength - 1, Math.floor(segmentProgress))
+                const t = Math.max(0, Math.min(1, segmentProgress - segmentIndex))
+                const fromHex = activeAnimation.path[segmentIndex]
+                const toHex = activeAnimation.path[Math.min(segmentIndex + 1, activeAnimation.path.length - 1)]
+                const fromPixel = HexUtils.hexToPixel(fromHex, { x: HEX_SIZE, y: HEX_SIZE }, false, { x: 0, y: 0 })
+                const toPixel = HexUtils.hexToPixel(toHex, { x: HEX_SIZE, y: HEX_SIZE }, false, { x: 0, y: 0 })
+                animatedPixel = {
+                  x: fromPixel.x + (toPixel.x - fromPixel.x) * t,
+                  y: fromPixel.y + (toPixel.y - fromPixel.y) * t,
+                }
+              }
+
               return (
-                <g key={`unit-${hex.q}-${hex.r}-${hex.s}`} style={{ pointerEvents: 'none' }}>
-                  <Hexagon
-                    q={hex.q}
-                    r={hex.r}
-                    s={hex.s}
-                    cellStyle={{
-                      fill: 'none',
-                      stroke: 'none',
-                    }}
-                  >
+                <g
+                  key={`unit-${unit.id}`}
+                  style={{ pointerEvents: 'none' }}
+                  transform={animatedPixel ? `translate(${animatedPixel.x}, ${animatedPixel.y})` : undefined}
+                >
+                  {!animatedPixel && (
+                    <Hexagon
+                      q={hex.q}
+                      r={hex.r}
+                      s={hex.s}
+                      cellStyle={{
+                        fill: 'none',
+                        stroke: 'none',
+                      }}
+                    />
+                  )}
                     {/* Unit Image */}
                     <image
                       href={src}
@@ -870,7 +1064,7 @@ const GameBoard = ({
                         />
                       )}
                     </g>
-                  </Hexagon>
+                  
                 </g>
               )
             })}
