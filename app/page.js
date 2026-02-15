@@ -179,9 +179,15 @@ export default function HTTPMultiplayerPage() {
     if (playerID === 'spectator') return true
     if (!playerID || !gameState) return false
     if (gameState.players?.[playerID]) return false
-    return (gameState.spectators || []).some((spectator) => spectator?.id === playerID) || (gameState.waitlist || []).some((entry) => entry?.id === playerID)
+    return (gameState.spectators || []).some((spectator) => spectator?.id === playerID)
   }, [playerID, gameState])
-  const isMyTurn = !isSpectator && gameState?.currentPlayer === playerID
+  const isWaitlisted = useMemo(() => {
+    if (!playerID || !gameState) return false
+    if (gameState.players?.[playerID]) return false
+    return (gameState.waitlist || []).some((entry) => entry?.id === playerID)
+  }, [playerID, gameState])
+  const isObserver = isSpectator || isWaitlisted
+  const isMyTurn = !isObserver && gameState?.currentPlayer === playerID
   const playerColor = getPlayerColor(playerID)
   const generalSprite = getUnitSpriteProps({ image: 'General' }, playerID)
   const teamMode = Boolean(gameState?.teamMode)
@@ -201,11 +207,11 @@ export default function HTTPMultiplayerPage() {
   }
   const fogOfWarEnabled = Boolean(gameState?.fogOfWarEnabled)
   const spectatorPovPlayerID = useMemo(() => {
-    if (!isSpectator) return playerID
+    if (!isObserver) return playerID
     if (spectatorVision === 'all') return null
     return spectatorVision === 'blueGreen' ? '0' : '1'
-  }, [isSpectator, playerID, spectatorVision])
-  const fogViewerID = isSpectator ? spectatorPovPlayerID : playerID
+  }, [isObserver, playerID, spectatorVision])
+  const fogViewerID = isObserver ? spectatorPovPlayerID : playerID
   const fogActive = fogOfWarEnabled && gameState?.phase !== 'lobby' && Boolean(fogViewerID)
 
   const visibleHexes = useMemo(() => {
@@ -243,7 +249,7 @@ export default function HTTPMultiplayerPage() {
   }, [gameState?.mapId])
 
   const retreatHexes = useMemo(() => {
-    if (!gameState || gameState.phase !== 'battle' || !playerID || isSpectator) return []
+    if (!gameState || gameState.phase !== 'battle' || !playerID || isObserver) return []
     const activationTurn = getRetreatActivationTurn(gameState.mapId)
     if ((gameState.turn || 1) < activationTurn) return []
     return getRetreatZoneForPlayer({
@@ -252,7 +258,7 @@ export default function HTTPMultiplayerPage() {
       playerID,
       teamMode,
     })
-  }, [gameState, playerID, teamMode, isSpectator])
+  }, [gameState, playerID, teamMode, isObserver])
 
   const selectedOwnedUnit = useMemo(() => {
     if (!gameState?.selectedUnitId) return null
@@ -514,7 +520,7 @@ export default function HTTPMultiplayerPage() {
                     units: state.units,
                     hexes: state.hexes,
                     terrainMap: state.terrainMap,
-                    playerID: isSpectator ? 'spectator' : playerID,
+                    playerID: isObserver ? 'spectator' : playerID,
                     teamMode,
                   })
                 : state.units
@@ -807,7 +813,7 @@ export default function HTTPMultiplayerPage() {
 
   const sendAction = async (action, payload) => {
     if (!joined) return
-    if (isSpectator && !['claimSlot', 'moveParticipant'].includes(action)) {
+    if (isObserver && !['claimSlot', 'moveParticipant'].includes(action)) {
       setError('Spectators cannot perform game actions.')
       return
     }
@@ -849,7 +855,7 @@ export default function HTTPMultiplayerPage() {
         action: 'sendChat',
         payload: {
           message: normalizedMessage,
-          playerID: isSpectator ? 'spectator' : playerID,
+          playerID: isObserver ? 'spectator' : playerID,
           playerName: playerName || undefined,
         }
       }
@@ -884,7 +890,7 @@ export default function HTTPMultiplayerPage() {
 
   const handleHexClick = (hex) => {
     if (!joined || !gameState) return
-    if (isSpectator) {
+    if (isObserver) {
       const unitOnHex = visibleUnits.find(u => u.q === hex.q && u.r === hex.r && u.currentHP > 0)
       if (unitOnHex) {
         if (selectedUnitForInfo && selectedUnitForInfo.id === unitOnHex.id) {
@@ -1016,7 +1022,7 @@ export default function HTTPMultiplayerPage() {
               attackerId: selectedUnit.id,
               targetQ: hex.q,
               targetR: hex.r,
-              playerID: isSpectator ? 'spectator' : playerID,
+              playerID: isObserver ? 'spectator' : playerID,
             })
             return
           }
@@ -1399,7 +1405,7 @@ export default function HTTPMultiplayerPage() {
     const canToggleFog = playerID === lobbyLeaderId && playerID !== 'spectator'
     const lobbyFogEnabled = Boolean(gameState?.fogOfWarEnabled)
 
-    const canKickFromLobby = !isSpectator && playerID === lobbyLeaderId
+    const canKickFromLobby = !isObserver && playerID === lobbyLeaderId
 
     const moveParticipant = async (targetID, destination) => {
       if (!joined) return
@@ -1615,7 +1621,7 @@ export default function HTTPMultiplayerPage() {
             <div className="rounded-2xl border border-slate-700/80 bg-slate-900/70 p-4 text-xs text-slate-300">
               <div className="flex items-center justify-between">
                 <span className="font-semibold text-slate-200">Spectators</span>
-                {!isSpectator && (
+                {!isObserver && (
                   <button
                     onClick={() => claimSlot('spectator')}
                     className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white"
@@ -1673,6 +1679,9 @@ export default function HTTPMultiplayerPage() {
               </div>
               {isSpectator && (
                 <div className="mt-2 text-xs text-amber-300">You are watching as a spectator.</div>
+              )}
+              {isWaitlisted && (
+                <div className="mt-2 text-xs text-cyan-300">You are currently on the waitlist.</div>
               )}
             </div>
           </div>
@@ -1740,9 +1749,9 @@ export default function HTTPMultiplayerPage() {
             <div className="flex items-center gap-2">
               <span className="text-amber-400 font-semibold">You:</span>
               <span className={`px-2 py-1 rounded text-xs font-bold ${
-                isSpectator ? 'bg-slate-600' : playerID === '0' ? 'bg-blue-600' : 'bg-red-600'
+                isObserver ? 'bg-slate-600' : playerID === '0' ? 'bg-blue-600' : 'bg-red-600'
               }`}>
-                {isSpectator ? 'Spectator' : `Player ${playerID}`}
+                {isWaitlisted ? 'Waitlist' : isSpectator ? 'Spectator' : `Player ${playerID}`}
               </span>
             </div>
             
@@ -1773,7 +1782,7 @@ export default function HTTPMultiplayerPage() {
       )}
       
       {/* Left Panel - Only visible during setup phase */}
-      {gameState?.phase === 'setup' && !isSpectator && (
+      {gameState?.phase === 'setup' && !isObserver && (
         <div className={`fixed left-0 top-0 z-40 transition-all duration-300 ${
           isLeftPanelCollapsed ? 'w-12' : 'w-1/2 sm:w-1/3 md:w-1/4 lg:w-1/5 xl:w-1/6'
         } bg-slate-800/95 border-r border-slate-600 backdrop-blur-sm h-full`}>
@@ -1908,7 +1917,7 @@ export default function HTTPMultiplayerPage() {
         </div>
       )}
 
-      {gameState?.phase === 'battle' && isSpectator && (
+      {gameState?.phase === 'battle' && isObserver && (
         <div className="fixed top-4 right-4 z-30 w-80 max-w-[85vw] rounded-lg border border-slate-600 bg-slate-900/90 p-3 text-xs shadow-lg backdrop-blur space-y-3">
           <div>
             <div className="font-semibold text-amber-300">Observer POV</div>
@@ -1941,7 +1950,7 @@ export default function HTTPMultiplayerPage() {
             >
               <img src="/icons/chat%20icon.png" alt="Chat" className="w-7 h-7" />
             </button>
-            {!isSpectator && (
+            {!isObserver && (
               <button
                 onClick={readyForBattle}
                 disabled={!isMyTurn}
@@ -1962,7 +1971,7 @@ export default function HTTPMultiplayerPage() {
             >
               <img src="/icons/chat%20icon.png" alt="Chat" className="w-7 h-7" />
             </button>
-            {!isSpectator && (
+            {!isObserver && (
               <>
                 <button
                   onClick={undoMove}
@@ -1996,7 +2005,7 @@ export default function HTTPMultiplayerPage() {
 
       {/* Chat Messages */}
       {joined && (
-        <div className={`fixed right-4 z-30 w-72 max-w-[70vw] ${isSpectator && gameState?.phase === 'battle' ? 'top-[38%]' : 'top-[12%]'}`}>
+        <div className={`fixed right-4 z-30 w-72 max-w-[70vw] ${isObserver && gameState?.phase === 'battle' ? 'top-[38%]' : 'top-[12%]'}`}>
           <div className="bg-slate-900/70 border border-slate-700 rounded-lg p-2 space-y-1 text-xs text-slate-100 shadow-lg backdrop-blur">
             {chatMessages.length === 0 && (
               <div className="text-slate-400">No chat messages yet.</div>
