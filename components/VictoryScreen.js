@@ -9,7 +9,8 @@ const VictoryScreen = ({
   victoryData, 
   onClose,
   playerID,
-  units = []
+  units = [],
+  discordSummary = ''
 }) => {
   if (!gameOver) return null
 
@@ -21,6 +22,11 @@ const VictoryScreen = ({
   const victoryType = victoryData?.victoryType || 'elimination'
   const turn = victoryData?.turn || 1
   const message = victoryData?.message || ''
+
+  const copyDiscordSummary = async () => {
+    if (!discordSummary || typeof navigator === 'undefined' || !navigator.clipboard) return
+    await navigator.clipboard.writeText(discordSummary)
+  }
 
   const getVictoryEmoji = (type) => {
     switch (type) {
@@ -192,6 +198,20 @@ const VictoryScreen = ({
             </div>
           )}
         </div>
+
+
+        {discordSummary && (
+          <div className="mb-4 rounded-lg border border-slate-700 bg-slate-900/70 p-3">
+            <div className="mb-2 text-sm font-semibold text-cyan-300">Battle report export</div>
+            <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap text-xs text-slate-200">{discordSummary}</pre>
+            <button
+              onClick={copyDiscordSummary}
+              className="mt-2 w-full rounded bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition-all hover:bg-indigo-500"
+            >
+              📋 Copy summary for Discord
+            </button>
+          </div>
+        )}
 
         {/* Action Buttons */}
         <div className="flex gap-3">

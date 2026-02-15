@@ -779,6 +779,9 @@ export async function POST(request) {
     if (!Array.isArray(game.retreatedUnitIds)) {
       game.retreatedUnitIds = []
     }
+    if (!Array.isArray(game.initialBattleUnits)) {
+      game.initialBattleUnits = []
+    }
 
     if (game.phase === 'battle') {
       if (!game.turnStartedAt || !game.turnTimeLimitSeconds) {
@@ -1137,6 +1140,7 @@ export async function POST(request) {
           game.phase = 'battle'
           game.inactivePlayers = playOrder.filter(id => !activePlayers.includes(id))
           game.currentPlayer = activePlayers[0] || '0'
+          game.initialBattleUnits = game.units.map(unit => ({ id: unit.id, ownerID: unit.ownerID, name: unit.name }))
           game.log.push(`⚔️ BATTLE PHASE BEGINS! Player ${game.currentPlayer} gets the first turn.`)
           setTurnTimerForCurrentPlayer(game)
           game.lastUpdate = Date.now()
@@ -2203,6 +2207,7 @@ export async function POST(request) {
             game.phase = 'battle'
             game.inactivePlayers = readyPlayOrder.filter(id => !readyActivePlayers.includes(id))
             game.currentPlayer = readyActivePlayers[0] || readyEligiblePlayers[0] || '0'
+            game.initialBattleUnits = game.units.map(unit => ({ id: unit.id, ownerID: unit.ownerID, name: unit.name }))
             game.log.push(`⚔️ BATTLE PHASE BEGINS! Player ${game.currentPlayer} gets the first turn.`)
             setTurnTimerForCurrentPlayer(game)
           } else {

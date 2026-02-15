@@ -140,6 +140,24 @@ const getUnitSpecialNotes = (unitType) => {
 
 const getObjectiveText = (mapId) => (['MAP_1', 'MAP_2', 'MAP_3'].includes(mapId) ? 'Defeat the enemy force.' : null)
 
+const getSideDefinitions = (teamMode) => (
+  teamMode
+    ? [
+      { id: 'blue-green', label: 'Blue/Green', playerIDs: ['0', '1'] },
+      { id: 'red-yellow', label: 'Red/Yellow', playerIDs: ['2', '3'] },
+    ]
+    : [
+      { id: '0', label: 'Player 0', playerIDs: ['0'] },
+      { id: '1', label: 'Player 1', playerIDs: ['1'] },
+    ]
+)
+
+const formatVictoryType = (type) => (type || 'elimination').replace(/_/g, ' ')
+
+const getSideIdForPlayer = (playerId, teamMode) => (teamMode ? getTeamId(playerId) : playerId)
+
+const getSideLabel = (sides, sideId) => sides.find(side => side.id === sideId)?.label || sideId
+
 export default function HTTPMultiplayerPage() {
   const [gameState, setGameState] = useState(null)
   const [playerID, setPlayerID] = useState('')
@@ -292,6 +310,108 @@ export default function HTTPMultiplayerPage() {
       }),
     }
   }, [gameState?.map4ObjectiveState, gameState?.mapId, gameState?.phase, playerID, teamMode])
+
+
+  const sideDefinitions = useMemo(() => getSideDefinitions(teamMode), [teamMode])
+
+  const sideHitPointTotals = useMemo(() => {
+    const totals = {}
+    sideDefinitions.forEach(side => {
+      totals[side.id] = 0
+    })
+    ;(gameState?.units || []).forEach(unit => {
+      if (unit.currentHP <= 0) return
+      const sideId = getSideIdForPlayer(unit.ownerID, teamMode)
+      totals[sideId] = (totals[sideId] || 0) + unit.currentHP
+    })
+    return totals
+  }, [gameState?.units, sideDefinitions, teamMode])
+
+  const objectiveMiniSummary = useMemo(() => {
+    if (gameState?.map4ObjectiveState?.enabled) {
+      const buildings = Object.values(gameState.map4ObjectiveState.buildings || {})
+      const defenderHeld = buildings.filter(building => building.owner === gameState.map4ObjectiveState.defenderId).length
+      const attackerHeld = buildings.filter(building => building.owner === gameState.map4ObjectiveState.attackerId).length
+      return `Objectives: ${attackerHeld} attacker / ${defenderHeld} defender`
+    }
+
+    if (gameState?.gameMode === 'ATTACK_DEFEND') {
+      const attackerTurns = gameState?.objectiveControl?.[gameState?.attackerId] || 0
+      const defenderTurns = gameState?.objectiveControl?.[gameState?.defenderId] || 0
+      return `Paris control: ${attackerTurns} attacker turns / ${defenderTurns} defender turns`
+    }
+
+    return 'Objectives: Eliminate enemy forces'
+  }, [gameState?.map4ObjectiveState, gameState?.gameMode, gameState?.objectiveControl, gameState?.attackerId, gameState?.defenderId])
+
+  const currentAdvantageSummary = useMemo(() => {
+    if (!gameState?.phase || sideDefinitions.length < 2) return 'Advantage unavailable'
+    const [sideA, sideB] = sideDefinitions
+    const sideAHp = sideHitPointTotals[sideA.id] || 0
+    const sideBHp = sideHitPointTotals[sideB.id] || 0
+    if (sideAHp === sideBHp) return `${sideA.label} and ${sideB.label} are even (${sideAHp} HP each)`
+    const leader = sideAHp > sideBHp ? sideA.label : sideB.label
+    const leadBy = Math.abs(sideAHp - sideBHp)
+    return `${leader} lead by ${leadBy} HP`
+  }, [gameState?.phase, sideDefinitions, sideHitPointTotals])
+
+  const discordBattleSummary = useMemo(() => {
+    const victoryData = gameState?.gameOver
+    if (!victoryData) return ''
+
+    const logs = gameState?.log || []
+    const firstKill = logs.find(entry => entry.includes('was defeated'))
+    const objectiveCaptureCount = logs.filter(entry => /captured|capturing/i.test(entry)).length
+    const retreatCount = logs.filter(entry => entry.includes('successfully retreated')).length
+
+    const initialUnits = gameState?.initialBattleUnits || []
+    const aliveUnitIds = new Set((gameState?.units || []).filter(unit => unit.currentHP > 0).map(unit => unit.id))
+    const retreatedUnitIds = new Set((gameState?.retreatedUnits || []).map(unit => unit.id))
+    const lostBySide = {}
+    sideDefinitions.forEach(side => {
+      lostBySide[side.id] = 0
+    })
+    initialUnits.forEach(unit => {
+      const sideId = getSideIdForPlayer(unit.ownerID, teamMode)
+      if (!aliveUnitIds.has(unit.id) && !retreatedUnitIds.has(unit.id)) {
+        lostBySide[sideId] = (lostBySide[sideId] || 0) + 1
+      }
+    })
+
+    const survivorsBySide = {}
+    sideDefinitions.forEach(side => {
+      survivorsBySide[side.id] = []
+    })
+    ;(gameState?.units || []).filter(unit => unit.currentHP > 0).forEach(unit => {
+      const sideId = getSideIdForPlayer(unit.ownerID, teamMode)
+      survivorsBySide[sideId].push(unit.name)
+    })
+
+    const retreatedBySide = {}
+    sideDefinitions.forEach(side => {
+      retreatedBySide[side.id] = []
+    })
+    ;(gameState?.retreatedUnits || []).forEach(unit => {
+      const sideId = getSideIdForPlayer(unit.ownerID, teamMode)
+      retreatedBySide[sideId].push(unit.name)
+    })
+
+    const winnerText = victoryData.draw
+      ? 'Draw'
+      : teamMode
+        ? getSideLabel(sideDefinitions, victoryData.winnerTeam)
+        : `Player ${victoryData.winner}`
+
+    return [
+      '🏁 Post-Battle Report',
+      `Winner: ${winnerText} (${formatVictoryType(victoryData.victoryType)})`,
+      `Turns played: ${victoryData.turn || gameState?.turn || 1}`,
+      `Units lost: ${sideDefinitions.map(side => `${side.label} ${lostBySide[side.id] || 0}`).join(' | ')}`,
+      `Key events: first kill ${firstKill ? firstKill.replace(/.*?(\w+ was defeated!?).*/, '$1') : 'none'}; objective captures ${objectiveCaptureCount}; retreats ${retreatCount}`,
+      `Survivors: ${sideDefinitions.map(side => `${side.label} [${(survivorsBySide[side.id] || []).join(', ') || 'none'}]`).join(' | ')}`,
+      `Retreated: ${sideDefinitions.map(side => `${side.label} [${(retreatedBySide[side.id] || []).join(', ') || 'none'}]`).join(' | ')}`,
+    ].join('\n')
+  }, [gameState, sideDefinitions, teamMode])
 
   const getChatSenderClass = (message) => {
     if (message?.playerID === '0') return 'text-blue-400'
@@ -1832,6 +1952,42 @@ export default function HTTPMultiplayerPage() {
           )}
         </div>
       )}
+
+      {gameState?.phase === 'battle' && isSpectator && (
+        <div className="fixed top-4 right-4 z-30 w-80 max-w-[85vw] rounded-lg border border-slate-600 bg-slate-900/90 p-3 text-xs shadow-lg backdrop-blur">
+          <div className="flex items-center justify-between">
+            <div className="font-semibold text-cyan-300">Observer Panel</div>
+            <span className="text-slate-400">Live</span>
+          </div>
+          <div className="mt-2 rounded border border-slate-700 bg-slate-800/60 p-2 text-slate-100">
+            <div className="font-semibold text-emerald-300">Current advantage</div>
+            <div className="mt-1">{currentAdvantageSummary}</div>
+            <div className="mt-1 text-slate-300">{objectiveMiniSummary}</div>
+            <div className="mt-2 text-slate-300">
+              {sideDefinitions.map(side => (
+                <div key={side.id} className="flex items-center justify-between">
+                  <span>{side.label}</span>
+                  <span>{sideHitPointTotals[side.id] || 0} HP</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <button
+            onClick={async () => {
+              if (!discordBattleSummary) return
+              try {
+                await navigator.clipboard.writeText(discordBattleSummary)
+                setError('Discord summary copied to clipboard.')
+              } catch (copyError) {
+                setError('Unable to copy summary. Clipboard access was denied.')
+              }
+            }}
+            className="mt-3 w-full rounded bg-indigo-600 px-3 py-2 font-semibold text-white hover:bg-indigo-500"
+          >
+            📋 Copy summary for Discord
+          </button>
+        </div>
+      )}
       
       {/* Action Buttons - Bottom Right Corner */}
       <div className="fixed bottom-4 right-4 z-30">
@@ -2104,6 +2260,7 @@ export default function HTTPMultiplayerPage() {
           onClose={() => setShowVictoryScreen(false)}
           playerID={playerID}
           units={[...(gameState.units || []), ...((gameState.retreatedUnits || []))]}
+          discordSummary={discordBattleSummary}
         />
       )}
 
