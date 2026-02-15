@@ -124,7 +124,8 @@ const GameBoard = ({
   const getMovementPath = useCallback(({ unit, start, target, occupiedUnits }) => {
     const startKey = `${start.q},${start.r}`
     const targetKey = `${target.q},${target.r}`
-    const hexLookup = new Map(hexData.map((hex) => [`${hex.q},${hex.r}`, hex]))
+    const sourceHexes = hexes.length ? hexes : generateHexMap(mapWidth, mapHeight)
+    const hexLookup = new Map(sourceHexes.map((hex) => [`${hex.q},${hex.r}`, hex]))
     const occupiedLookup = new Set(occupiedUnits.map((other) => `${other.q},${other.r}`))
 
     const queue = [{ q: start.q, r: start.r, cost: 0 }]
@@ -194,7 +195,7 @@ const GameBoard = ({
     }
 
     return [{ q: start.q, r: start.r }, { q: target.q, r: target.r }]
-  }, [hexData, terrainMap])
+  }, [hexes, mapWidth, mapHeight, terrainMap])
 
   useEffect(() => {
     const interval = setInterval(() => {
