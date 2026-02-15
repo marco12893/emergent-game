@@ -1652,12 +1652,14 @@ export default function HTTPMultiplayerPage() {
               <div className="mt-4 border-t border-slate-700 pt-3">
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-slate-200">Waitlist</span>
-                  <button
-                    onClick={() => claimSlot('waitlist')}
-                    className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white"
-                  >
-                    Move Me to Waitlist
-                  </button>
+                  {!isWaitlisted && (
+                    <button
+                      onClick={() => claimSlot('waitlist')}
+                      className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white"
+                    >
+                      Move Me to Waitlist
+                    </button>
+                  )}
                 </div>
                 {lobbyWaitlist.length === 0 ? (
                   <div className="mt-2 text-slate-400">No waitlisted players.</div>
