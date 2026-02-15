@@ -200,7 +200,7 @@ const GameBoard = ({
   useEffect(() => {
     const interval = setInterval(() => {
       setNow(Date.now())
-    }, 100)
+    }, 16)
     return () => clearInterval(interval)
   }, [])
 
@@ -233,20 +233,20 @@ const GameBoard = ({
       if (path.length < 2) return
 
       const targetCenter = getHexCenter(unit.q, unit.r)
-      const values = path
-        .map((step) => {
-          const stepCenter = getHexCenter(step.q, step.r)
-          return `${(stepCenter.x - targetCenter.x).toFixed(3)} ${(stepCenter.y - targetCenter.y).toFixed(3)}`
-        })
-        .join('; ')
-      const keyTimes = path.map((_, index) => (index / (path.length - 1)).toFixed(3)).join('; ')
+      const points = path.map((step) => {
+        const stepCenter = getHexCenter(step.q, step.r)
+        return {
+          x: stepCenter.x - targetCenter.x,
+          y: stepCenter.y - targetCenter.y,
+        }
+      })
       const durationMs = Math.min(1200, Math.max(250, (path.length - 1) * 180))
 
       const animationKey = `${unit.id}-${Date.now()}`
       nextAnimations[unit.id] = {
         animationKey,
-        values,
-        keyTimes,
+        points,
+        startedAt: Date.now(),
         durationMs,
       }
 
@@ -272,6 +272,28 @@ const GameBoard = ({
 
     previousUnitPositionsRef.current = nextPositions
   }, [units, getHexCenter, getMovementPath])
+
+  const getMovementOffset = useCallback((unitId) => {
+    const animation = movementAnimations[unitId]
+    if (!animation || !Array.isArray(animation.points) || animation.points.length < 2) {
+      return { x: 0, y: 0 }
+    }
+
+    const elapsed = Math.max(0, now - animation.startedAt)
+    const progress = Math.min(1, elapsed / animation.durationMs)
+    const segmentCount = animation.points.length - 1
+    const rawSegment = progress * segmentCount
+    const segmentIndex = Math.min(segmentCount - 1, Math.floor(rawSegment))
+    const segmentProgress = rawSegment - segmentIndex
+
+    const from = animation.points[segmentIndex]
+    const to = animation.points[segmentIndex + 1]
+
+    return {
+      x: from.x + ((to.x - from.x) * segmentProgress),
+      y: from.y + ((to.y - from.y) * segmentProgress),
+    }
+  }, [movementAnimations, now])
 
   useEffect(() => {
     if (damageEvents.length === 0) return
@@ -932,6 +954,7 @@ const GameBoard = ({
                 : unit.morale === 'HIGH'
                   ? '/units/high_morale.png'
                   : null
+              const movementOffset = getMovementOffset(unit.id)
 
               return (
                 <g key={`unit-${hex.q}-${hex.r}-${hex.s}`} style={{ pointerEvents: 'none' }}>
@@ -944,19 +967,7 @@ const GameBoard = ({
                       stroke: 'none',
                     }}
                   >
-                    <g>
-                      {movementAnimations[unit.id] && (
-                        <animateTransform
-                          key={movementAnimations[unit.id].animationKey}
-                          attributeName="transform"
-                          type="translate"
-                          values={movementAnimations[unit.id].values}
-                          keyTimes={movementAnimations[unit.id].keyTimes}
-                          dur={`${movementAnimations[unit.id].durationMs}ms`}
-                          calcMode="linear"
-                          fill="freeze"
-                        />
-                      )}
+                    <g transform={`translate(${movementOffset.x} ${movementOffset.y})`}>
                       {/* Unit Image */}
                       <image
                         href={src}
