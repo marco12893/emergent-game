@@ -172,6 +172,7 @@ export default function HTTPMultiplayerPage() {
   const [nowTs, setNowTs] = useState(Date.now())
   const [spectatorVision, setSpectatorVision] = useState('all')
   const [copyStatus, setCopyStatus] = useState('')
+  const [isObserverPanelOpen, setIsObserverPanelOpen] = useState(true)
   const chatInputRef = useRef(null)
   const isSpectator = useMemo(() => {
     if (playerID === 'spectator') return true
@@ -1807,15 +1808,9 @@ export default function HTTPMultiplayerPage() {
       )}
 
       {gameState?.phase === 'battle' && turnTimer && (
-        <div className="fixed top-[3.6rem] left-2 right-2 z-20 lg:hidden pointer-events-none">
-          <div className="rounded-lg border border-slate-600 bg-slate-800/90 px-3 py-1.5 text-center shadow-xl backdrop-blur-sm">
-            <div className={`text-sm font-extrabold tabular-nums ${currentTurnColorClass}`}>⏱ {turnTimer.remainingSeconds}s</div>
-            <div className="mt-1 h-1.5 w-full overflow-hidden rounded bg-slate-700">
-              <div
-                className={`h-full transition-all duration-200 ${currentTurnBarClass}`}
-                style={{ width: `${Math.max(0, Math.min(100, turnTimer.percent))}%` }}
-              />
-            </div>
+        <div className="fixed top-[3.7rem] left-2 z-20 lg:hidden pointer-events-none">
+          <div className={`min-w-[4rem] rounded-md border border-slate-600 bg-slate-800/90 px-2 py-1 text-left text-xs font-extrabold tabular-nums shadow-xl backdrop-blur-sm ${currentTurnColorClass}`}>
+            ⏱ {turnTimer.remainingSeconds}s
           </div>
         </div>
       )}
@@ -1938,62 +1933,60 @@ export default function HTTPMultiplayerPage() {
       </div>
 
       {gameState?.phase === 'battle' && map4ObjectivePanel && (
-        <div className="hidden lg:block fixed top-4 left-4 z-30 w-80 max-w-[85vw] rounded-lg border border-slate-600 bg-slate-900/85 p-3 text-xs shadow-lg backdrop-blur">
-          <div className="font-semibold text-amber-300">Objective</div>
-          <div className="mt-1 text-slate-200">{map4ObjectivePanel.title}</div>
-          {map4ObjectivePanel.buildings.length > 0 && (
-            <div className="mt-2 space-y-1 text-slate-100">
-              {map4ObjectivePanel.buildings.map((building) => (
-                <div key={building.label} className="flex items-center justify-between">
-                  <span>{building.label} ({building.progress}/{building.captureTurns})</span>
-                  <span className={building.owner === 'blue-green' || building.owner === '0' ? 'text-blue-300' : 'text-red-300'}>
-                    {building.owner === 'blue-green' || building.owner === '0' ? 'Blue-owned' : 'Red-owned'}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {gameState?.phase === 'battle' && map4ObjectivePanel && (
-        <div className="fixed top-[6.9rem] left-2 right-2 z-30 rounded-lg border border-slate-600 bg-slate-900/85 p-2 text-[11px] shadow-lg backdrop-blur lg:hidden pointer-events-none">
-          <div className="font-semibold text-amber-300">Objective</div>
-          <div className="mt-0.5 text-slate-200">{map4ObjectivePanel.title}</div>
-          {map4ObjectivePanel.buildings.length > 0 && (
-            <div className="mt-1 space-y-0.5 text-slate-100">
-              {map4ObjectivePanel.buildings.map((building) => (
-                <div key={building.label} className="flex items-center justify-between gap-2">
-                  <span className="truncate">{building.label} ({building.progress}/{building.captureTurns})</span>
-                  <span className={`shrink-0 ${building.owner === 'blue-green' || building.owner === '0' ? 'text-blue-300' : 'text-red-300'}`}>
-                    {building.owner === 'blue-green' || building.owner === '0' ? 'Blue' : 'Red'}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
+        <div className="fixed top-[5.8rem] left-2 lg:top-4 lg:left-4 z-30 text-[11px] lg:text-xs pointer-events-none">
+          <div className="font-semibold text-amber-300">Objectives</div>
+          <ul className="mt-1 space-y-0.5 text-slate-100">
+            <li className="text-slate-200">{map4ObjectivePanel.title}</li>
+            {map4ObjectivePanel.buildings.map((building) => (
+              <li key={building.label} className="flex items-center gap-2">
+                <span>{building.label} ({building.progress}/{building.captureTurns})</span>
+                <span className={building.owner === 'blue-green' || building.owner === '0' ? 'text-blue-300' : 'text-red-300'}>
+                  {building.owner === 'blue-green' || building.owner === '0' ? 'Blue' : 'Red'}
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
       {gameState?.phase === 'battle' && isObserver && fogOfWarEnabled && (
-        <div className="fixed top-4 right-4 z-30 w-80 max-w-[85vw] rounded-lg border border-slate-600 bg-slate-900/90 p-3 text-xs shadow-lg backdrop-blur space-y-3">
-          <div>
-            <div className="font-semibold text-amber-300">Observer POV</div>
-            <div className="mt-2 flex flex-wrap gap-1">
-              <button onClick={() => setSpectatorVision('all')} className={`rounded px-2 py-1 ${spectatorVision === 'all' ? 'bg-amber-500 text-slate-900' : 'bg-slate-700 text-slate-100'}`}>Full</button>
-              <button onClick={() => setSpectatorVision('blueGreen')} className={`rounded px-2 py-1 ${spectatorVision === 'blueGreen' ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-100'}`}>Blue/Green POV</button>
-              <button onClick={() => setSpectatorVision('redYellow')} className={`rounded px-2 py-1 ${spectatorVision === 'redYellow' ? 'bg-red-500 text-white' : 'bg-slate-700 text-slate-100'}`}>Red/Yellow POV</button>
-            </div>
-          </div>
-          {advantageSummary && (
-            <div>
-              <div className="font-semibold text-amber-300">Current Advantage</div>
-              <div className="mt-1 text-slate-200">HP — Blue/Green: {advantageSummary.blueHP} vs Red/Yellow: {advantageSummary.redHP}</div>
-              <div className="text-slate-300">Objectives — Blue/Green: {advantageSummary.blueObjectives} • Red/Yellow: {advantageSummary.redObjectives}</div>
+        <div className="fixed top-3 right-2 lg:top-4 lg:right-4 z-30 w-[min(90vw,22rem)]">
+          {!isObserverPanelOpen && (
+            <button
+              onClick={() => setIsObserverPanelOpen(true)}
+              className="rounded-md border border-slate-600 bg-slate-900/90 px-3 py-1.5 text-xs font-semibold text-amber-300 shadow-lg backdrop-blur"
+            >
+              Observer POV
+            </button>
+          )}
+          {isObserverPanelOpen && (
+            <div className="rounded-lg border border-slate-600 bg-slate-900/90 p-3 text-xs shadow-lg backdrop-blur space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="font-semibold text-amber-300">Observer POV</div>
+                <button
+                  onClick={() => setIsObserverPanelOpen(false)}
+                  className="h-6 w-6 rounded bg-slate-700 text-slate-100 hover:bg-slate-600"
+                  aria-label="Close observer panel"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                <button onClick={() => setSpectatorVision('all')} className={`rounded px-2 py-1 ${spectatorVision === 'all' ? 'bg-amber-500 text-slate-900' : 'bg-slate-700 text-slate-100'}`}>Full</button>
+                <button onClick={() => setSpectatorVision('blueGreen')} className={`rounded px-2 py-1 ${spectatorVision === 'blueGreen' ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-100'}`}>Blue/Green POV</button>
+                <button onClick={() => setSpectatorVision('redYellow')} className={`rounded px-2 py-1 ${spectatorVision === 'redYellow' ? 'bg-red-500 text-white' : 'bg-slate-700 text-slate-100'}`}>Red/Yellow POV</button>
+              </div>
+              {advantageSummary && (
+                <div>
+                  <div className="font-semibold text-amber-300">Current Advantage</div>
+                  <div className="mt-1 text-slate-200">HP — Blue/Green: {advantageSummary.blueHP} vs Red/Yellow: {advantageSummary.redHP}</div>
+                  <div className="text-slate-300">Objectives — Blue/Green: {advantageSummary.blueObjectives} • Red/Yellow: {advantageSummary.redObjectives}</div>
+                </div>
+              )}
+              <button onClick={copyDiscordSummary} disabled={!discordSummary} className="w-full rounded bg-emerald-600 px-3 py-2 font-semibold text-white disabled:bg-slate-700 disabled:text-slate-400">Copy summary for Discord</button>
+              {copyStatus && <div className="text-emerald-300">{copyStatus}</div>}
             </div>
           )}
-          <button onClick={copyDiscordSummary} disabled={!discordSummary} className="w-full rounded bg-emerald-600 px-3 py-2 font-semibold text-white disabled:bg-slate-700 disabled:text-slate-400">Copy summary for Discord</button>
-          {copyStatus && <div className="text-emerald-300">{copyStatus}</div>}
         </div>
       )}
       
