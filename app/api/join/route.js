@@ -4,6 +4,78 @@ import { parseImportedCustomMap } from '@/lib/customMap'
 import { sanitizeGameId, sanitizeMapId, sanitizePlayerID, sanitizePlayerName, sanitizeWinterFlag, sanitizeTeamModeFlag } from '@/lib/inputSanitization'
 import { getTeamPlayOrder } from '@/game/teamUtils'
 
+const getPlayOrder = (game) => (game.teamMode ? getTeamPlayOrder(game.maxPlayers || 4) : ['0', '1'])
+
+const findParticipantRole = (game, participantID) => {
+  if (!participantID) return null
+  const playerSlot = Object.keys(game.players || {}).find(
+    (slotId) => game.players?.[slotId]?.participantID === participantID
+  )
+  if (playerSlot) return { role: 'player', slot: playerSlot }
+  if ((game.spectators || []).some((spectator) => spectator.id === participantID)) return { role: 'spectator' }
+  if ((game.waitlist || []).some((entry) => entry.id === participantID)) return { role: 'waitlist' }
+  return null
+}
+
+const removeParticipantEverywhere = (game, participantID) => {
+  if (!participantID) return null
+  let removed = null
+
+  Object.entries(game.players || {}).forEach(([slotId, entry]) => {
+    if (entry?.participantID === participantID) {
+      removed = { name: entry.name, from: 'player', slotId }
+      delete game.players[slotId]
+    }
+  })
+
+  const spectatorIndex = (game.spectators || []).findIndex((spectator) => spectator.id === participantID)
+  if (spectatorIndex !== -1) {
+    const [entry] = game.spectators.splice(spectatorIndex, 1)
+    removed = { name: entry?.name, from: 'spectator' }
+  }
+
+  const waitlistIndex = (game.waitlist || []).findIndex((entry) => entry.id === participantID)
+  if (waitlistIndex !== -1) {
+    const [entry] = game.waitlist.splice(waitlistIndex, 1)
+    removed = { name: entry?.name, from: 'waitlist' }
+  }
+
+  return removed
+}
+
+const assignParticipantToRole = ({ game, participantID, desiredRole, desiredSlot, participantName }) => {
+  const existing = removeParticipantEverywhere(game, participantID)
+  const joinTime = Date.now()
+  const name = participantName || existing?.name || 'Player'
+
+  if (desiredRole === 'spectator') {
+    game.spectators = game.spectators || []
+    game.spectators.push({ id: participantID, name, joinTime })
+    return 'spectator'
+  }
+
+  if (desiredRole === 'waitlist') {
+    game.waitlist = game.waitlist || []
+    game.waitlist.push({ id: participantID, name, joinTime })
+    return 'waitlist'
+  }
+
+  if (desiredSlot) {
+    game.players[desiredSlot] = {
+      name,
+      joinTime: existing?.from === 'player' ? game.players?.[desiredSlot]?.joinTime || joinTime : joinTime,
+      joined: true,
+      participantID,
+    }
+    if (!game.leaderId) {
+      game.leaderId = desiredSlot
+    }
+    return desiredSlot
+  }
+
+  return 'waitlist'
+}
+
 // Handle OPTIONS requests for CORS preflight
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -19,7 +91,7 @@ export async function OPTIONS() {
 export async function POST(request) {
   try {
     const body = await request.json()
-    const { gameId, playerID, playerName, mapId, winter, teamMode, customMap } = body
+    const { gameId, playerID, playerName, mapId, winter, teamMode, customMap, participantID: requestedParticipantID } = body
     
     // Sanitize and validate inputs
     const sanitizedGameId = sanitizeGameId(gameId)
@@ -101,18 +173,71 @@ export async function POST(request) {
       }
     }
     
-    const takenPlayers = new Set(Object.keys(game.players || {}))
+    game.waitlist = game.waitlist || []
+    const existingRole = findParticipantRole(game, requestedParticipantID)
     const maxPlayers = game.maxPlayers || 2
     let assignedPlayerID = sanitizedPlayerID
+    const participantID = requestedParticipantID || `p-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
-    if (!assignedPlayerID) {
-      const playOrder = game.teamMode ? getTeamPlayOrder(maxPlayers) : ['0', '1']
-      assignedPlayerID = playOrder.find((id) => !takenPlayers.has(id))
-    }
+    if (existingRole) {
+      if (existingRole.role === 'player') {
+        assignedPlayerID = existingRole.slot
+      } else {
+        assignedPlayerID = existingRole.role
+      }
 
-    if (!assignedPlayerID) {
-      const playOrder = game.teamMode ? getTeamPlayOrder(maxPlayers) : ['0', '1']
-      assignedPlayerID = playOrder[0] || '0'
+      if (existingRole.role === 'player' && game.players?.[existingRole.slot]) {
+        game.players[existingRole.slot].name = sanitizedPlayerName || game.players[existingRole.slot].name
+      } else if (existingRole.role === 'spectator') {
+        game.spectators = (game.spectators || []).map((spectator) => (
+          spectator.id === participantID
+            ? { ...spectator, name: sanitizedPlayerName || spectator.name }
+            : spectator
+        ))
+      } else if (existingRole.role === 'waitlist') {
+        game.waitlist = (game.waitlist || []).map((entry) => (
+          entry.id === participantID
+            ? { ...entry, name: sanitizedPlayerName || entry.name }
+            : entry
+        ))
+      }
+    } else {
+      const playOrder = getPlayOrder(game)
+      const openSlot = playOrder.find((slotId) => !game.players?.[slotId])
+
+      if (assignedPlayerID === 'spectator') {
+        assignedPlayerID = assignParticipantToRole({
+          game,
+          participantID,
+          desiredRole: 'spectator',
+          participantName: sanitizedPlayerName || 'Spectator',
+        })
+      } else if (assignedPlayerID && assignedPlayerID !== 'spectator') {
+        const desiredSlotId = String(assignedPlayerID)
+        const slotAvailable = !game.players?.[desiredSlotId] || game.players?.[desiredSlotId]?.participantID === participantID
+        assignedPlayerID = assignParticipantToRole({
+          game,
+          participantID,
+          desiredRole: slotAvailable ? 'player' : 'waitlist',
+          desiredSlot: slotAvailable ? desiredSlotId : null,
+          participantName: sanitizedPlayerName || `Player ${desiredSlotId}`,
+        })
+      } else if (openSlot) {
+        assignedPlayerID = assignParticipantToRole({
+          game,
+          participantID,
+          desiredRole: 'player',
+          desiredSlot: openSlot,
+          participantName: sanitizedPlayerName || `Player ${openSlot}`,
+        })
+      } else {
+        assignedPlayerID = assignParticipantToRole({
+          game,
+          participantID,
+          desiredRole: 'waitlist',
+          participantName: sanitizedPlayerName || 'Waitlisted player',
+        })
+      }
     }
 
     if (assignedPlayerID !== 'spectator' && Number(assignedPlayerID) >= maxPlayers) {
@@ -131,24 +256,15 @@ export async function POST(request) {
     // Always allow joining - no restrictions
     const defaultName = assignedPlayerID === 'spectator'
       ? 'Spectator'
-      : `Player ${assignedPlayerID}`
+      : assignedPlayerID === 'waitlist'
+        ? 'Waitlisted player'
+        : `Player ${assignedPlayerID}`
 
-    if (assignedPlayerID === 'spectator') {
-      const spectatorId = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-      game.spectators = game.spectators || []
-      game.spectators.push({
-        id: spectatorId,
-        name: sanitizedPlayerName || defaultName,
-        joinTime: Date.now(),
-      })
-    } else {
-      game.players[assignedPlayerID] = {
-        name: sanitizedPlayerName || defaultName,
-        joinTime: Date.now(),
-        joined: true,
-      }
-      if (!game.leaderId) {
-        game.leaderId = assignedPlayerID
+    if (assignedPlayerID === 'waitlist') {
+      game.waitlist = game.waitlist || []
+      const hasEntry = game.waitlist.some((entry) => entry.id === participantID)
+      if (!hasEntry) {
+        game.waitlist.push({ id: participantID, name: sanitizedPlayerName || defaultName, joinTime: Date.now() })
       }
     }
     
@@ -176,6 +292,7 @@ export async function POST(request) {
       success: true, 
       gameState: game,
       playerID: assignedPlayerID,
+      participantID,
       message: `Player ${assignedPlayerID} joined successfully`
     }, {
       headers: {

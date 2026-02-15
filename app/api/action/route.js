@@ -188,6 +188,69 @@ const ensurePlayersTurn = (playerID, game, actionLabel) => {
 // HELPER FUNCTIONS
 // ============================================
 
+
+const findParticipantLocation = (game, participantID) => {
+  if (!participantID) return null
+  const playerSlot = Object.keys(game.players || {}).find(
+    (slotId) => game.players?.[slotId]?.participantID === participantID
+  )
+  if (playerSlot) return { type: 'player', slotId: playerSlot, entry: game.players[playerSlot] }
+
+  const spectatorIndex = (game.spectators || []).findIndex((spectator) => spectator?.id === participantID)
+  if (spectatorIndex !== -1) return { type: 'spectator', index: spectatorIndex, entry: game.spectators[spectatorIndex] }
+
+  const waitlistIndex = (game.waitlist || []).findIndex((entry) => entry?.id === participantID)
+  if (waitlistIndex !== -1) return { type: 'waitlist', index: waitlistIndex, entry: game.waitlist[waitlistIndex] }
+
+  return null
+}
+
+const removeParticipantFromLobbyLists = (game, participantID) => {
+  const location = findParticipantLocation(game, participantID)
+  if (!location) return null
+
+  if (location.type === 'player') {
+    delete game.players[location.slotId]
+  } else if (location.type === 'spectator') {
+    game.spectators.splice(location.index, 1)
+  } else if (location.type === 'waitlist') {
+    game.waitlist.splice(location.index, 1)
+  }
+
+  return location
+}
+
+const placeParticipantInLobby = ({ game, participantID, name, destination, requestedSlot = null }) => {
+  const now = Date.now()
+
+  if (destination === 'spectator') {
+    game.spectators = game.spectators || []
+    game.spectators.push({ id: participantID, name, joinTime: now })
+    return 'spectator'
+  }
+
+  if (destination === 'waitlist') {
+    game.waitlist = game.waitlist || []
+    game.waitlist.push({ id: participantID, name, joinTime: now })
+    return 'waitlist'
+  }
+
+  const slotId = requestedSlot ?? destination
+  game.players[slotId] = {
+    ...(game.players?.[slotId] || {}),
+    name,
+    joinTime: game.players?.[slotId]?.joinTime || now,
+    joined: true,
+    participantID,
+  }
+
+  if (!game.leaderId) {
+    game.leaderId = slotId
+  }
+
+  return slotId
+}
+
 const getTerrainData = (terrainMap, q, r) => {
   const terrainKey = `${sanitizeCoordinate(q)},${sanitizeCoordinate(r)}`
   const terrain = terrainMap[terrainKey] || 'PLAIN'
@@ -782,6 +845,17 @@ export async function POST(request) {
     if (!Array.isArray(game.initialBattleUnits)) {
       game.initialBattleUnits = []
     }
+    if (!Array.isArray(game.waitlist)) {
+      game.waitlist = []
+    }
+    Object.keys(game.players || {}).forEach((slotId) => {
+      if (!game.players[slotId]?.participantID) {
+        game.players[slotId] = {
+          ...game.players[slotId],
+          participantID: `legacy-${slotId}`,
+        }
+      }
+    })
 
     if (game.phase === 'battle') {
       if (!game.turnStartedAt || !game.turnTimeLimitSeconds) {
@@ -862,7 +936,7 @@ export async function POST(request) {
         }
         case 'claimSlot': {
           const claimSlotSchema = {
-            playerID: { required: true, sanitize: sanitizePlayerID },
+            participantID: { required: true, sanitize: sanitizeParticipantID },
             desiredSlot: { required: true },
             playerName: { required: false, sanitize: sanitizePlayerName },
           }
@@ -873,96 +947,138 @@ export async function POST(request) {
               error: 'Invalid payload for claimSlot: ' + claimSlotValidation.error 
             }, { 
               status: 400,
-              headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type',
-              }
+              headers: ACTION_CORS_HEADERS,
             })
           }
 
-          const { playerID: claimPlayerID, desiredSlot, playerName: claimPlayerName } = claimSlotValidation.sanitized
-          if (!claimPlayerID || claimPlayerID === 'spectator') {
-            return NextResponse.json({ 
-              error: 'Invalid playerID for claimSlot' 
-            }, { 
-              status: 400,
-              headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type',
-              }
-            })
-          }
-
+          const { participantID: claimParticipantID, desiredSlot, playerName: claimPlayerName } = claimSlotValidation.sanitized
           const maxPlayers = game.maxPlayers || (teamMode ? 4 : 2)
           const normalizedDesired = String(desiredSlot)
           const desiredIsSpectator = normalizedDesired === 'spectator'
+          const desiredIsWaitlist = normalizedDesired === 'waitlist'
           const desiredIndex = Number(normalizedDesired)
 
-          if (!desiredIsSpectator && (!Number.isInteger(desiredIndex) || desiredIndex < 0 || desiredIndex >= maxPlayers)) {
+          if (!desiredIsSpectator && !desiredIsWaitlist && (!Number.isInteger(desiredIndex) || desiredIndex < 0 || desiredIndex >= maxPlayers)) {
             return NextResponse.json({ 
               error: 'Desired slot is not valid for this lobby' 
             }, { 
               status: 400,
-              headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type',
-              }
+              headers: ACTION_CORS_HEADERS,
             })
           }
 
-          const existingEntry = game.players?.[claimPlayerID]
-          if (!existingEntry) {
+          const currentLocation = findParticipantLocation(game, claimParticipantID)
+          if (!currentLocation) {
             return NextResponse.json({ 
-              error: 'Player is not registered in this lobby' 
+              error: 'Participant is not registered in this lobby' 
             }, { 
               status: 400,
-              headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type',
-              }
+              headers: ACTION_CORS_HEADERS,
             })
           }
 
-          if (desiredIsSpectator) {
-            game.spectators = game.spectators || []
-            game.spectators.push({
-              id: claimPlayerID,
-              name: claimPlayerName || existingEntry.name || `Player ${claimPlayerID}`,
-              joinTime: Date.now(),
-            })
-            delete game.players[claimPlayerID]
-            if (game.leaderId === claimPlayerID) {
-              game.leaderId = pickRandomLeader(game.players, claimPlayerID)
-            }
-          } else {
+          const name = claimPlayerName || currentLocation.entry?.name || 'Player'
+          const currentSlot = currentLocation.type === 'player' ? currentLocation.slotId : null
+
+          if (!desiredIsSpectator && !desiredIsWaitlist) {
             const desiredSlotId = String(desiredIndex)
-            if (desiredSlotId !== claimPlayerID) {
-              game.players[desiredSlotId] = {
-                ...existingEntry,
-                name: claimPlayerName || existingEntry.name || `Player ${desiredSlotId}`,
-                joinTime: existingEntry.joinTime || Date.now(),
-                joined: true,
-              }
-              delete game.players[claimPlayerID]
-              if (game.leaderId === claimPlayerID) {
-                game.leaderId = desiredSlotId
-              }
-            } else if (claimPlayerName) {
-              game.players[claimPlayerID] = {
-                ...existingEntry,
-                name: claimPlayerName,
-              }
+            const occupiedBy = game.players?.[desiredSlotId]
+            if (occupiedBy && occupiedBy.participantID !== claimParticipantID) {
+              return NextResponse.json({ 
+                error: 'Desired slot is already occupied' 
+              }, { 
+                status: 409,
+                headers: ACTION_CORS_HEADERS,
+              })
             }
 
-            if (!game.leaderId) {
+            removeParticipantFromLobbyLists(game, claimParticipantID)
+            placeParticipantInLobby({ game, participantID: claimParticipantID, name, destination: desiredSlotId })
+            if (game.leaderId === currentSlot && currentSlot !== desiredSlotId) {
               game.leaderId = desiredSlotId
             }
+          } else {
+            removeParticipantFromLobbyLists(game, claimParticipantID)
+            placeParticipantInLobby({
+              game,
+              participantID: claimParticipantID,
+              name,
+              destination: desiredIsSpectator ? 'spectator' : 'waitlist',
+            })
+
+            if (game.leaderId === currentSlot) {
+              game.leaderId = pickRandomLeader(game.players, currentSlot)
+            }
           }
 
+          game.lastUpdate = Date.now()
+          break
+        }
+
+        case 'moveParticipantToSpectator': {
+          const moveSchema = {
+            playerID: { required: true, sanitize: sanitizePlayerID },
+            targetID: { required: true, sanitize: sanitizeParticipantID },
+            destination: { required: false },
+          }
+
+          const moveValidation = validatePayload(payload, moveSchema)
+          if (moveValidation.error) {
+            return NextResponse.json({
+              error: 'Invalid payload for moveParticipantToSpectator: ' + moveValidation.error,
+            }, {
+              status: 400,
+              headers: ACTION_CORS_HEADERS,
+            })
+          }
+
+          const { playerID: actingPlayerID, targetID, destination } = moveValidation.sanitized
+
+          if (game.phase !== 'lobby') {
+            return NextResponse.json({
+              error: 'Participants can only be reassigned while in the lobby',
+            }, {
+              status: 409,
+              headers: ACTION_CORS_HEADERS,
+            })
+          }
+
+          if (!game.leaderId || game.leaderId !== actingPlayerID) {
+            return NextResponse.json({
+              error: 'Only the lobby leader can reassign other participants',
+            }, {
+              status: 403,
+              headers: ACTION_CORS_HEADERS,
+            })
+          }
+
+          const targetLocation = findParticipantLocation(game, targetID)
+          if (!targetLocation) {
+            return NextResponse.json({
+              error: 'Target participant was not found in this lobby',
+            }, {
+              status: 404,
+              headers: ACTION_CORS_HEADERS,
+            })
+          }
+
+          const targetName = targetLocation.entry?.name || 'Participant'
+          const targetSlot = targetLocation.type === 'player' ? targetLocation.slotId : null
+          const normalizedDestination = destination === 'waitlist' ? 'waitlist' : 'spectator'
+
+          removeParticipantFromLobbyLists(game, targetID)
+          placeParticipantInLobby({
+            game,
+            participantID: targetID,
+            name: targetName,
+            destination: normalizedDestination,
+          })
+
+          if (targetSlot && game.leaderId === targetSlot) {
+            game.leaderId = pickRandomLeader(game.players, targetSlot)
+          }
+
+          game.log.push(`${targetName} was moved to ${normalizedDestination}.`)
           game.lastUpdate = Date.now()
           break
         }
@@ -1013,10 +1129,9 @@ export async function POST(request) {
             })
           }
 
-          const targetIsPlayer = Boolean(game.players?.[targetID])
-          const targetSpectatorIndex = (game.spectators || []).findIndex(spectator => spectator?.id === targetID)
+          const targetLocation = findParticipantLocation(game, targetID)
 
-          if (!targetIsPlayer && targetSpectatorIndex === -1) {
+          if (!targetLocation) {
             return NextResponse.json({
               error: 'Kick target was not found in this lobby'
             }, {
@@ -1025,19 +1140,19 @@ export async function POST(request) {
             })
           }
 
-          if (targetIsPlayer) {
-            const targetName = game.players[targetID]?.name || `Player ${targetID}`
-            delete game.players[targetID]
-
-            if (game.leaderId === targetID) {
-              game.leaderId = pickRandomLeader(game.players, targetID)
+          const targetName = targetLocation.entry?.name || 'Participant'
+          if (targetLocation.type === 'player') {
+            delete game.players[targetLocation.slotId]
+            if (game.leaderId === targetLocation.slotId) {
+              game.leaderId = pickRandomLeader(game.players, targetLocation.slotId)
             }
-
             game.log.push(`${targetName} was kicked from the lobby.`)
+          } else if (targetLocation.type === 'spectator') {
+            game.spectators.splice(targetLocation.index, 1)
+            game.log.push(`${targetName} was kicked from spectators.`)
           } else {
-            const [removedSpectator] = game.spectators.splice(targetSpectatorIndex, 1)
-            const spectatorName = removedSpectator?.name || 'Spectator'
-            game.log.push(`${spectatorName} was kicked from spectators.`)
+            game.waitlist.splice(targetLocation.index, 1)
+            game.log.push(`${targetName} was removed from the waitlist.`)
           }
 
           game.lastUpdate = Date.now()
