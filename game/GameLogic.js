@@ -134,6 +134,13 @@ export const TERRAIN_TYPES = {
   HILLS: { name: 'Hills', defenseBonus: 8, moveCost: 2, passable: true, waterOnly: false },
 }
 
+export const DAMAGE_VARIANCE = {
+  min: 0.8,
+  max: 1.2,
+}
+
+export const SOFT_ZOC_MOVE_PENALTY = 0.5
+
 // ============================================
 // HELPER FUNCTIONS
 // ============================================
@@ -253,6 +260,128 @@ const getMoraleMultiplier = (morale) => {
   if (morale === MORALE_STATES.LOW) return 0.8
   if (morale === MORALE_STATES.HIGH) return 1.2
   return 1.0
+}
+
+const getNextRandomRoll = (G) => {
+  const currentSeed = Number.isInteger(G?.rngState) ? G.rngState : 123456789
+  const nextSeed = (1664525 * currentSeed + 1013904223) >>> 0
+  if (G) {
+    G.rngState = nextSeed
+  }
+  return nextSeed / 4294967296
+}
+
+export const getDamageRange = ({ reducedDamage, defenseBonus = 0 }) => {
+  const minDamage = Math.max(1, Math.round(reducedDamage * DAMAGE_VARIANCE.min) - defenseBonus)
+  const maxDamage = Math.max(1, Math.round(reducedDamage * DAMAGE_VARIANCE.max) - defenseBonus)
+  return {
+    min: Math.min(minDamage, maxDamage),
+    max: Math.max(minDamage, maxDamage),
+  }
+}
+
+const applyDamageVariance = ({ G, reducedDamage, defenseBonus = 0 }) => {
+  const roll = DAMAGE_VARIANCE.min + (getNextRandomRoll(G) * (DAMAGE_VARIANCE.max - DAMAGE_VARIANCE.min))
+  const damage = Math.max(1, Math.round(reducedDamage * roll) - defenseBonus)
+  return {
+    damage,
+    roll,
+  }
+}
+
+const isHexInsideEnemyZoC = ({ unit, hex, units = [], allHexes = [], teamMode = false }) => {
+  const adjacentHexes = getNeighbors({
+    q: hex.q,
+    r: hex.r,
+    s: -hex.q - hex.r,
+  }, allHexes)
+
+  return adjacentHexes.some((adjacentHex) => {
+    const enemyUnit = getUnitAtHex(adjacentHex.q, adjacentHex.r, units)
+    if (!enemyUnit || enemyUnit.currentHP <= 0) return false
+    if (enemyUnit.id === unit.id) return false
+    if (!canUnitsFight(unit, enemyUnit, teamMode)) return false
+    if (enemyUnit.isTransport) return false
+    return enemyUnit.range >= 1
+  })
+}
+
+const getSoftZoCSurcharge = ({ unit, fromHex, targetHex, units = [], allHexes = [], teamMode = false }) => {
+  const fromInsideZoC = isHexInsideEnemyZoC({
+    unit,
+    hex: fromHex,
+    units,
+    allHexes,
+    teamMode,
+  })
+
+  if (!fromInsideZoC) return 0
+
+  const targetInsideZoC = isHexInsideEnemyZoC({
+    unit,
+    hex: targetHex,
+    units,
+    allHexes,
+    teamMode,
+  })
+
+  return targetInsideZoC ? SOFT_ZOC_MOVE_PENALTY : 0
+}
+
+const getLowestMovementCost = ({ unit, start, target, allHexes, units, terrainMap, teamMode = false }) => {
+  const bestCostByHex = new Map()
+  const queue = [{ q: start.q, r: start.r, s: -start.q - start.r, cost: 0 }]
+  const occupiedUnits = units.filter((u) => u.id !== unit.id)
+  bestCostByHex.set(`${start.q},${start.r}`, 0)
+
+  while (queue.length > 0) {
+    queue.sort((a, b) => a.cost - b.cost)
+    const current = queue.shift()
+    const currentKey = `${current.q},${current.r}`
+    const recordedCost = bestCostByHex.get(currentKey)
+    if (recordedCost !== current.cost) continue
+
+    if (current.q === target.q && current.r === target.r) {
+      return current.cost
+    }
+
+    const neighbors = getNeighbors(current, allHexes)
+    for (const neighbor of neighbors) {
+      const key = `${neighbor.q},${neighbor.r}`
+
+      const terrainData = getTerrainData(terrainMap, neighbor.q, neighbor.r)
+      const isWater = terrainData.waterOnly
+      const isNaval = unit.isNaval || false
+      const isTransport = unit.isTransport || false
+      const embarking = isWater && !isNaval && !isTransport
+      const disembarking = !isWater && isTransport
+
+      if (isWater && !isNaval && !isTransport && !canEmbark(unit)) continue
+      if (!isWater && isNaval && !isTransport) continue
+      if (disembarking && !canDisembark(unit)) continue
+      if (!terrainData.passable) continue
+      if (isHexOccupied(neighbor.q, neighbor.r, occupiedUnits)) continue
+
+      const baseMoveCost = getUnitMoveCost(unit, terrainData, terrainMap[key] || 'PLAIN', { embarking, disembarking })
+      const zocSurcharge = getSoftZoCSurcharge({
+        unit,
+        fromHex: current,
+        targetHex: neighbor,
+        units: occupiedUnits,
+        allHexes,
+        teamMode,
+      })
+      const nextCost = current.cost + baseMoveCost + zocSurcharge
+      const existingCost = bestCostByHex.get(key)
+
+      if (existingCost === undefined || nextCost < existingCost) {
+        bestCostByHex.set(key, nextCost)
+        queue.push({ ...neighbor, cost: nextCost })
+      }
+    }
+  }
+
+  return Infinity
 }
 
 const canUnitsFight = (unitA, unitB, teamMode) => {
@@ -569,12 +698,13 @@ export const getDeployableHexes = ({
 }
 
 // Calculate reachable hexes for a unit (BFS with move points)
-export const getReachableHexes = (unit, allHexes, units, terrainMap) => {
+export const getReachableHexes = (unit, allHexes, units, terrainMap, { teamMode = false } = {}) => {
   const reachable = []
-  const visited = new Set()
+  const bestRemaining = new Map()
   const queue = [{ q: unit.q, r: unit.r, s: unit.s, remainingMove: unit.movePoints }]
-  
-  visited.add(`${unit.q},${unit.r}`)
+  const occupiedUnits = units.filter((u) => u.id !== unit.id)
+
+  bestRemaining.set(`${unit.q},${unit.r}`, unit.movePoints)
   
   while (queue.length > 0) {
     const current = queue.shift()
@@ -583,8 +713,6 @@ export const getReachableHexes = (unit, allHexes, units, terrainMap) => {
     
     for (const neighbor of neighbors) {
       const key = `${neighbor.q},${neighbor.r}`
-      if (visited.has(key)) continue
-      
       const terrainData = getTerrainData(terrainMap, neighbor.q, neighbor.r)
       const isWater = terrainData.waterOnly
       const isNaval = unit.isNaval || false
@@ -597,16 +725,28 @@ export const getReachableHexes = (unit, allHexes, units, terrainMap) => {
       if (disembarking && !canDisembark(unit)) continue
 
       if (!terrainData.passable) continue
-      
-      const moveCost = getUnitMoveCost(unit, terrainData, terrainMap[`${neighbor.q},${neighbor.r}`] || 'PLAIN', { embarking, disembarking })
+
+      const baseMoveCost = getUnitMoveCost(unit, terrainData, terrainMap[`${neighbor.q},${neighbor.r}`] || 'PLAIN', { embarking, disembarking })
+      const zocSurcharge = getSoftZoCSurcharge({
+        unit,
+        fromHex: current,
+        targetHex: neighbor,
+        units: occupiedUnits,
+        allHexes,
+        teamMode,
+      })
+      const moveCost = baseMoveCost + zocSurcharge
       const remainingAfterMove = current.remainingMove - moveCost
       
       if (remainingAfterMove < 0) continue
       
       // Check if occupied by any unit
-      if (isHexOccupied(neighbor.q, neighbor.r, units)) continue
-      
-      visited.add(key)
+      if (isHexOccupied(neighbor.q, neighbor.r, occupiedUnits)) continue
+
+      const existingRemaining = bestRemaining.get(key)
+      if (existingRemaining !== undefined && existingRemaining >= remainingAfterMove) continue
+
+      bestRemaining.set(key, remainingAfterMove)
       reachable.push({ q: neighbor.q, r: neighbor.r, s: neighbor.s })
       
       if (remainingAfterMove > 0) {
@@ -752,7 +892,7 @@ const battlePhase = {
       }
       
       // Calculate reachable hexes
-      const reachable = getReachableHexes(unit, G.hexes, G.units, G.terrainMap)
+      const reachable = getReachableHexes(unit, G.hexes, G.units, G.terrainMap, { teamMode: G.teamMode })
       const isReachable = reachable.some(h => h.q === targetQ && h.r === targetR)
       
       if (!isReachable) {
@@ -770,51 +910,15 @@ const battlePhase = {
         return INVALID_MOVE
       }
       
-      // Calculate actual movement cost for the path taken
-      const getMovementCost = (startQ, startR, targetQ, targetR, allHexes, units, terrainMap) => {
-        // Simple BFS to find the actual path cost
-        const visited = new Set()
-        const queue = [{ q: startQ, r: startR, s: -startQ - startR, cost: 0 }]
-        visited.add(`${startQ},${startR}`)
-        
-        while (queue.length > 0) {
-          const current = queue.shift()
-          
-          if (current.q === targetQ && current.r === targetR) {
-            return current.cost
-          }
-          
-          const neighbors = getNeighbors(current, allHexes)
-          
-          for (const neighbor of neighbors) {
-            const key = `${neighbor.q},${neighbor.r}`
-            if (visited.has(key)) continue
-            
-            const terrainData = getTerrainData(terrainMap, neighbor.q, neighbor.r)
-            const isWater = terrainData.waterOnly
-            const isNaval = unit.isNaval || false
-            const isTransport = unit.isTransport || false
-            const embarking = isWater && !isNaval && !isTransport
-            const disembarking = !isWater && isTransport
-
-            if (isWater && !isNaval && !isTransport && !canEmbark(unit)) continue
-            if (!isWater && isNaval && !isTransport) continue
-            if (disembarking && !canDisembark(unit)) continue
-            if (!terrainData.passable) continue
-            
-            // Check if occupied by any unit (except the moving unit)
-            if (isHexOccupied(neighbor.q, neighbor.r, units.filter(u => u.id !== unit.id))) continue
-            
-            visited.add(key)
-            const moveCost = getUnitMoveCost(unit, terrainData, terrainMap[`${neighbor.q},${neighbor.r}`] || 'PLAIN', { embarking, disembarking })
-            queue.push({ ...neighbor, cost: current.cost + moveCost })
-          }
-        }
-        
-        return Infinity // Should not happen if reachable
-      }
-      
-      const actualCost = getMovementCost(unit.q, unit.r, targetQ, targetR, G.hexes, G.units, G.terrainMap)
+      const actualCost = getLowestMovementCost({
+        unit,
+        start: { q: unit.q, r: unit.r },
+        target: { q: targetQ, r: targetR },
+        allHexes: G.hexes,
+        units: G.units,
+        terrainMap: G.terrainMap,
+        teamMode: G.teamMode,
+      })
       
       unit.lastMove = {
         q: unit.q,
@@ -956,7 +1060,11 @@ const battlePhase = {
       const damageMultiplier = getDamageMultiplier(attacker.currentHP, attacker.maxHP)
       const moraleMultiplier = getMoraleMultiplier(attacker.morale)
       const reducedDamage = Math.round(baseDamage * damageMultiplier * moraleMultiplier)
-      const damage = Math.max(1, reducedDamage - defenseBonus)
+      const { damage, roll: attackRoll } = applyDamageVariance({
+        G,
+        reducedDamage,
+        defenseBonus,
+      })
 
       target.currentHP -= damage
       attacker.hasAttacked = true
@@ -968,6 +1076,7 @@ const battlePhase = {
       
       G.log.push(
         `Player ${playerID}'s ${attacker.name} hit ${target.name} for ${damage} damage` +
+        ` (RNG ${attackRoll >= 1 ? '+' : ''}${Math.round((attackRoll - 1) * 100)}%)` +
         `${damageMultiplier < 1.0 ? ` (reduced to ${Math.round(damageMultiplier * 100)}% due to wounds)` : ''}` +
         `${moraleMultiplier !== 1.0 ? ` (${moraleMultiplier > 1 ? '+20%' : '-20%'} morale)` : ''}` +
         `${defenseBonus > 0 ? ` (terrain defense +${defenseBonus})` : ''}!`
@@ -994,10 +1103,15 @@ const battlePhase = {
             const targetReducedDamage = Math.round(
               targetBaseDamage * targetDamageMultiplier * meleePenaltyMultiplier * targetMoraleMultiplier
             )
-            const counterDamage = Math.max(1, targetReducedDamage - attackerDefenseBonus)
+            const { damage: counterDamage, roll: counterRoll } = applyDamageVariance({
+              G,
+              reducedDamage: targetReducedDamage,
+              defenseBonus: attackerDefenseBonus,
+            })
             attacker.currentHP -= counterDamage
             G.log.push(
               `${target.name} counter-attacked for ${counterDamage} damage` +
+              ` (RNG ${counterRoll >= 1 ? '+' : ''}${Math.round((counterRoll - 1) * 100)}%)` +
               `${targetDamageMultiplier < 1.0 ? ` (reduced to ${Math.round(targetDamageMultiplier * 100)}% due to wounds)` : ''}` +
               `${targetMoraleMultiplier !== 1.0 ? ` (${targetMoraleMultiplier > 1 ? '+20%' : '-20%'} morale)` : ''}` +
               `${meleePenaltyMultiplier < 1.0 ? ' (melee penalty -50%)' : ''}` +
@@ -1189,6 +1303,7 @@ export const MedievalBattleGame = {
       objectiveControl: { [attackerId]: 0, [defenderId]: 0 }, // Track turns controlling objective
       map4ObjectiveState: mapId === 'MAP_4' ? createMap4ObjectiveState({ terrainMap, teamMode }) : null,
       fogOfWarEnabled: setupData?.fogOfWarEnabled ?? false,
+      rngState: Number.isInteger(setupData?.rngSeed) ? setupData.rngSeed : 123456789,
     }
   },
   
@@ -1509,7 +1624,7 @@ const applyTerrainDamage = (G, attacker, targetQ, targetR) => {
   const damageMultiplier = getDamageMultiplier(attacker.currentHP, attacker.maxHP)
   const moraleMultiplier = getMoraleMultiplier(attacker.morale)
   const reducedDamage = Math.round(baseDamage * damageMultiplier * moraleMultiplier)
-  const damage = Math.max(1, reducedDamage)
+  const { damage, roll } = applyDamageVariance({ G, reducedDamage, defenseBonus: 0 })
 
   if (!G.terrainHealth) G.terrainHealth = {}
   const maxWallHP = TERRAIN_TYPES.WALL.maxHP || 100
@@ -1523,7 +1638,7 @@ const applyTerrainDamage = (G, attacker, targetQ, targetR) => {
     attacker.hasMovedOrAttacked = true
   }
 
-  G.log.push(`Player ${attacker.ownerID}'s ${attacker.name} damaged wall at (${targetQ}, ${targetR}) for ${damage}.`)
+  G.log.push(`Player ${attacker.ownerID}'s ${attacker.name} damaged wall at (${targetQ}, ${targetR}) for ${damage} (RNG ${roll >= 1 ? '+' : ''}${Math.round((roll - 1) * 100)}%).`)
 
   if (nextHP <= 0) {
     G.terrainMap[targetKey] = 'FLOOR'

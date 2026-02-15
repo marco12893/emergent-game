@@ -9,6 +9,8 @@ import VictoryScreen from '@/components/VictoryScreen'
 import { areAllies, getPlayerColor, getTeamId, getTeamLabel } from '@/game/teamUtils'
 
 const KNIGHT_PENALTY_TERRAINS = new Set(['CITY', 'CASTLE', 'BARRACKS', 'CATHEDRAL', 'MOSQUE', 'HOSPITAL', 'UNIVERSITY', 'LIBRARY', 'FARM'])
+const DAMAGE_VARIANCE_MIN = 0.8
+const DAMAGE_VARIANCE_MAX = 1.2
 
 // Unit Info Panel Component
 const UnitInfoPanel = ({ unit, isSelected }) => {
@@ -187,19 +189,26 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
       : 0
     const knightTerrainPenalty = selectedUnit.type === 'KNIGHT' && KNIGHT_PENALTY_TERRAINS.has(attackerTerrain) ? 0.75 : 1
     const baseDamage = Math.round((selectedUnit.attackPower + hillBonus) * knightTerrainPenalty)
-    const attackDamage = Math.max(1, baseDamage - defenseBonus)
-    const targetRemaining = targetUnit.currentHP - attackDamage
+    const attackDamageMin = Math.max(1, Math.round(baseDamage * DAMAGE_VARIANCE_MIN) - defenseBonus)
+    const attackDamageMax = Math.max(1, Math.round(baseDamage * DAMAGE_VARIANCE_MAX) - defenseBonus)
+    const targetRemaining = targetUnit.currentHP - attackDamageMin
 
-    let counterDamage = 0
+    let counterDamageMin = 0
+    let counterDamageMax = 0
     if (targetRemaining > 0 && selectedUnit.range === 1 && distance === 1) {
-      counterDamage = Math.max(1, Math.floor(targetUnit.attackPower * 0.5))
+      counterDamageMin = Math.max(1, Math.round(Math.floor(targetUnit.attackPower * 0.5) * DAMAGE_VARIANCE_MIN))
+      counterDamageMax = Math.max(1, Math.round(Math.floor(targetUnit.attackPower * 0.5) * DAMAGE_VARIANCE_MAX))
     }
 
     setDamagePreview({
       attackerId: selectedUnit.id,
       targetId: targetUnit.id,
-      attackDamage,
-      counterDamage,
+      attackDamage: attackDamageMin,
+      counterDamage: counterDamageMin,
+      attackDamageMin,
+      attackDamageMax,
+      counterDamageMin,
+      counterDamageMax,
     })
   }, [selectedUnit, hoveredHex, phase, isMyTurn, G.units, G.terrainMap, playerID, visibleUnits])
 
