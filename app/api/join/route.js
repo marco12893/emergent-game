@@ -133,25 +133,29 @@ export async function POST(request) {
       ? 'Spectator'
       : `Player ${assignedPlayerID}`
 
-    if (assignedPlayerID === 'spectator') {
-      const spectatorId = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-      game.spectators = game.spectators || []
-      const spectatorName = sanitizedPlayerName || defaultName
-      game.spectators.push({
-        id: spectatorId,
-        name: spectatorName,
-        joinTime: Date.now(),
-      })
+    let participantID = assignedPlayerID
 
+    if (assignedPlayerID === 'spectator') {
+      const participantId = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+      const participantName = sanitizedPlayerName || defaultName
       const playOrder = game.teamMode ? getTeamPlayOrder(maxPlayers) : ['0', '1']
       const hasFreeSlot = playOrder.some((id) => !takenPlayers.has(id))
-      if (!hasFreeSlot) {
+
+      if (hasFreeSlot) {
+        game.spectators = game.spectators || []
+        game.spectators.push({
+          id: participantId,
+          name: participantName,
+          joinTime: Date.now(),
+        })
+      } else {
         game.waitlist.push({
-          id: spectatorId,
-          name: spectatorName,
+          id: participantId,
+          name: participantName,
           joinTime: Date.now(),
         })
       }
+      participantID = participantId
     } else {
       game.players[assignedPlayerID] = {
         name: sanitizedPlayerName || defaultName,
@@ -181,13 +185,13 @@ export async function POST(request) {
       })
     }
     
-    console.log(`✅ Player ${assignedPlayerID} joined game ${gameId}`)
+    console.log(`✅ Player ${participantID} joined game ${gameId}`)
     
     return NextResponse.json({ 
       success: true, 
       gameState: game,
-      playerID: assignedPlayerID,
-      message: `Player ${assignedPlayerID} joined successfully`
+      playerID: participantID,
+      message: `Player ${participantID} joined successfully`
     }, {
       headers: {
         'Access-Control-Allow-Origin': '*',

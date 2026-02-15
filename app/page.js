@@ -491,10 +491,11 @@ export default function HTTPMultiplayerPage() {
           const currentPlayers = state?.players || {}
           const currentSpectators = state?.spectators || []
           const currentWaitlist = state?.waitlist || []
+          const isKnownPlayer = Boolean(currentPlayers[playerID])
           const isKnownSpectator = currentSpectators.some((spectator) => spectator?.id === playerID)
           const isKnownWaitlist = currentWaitlist.some((entry) => entry?.id === playerID)
-          const wasKickedFromPlayerSlot = playerID && state?.phase !== 'lobby' && playerID !== 'spectator' && !currentPlayers[playerID] && !isKnownSpectator && !isKnownWaitlist
-          if (wasKickedFromPlayerSlot) {
+          const isStillInMatch = !playerID ? true : (isKnownPlayer || isKnownSpectator || isKnownWaitlist)
+          if (!isStillInMatch) {
             handleKickedOut({ message: 'You were kicked from this match. Rejoin from the lobby if you want to play again.' })
             return
           }
@@ -775,8 +776,9 @@ export default function HTTPMultiplayerPage() {
         setMatchID(gameId)
         setJoined(true)
         setKickedOutNotice('')
+        const joinedAsPlayer = Boolean(data.gameState?.players?.[data.playerID])
         setForceLobbySelection(
-          data.playerID !== 'spectator' && data.gameState?.phase !== 'lobby'
+          joinedAsPlayer && data.gameState?.phase !== 'lobby'
         )
         const nextSession = { matchID: gameId, playerID: data.playerID, playerName }
         setStoredSession(nextSession)
@@ -1406,8 +1408,9 @@ export default function HTTPMultiplayerPage() {
 
   if (shouldShowLobbySelection) {
     const lobbyPlayers = gameState?.players || {}
-    const lobbySpectators = gameState?.spectators || []
     const lobbyWaitlist = gameState?.waitlist || []
+    const waitlistIds = new Set(lobbyWaitlist.map((entry) => entry?.id))
+    const lobbySpectators = (gameState?.spectators || []).filter((spectator) => !waitlistIds.has(spectator?.id))
     const lobbyLeaderId = gameState?.leaderId
     const lobbyMap = MAPS[gameState?.mapId] || MAPS[selectedMapId]
     const maxPlayers = gameState?.maxPlayers || (teamMode ? 4 : 2)
@@ -1691,7 +1694,7 @@ export default function HTTPMultiplayerPage() {
                       <li key={entry.id} className="flex items-center justify-between gap-2">
                         <span>{entry.name}</span>
                         <div className="flex items-center gap-1">
-                          <button onClick={() => claimSlot('0')} className="rounded-full bg-slate-700 px-2 py-0.5 text-[11px] font-semibold text-white">Claim</button>
+                          <span className="text-[11px] text-slate-500">Pick a team slot above</span>
                           {canKickFromLobby && (
                             <button onClick={() => moveParticipant(entry.id, 'spectator')} className="rounded-full bg-slate-700 px-2 py-0.5 text-[11px] font-semibold text-white">Spectate</button>
                           )}
@@ -2026,7 +2029,7 @@ export default function HTTPMultiplayerPage() {
 
       {/* Chat Messages */}
       {joined && (
-        <div className="fixed right-4 top-[12%] z-30 w-72 max-w-[70vw]">
+        <div className={`fixed right-4 z-30 w-72 max-w-[70vw] ${isSpectator && gameState?.phase === 'battle' ? 'top-[38%]' : 'top-[12%]'}`}>
           <div className="bg-slate-900/70 border border-slate-700 rounded-lg p-2 space-y-1 text-xs text-slate-100 shadow-lg backdrop-blur">
             {chatMessages.length === 0 && (
               <div className="text-slate-400">No chat messages yet.</div>

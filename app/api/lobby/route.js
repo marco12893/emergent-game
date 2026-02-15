@@ -27,13 +27,15 @@ export async function GET() {
         joined: Boolean(data?.joined),
         joinTime: data?.joinTime || null,
       }))
-      const spectators = (game.spectators || []).map((spectator) => ({
-        id: spectator.id,
-        name: spectator.name || 'Spectator',
-        joinTime: spectator.joinTime || null,
-      }))
-
       const waitlist = (game.waitlist || []).map((entry) => ({ id: entry.id, name: entry.name || 'Waitlisted', joinTime: entry.joinTime || null }))
+      const waitlistIds = new Set(waitlist.map((entry) => entry.id))
+      const spectators = (game.spectators || [])
+        .filter((spectator) => !waitlistIds.has(spectator.id))
+        .map((spectator) => ({
+          id: spectator.id,
+          name: spectator.name || 'Spectator',
+          joinTime: spectator.joinTime || null,
+        }))
 
       const playerCount = players.filter(player => player.id !== 'spectator').length
       const status = 'open' // Always show as open to allow anyone to join

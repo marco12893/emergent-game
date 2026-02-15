@@ -789,6 +789,10 @@ export async function POST(request) {
     if (!Array.isArray(game.waitlist)) {
       game.waitlist = []
     }
+    if (game.waitlist.length > 0 && game.spectators.length > 0) {
+      const waitlistIds = new Set(game.waitlist.map((entry) => entry?.id).filter(Boolean))
+      game.spectators = game.spectators.filter((spectator) => !waitlistIds.has(spectator?.id))
+    }
     if (!game.leaderId && game.players?.['0']) {
       game.leaderId = '0'
     }
@@ -881,7 +885,7 @@ export async function POST(request) {
         }
         case 'claimSlot': {
           const claimSlotSchema = {
-            playerID: { required: true, sanitize: sanitizePlayerID },
+            playerID: { required: true, sanitize: sanitizeParticipantID },
             desiredSlot: { required: true },
             playerName: { required: false, sanitize: sanitizePlayerName },
           }
@@ -966,7 +970,7 @@ export async function POST(request) {
 
         case 'moveParticipant': {
           const moveSchema = {
-            playerID: { required: true, sanitize: sanitizePlayerID },
+            playerID: { required: true, sanitize: sanitizeParticipantID },
             targetID: { required: true, sanitize: sanitizeParticipantID },
             destination: { required: true },
           }
