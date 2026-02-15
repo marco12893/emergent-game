@@ -82,6 +82,15 @@ export const updateMap4ObjectiveState = ({ G, teamMode = false }) => {
       const otherTeam = occupyingTeam === objectiveState.attackerId ? objectiveState.defenderId : objectiveState.attackerId
       building.captureProgress[otherTeam] = 0
       G.log.push(`${getTeamLabel(occupyingTeam)} captured ${building.label}!`)
+      if (G.battleStats) {
+        G.battleStats.objectiveCaptures = G.battleStats.objectiveCaptures || []
+        G.battleStats.objectiveCaptures.push({
+          team: occupyingTeam,
+          building: building.label,
+          turn: G.turn || 1,
+          at: Date.now(),
+        })
+      }
       return
     }
 

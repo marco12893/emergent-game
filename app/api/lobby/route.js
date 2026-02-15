@@ -33,6 +33,8 @@ export async function GET() {
         joinTime: spectator.joinTime || null,
       }))
 
+      const waitlist = (game.waitlist || []).map((entry) => ({ id: entry.id, name: entry.name || 'Waitlisted', joinTime: entry.joinTime || null }))
+
       const playerCount = players.filter(player => player.id !== 'spectator').length
       const status = 'open' // Always show as open to allow anyone to join
 
@@ -52,6 +54,7 @@ export async function GET() {
         fogOfWarEnabled: Boolean(game.fogOfWarEnabled),
         players,
         spectators,
+        waitlist,
         playerCount,
         maxPlayers: game.maxPlayers || 2,
         leaderId: game.leaderId || null,

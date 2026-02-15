@@ -173,8 +173,15 @@ export default function HTTPMultiplayerPage() {
   const [forceLobbySelection, setForceLobbySelection] = useState(false)
   const [kickedOutNotice, setKickedOutNotice] = useState('')
   const [nowTs, setNowTs] = useState(Date.now())
+  const [spectatorVision, setSpectatorVision] = useState('all')
+  const [copyStatus, setCopyStatus] = useState('')
   const chatInputRef = useRef(null)
-  const isSpectator = playerID === 'spectator'
+  const isSpectator = useMemo(() => {
+    if (playerID === 'spectator') return true
+    if (!playerID || !gameState) return false
+    if (gameState.players?.[playerID]) return false
+    return (gameState.spectators || []).some((spectator) => spectator?.id === playerID) || (gameState.waitlist || []).some((entry) => entry?.id === playerID)
+  }, [playerID, gameState])
   const isMyTurn = !isSpectator && gameState?.currentPlayer === playerID
   const playerColor = getPlayerColor(playerID)
   const generalSprite = getUnitSpriteProps({ image: 'General' }, playerID)
@@ -194,7 +201,13 @@ export default function HTTPMultiplayerPage() {
     }
   }
   const fogOfWarEnabled = Boolean(gameState?.fogOfWarEnabled)
-  const fogActive = fogOfWarEnabled && gameState?.phase !== 'lobby' && !isSpectator
+  const spectatorPovPlayerID = useMemo(() => {
+    if (!isSpectator) return playerID
+    if (spectatorVision === 'all') return null
+    return spectatorVision === 'blueGreen' ? '0' : '1'
+  }, [isSpectator, playerID, spectatorVision])
+  const fogViewerID = isSpectator ? spectatorPovPlayerID : playerID
+  const fogActive = fogOfWarEnabled && gameState?.phase !== 'lobby' && Boolean(fogViewerID)
 
   const visibleHexes = useMemo(() => {
     if (!fogActive || !gameState) return null
@@ -202,11 +215,11 @@ export default function HTTPMultiplayerPage() {
       units: gameState.units,
       hexes: gameState.hexes,
       terrainMap: gameState.terrainMap,
-      playerID,
+      playerID: fogViewerID,
       teamMode,
       deploymentZones: gameState.deploymentZones,
     })
-  }, [fogActive, gameState, playerID, teamMode])
+  }, [fogActive, gameState, fogViewerID, teamMode])
 
   const visibleUnits = useMemo(() => {
     if (!gameState) return []
@@ -215,11 +228,11 @@ export default function HTTPMultiplayerPage() {
       units: gameState.units,
       hexes: gameState.hexes,
       terrainMap: gameState.terrainMap,
-      playerID,
+      playerID: fogViewerID,
       teamMode,
       deploymentZones: gameState.deploymentZones,
     })
-  }, [fogActive, gameState, playerID, teamMode])
+  }, [fogActive, gameState, fogViewerID, teamMode])
 
   const selectedUnitForInfo = selectedUnitForInfoId
     ? visibleUnits.find(unit => unit.id === selectedUnitForInfoId)
@@ -292,6 +305,62 @@ export default function HTTPMultiplayerPage() {
       }),
     }
   }, [gameState?.map4ObjectiveState, gameState?.mapId, gameState?.phase, playerID, teamMode])
+
+  const advantageSummary = useMemo(() => {
+    if (!gameState) return null
+    const aliveUnits = (gameState.units || []).filter((unit) => unit.currentHP > 0)
+    const blueHP = aliveUnits.filter((unit) => getTeamId(unit.ownerID) === 'blue-green').reduce((sum, unit) => sum + unit.currentHP, 0)
+    const redHP = aliveUnits.filter((unit) => getTeamId(unit.ownerID) === 'red-yellow').reduce((sum, unit) => sum + unit.currentHP, 0)
+    const objectiveBuildings = Object.values(gameState?.map4ObjectiveState?.buildings || {})
+    const blueObjectives = objectiveBuildings.filter((building) => building.owner === (teamMode ? 'blue-green' : '0')).length
+    const redObjectives = objectiveBuildings.filter((building) => building.owner === (teamMode ? 'red-yellow' : '1')).length
+    return { blueHP, redHP, blueObjectives, redObjectives }
+  }, [gameState, teamMode])
+
+  const discordSummary = useMemo(() => {
+    if (!gameState?.gameOver) return ''
+    const gameOver = gameState.gameOver
+    const winnerLabel = gameOver.draw ? 'Draw' : (gameOver.teamMode ? getTeamLabel(gameOver.winnerTeam) : `Player ${gameOver.winner}`)
+    const aliveCounts = (gameState.units || []).reduce((acc, unit) => {
+      if (unit.currentHP <= 0) return acc
+      const key = teamMode ? getTeamId(unit.ownerID) : unit.ownerID
+      acc[key] = (acc[key] || 0) + 1
+      return acc
+    }, {})
+    const initialCounts = gameState?.battleStats?.initialUnitCounts || {}
+    const losses = Object.keys(initialCounts).reduce((acc, ownerId) => {
+      const alive = (gameState.units || []).filter((unit) => unit.currentHP > 0 && unit.ownerID === ownerId).length
+      const retreated = (gameState.retreatedUnits || []).filter((unit) => unit.ownerID === ownerId).length
+      acc[ownerId] = Math.max(0, (initialCounts[ownerId] || 0) - alive - retreated)
+      return acc
+    }, {})
+    const firstKill = gameState?.battleStats?.firstKill
+    const retreatCounts = gameState?.battleStats?.retreatCounts || {}
+    const objectiveCaptures = gameState?.battleStats?.objectiveCaptures || []
+    const survivorList = (gameState.units || []).filter((unit) => unit.currentHP > 0).map((unit) => `${unit.name}(P${unit.ownerID})`).join(', ') || 'None'
+    const retreatedList = (gameState.retreatedUnits || []).map((unit) => `${unit.name}(P${unit.ownerID})`).join(', ') || 'None'
+
+    return [
+      `🏁 Winner: ${winnerLabel} (${gameOver.victoryType})`,
+      `⏱️ Turns: ${gameOver.turn || gameState.turn || 1}`,
+      `💀 Units lost: ${Object.entries(losses).map(([owner, count]) => `P${owner}:${count}`).join(' | ') || 'N/A'}`,
+      `🔑 Key events: first kill ${firstKill ? `T${firstKill.turn} P${firstKill.attacker} defeated ${firstKill.unit}` : 'none'}; objective captures ${objectiveCaptures.length}; retreats ${Object.values(retreatCounts).reduce((a, b) => a + b, 0)}`,
+      `🛡️ Survivors: ${survivorList}`,
+      `🏃 Retreated: ${retreatedList}`,
+    ].join('\n')
+  }, [gameState, teamMode])
+
+  const copyDiscordSummary = async () => {
+    if (!discordSummary) return
+    try {
+      await navigator.clipboard.writeText(discordSummary)
+      setCopyStatus('Copied summary for Discord!')
+      setTimeout(() => setCopyStatus(''), 1800)
+    } catch (error) {
+      setCopyStatus('Copy failed. Please copy manually from the victory screen.')
+      setTimeout(() => setCopyStatus(''), 2200)
+    }
+  }
 
   const getChatSenderClass = (message) => {
     if (message?.playerID === '0') return 'text-blue-400'
@@ -420,7 +489,11 @@ export default function HTTPMultiplayerPage() {
           setGameState(state)
 
           const currentPlayers = state?.players || {}
-          const wasKickedFromPlayerSlot = playerID && playerID !== 'spectator' && !currentPlayers[playerID]
+          const currentSpectators = state?.spectators || []
+          const currentWaitlist = state?.waitlist || []
+          const isKnownSpectator = currentSpectators.some((spectator) => spectator?.id === playerID)
+          const isKnownWaitlist = currentWaitlist.some((entry) => entry?.id === playerID)
+          const wasKickedFromPlayerSlot = playerID && state?.phase !== 'lobby' && playerID !== 'spectator' && !currentPlayers[playerID] && !isKnownSpectator && !isKnownWaitlist
           if (wasKickedFromPlayerSlot) {
             handleKickedOut({ message: 'You were kicked from this match. Rejoin from the lobby if you want to play again.' })
             return
@@ -733,7 +806,7 @@ export default function HTTPMultiplayerPage() {
 
   const sendAction = async (action, payload) => {
     if (!joined) return
-    if (isSpectator && action !== 'claimSlot') {
+    if (isSpectator && !['claimSlot', 'moveParticipant'].includes(action)) {
       setError('Spectators cannot perform game actions.')
       return
     }
@@ -1029,9 +1102,7 @@ export default function HTTPMultiplayerPage() {
       playerName: playerName || undefined,
     })
     if (result?.success) {
-      if (slotId === 'spectator') {
-        setPlayerID('spectator')
-      } else {
+      if (slotId !== 'spectator' && slotId !== 'waitlist') {
         setPlayerID(String(slotId))
       }
     }
@@ -1336,6 +1407,7 @@ export default function HTTPMultiplayerPage() {
   if (shouldShowLobbySelection) {
     const lobbyPlayers = gameState?.players || {}
     const lobbySpectators = gameState?.spectators || []
+    const lobbyWaitlist = gameState?.waitlist || []
     const lobbyLeaderId = gameState?.leaderId
     const lobbyMap = MAPS[gameState?.mapId] || MAPS[selectedMapId]
     const maxPlayers = gameState?.maxPlayers || (teamMode ? 4 : 2)
@@ -1358,6 +1430,11 @@ export default function HTTPMultiplayerPage() {
     const lobbyFogEnabled = Boolean(gameState?.fogOfWarEnabled)
 
     const canKickFromLobby = !isSpectator && playerID === lobbyLeaderId
+
+    const moveParticipant = async (targetID, destination) => {
+      if (!joined) return
+      await sendAction('moveParticipant', { playerID, targetID, destination })
+    }
 
     const kickParticipant = async (targetID) => {
       if (!joined || !canKickFromLobby) return
@@ -1423,7 +1500,7 @@ export default function HTTPMultiplayerPage() {
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => claimSlot(slot.id)}
-                          disabled={isSpectator}
+                          disabled={false}
                           className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
                         >
                           {isCurrent ? 'Your Slot' : isOccupied ? 'Claim' : isSpectator ? 'Spectator' : 'Join'}
@@ -1535,7 +1612,7 @@ export default function HTTPMultiplayerPage() {
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => claimSlot(slot.id)}
-                          disabled={isSpectator}
+                          disabled={false}
                           className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
                         >
                           {isCurrent ? 'Your Slot' : isOccupied ? 'Claim' : isSpectator ? 'Spectator' : 'Join'}
@@ -1596,6 +1673,34 @@ export default function HTTPMultiplayerPage() {
                   ))}
                 </ul>
               )}
+              <div className="mt-4 border-t border-slate-700 pt-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-slate-200">Waitlist</span>
+                  <button
+                    onClick={() => claimSlot('waitlist')}
+                    className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white"
+                  >
+                    Move Me to Waitlist
+                  </button>
+                </div>
+                {lobbyWaitlist.length === 0 ? (
+                  <div className="mt-2 text-slate-400">No waitlisted players.</div>
+                ) : (
+                  <ul className="mt-2 space-y-1 text-slate-400">
+                    {lobbyWaitlist.map(entry => (
+                      <li key={entry.id} className="flex items-center justify-between gap-2">
+                        <span>{entry.name}</span>
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => claimSlot('0')} className="rounded-full bg-slate-700 px-2 py-0.5 text-[11px] font-semibold text-white">Claim</button>
+                          {canKickFromLobby && (
+                            <button onClick={() => moveParticipant(entry.id, 'spectator')} className="rounded-full bg-slate-700 px-2 py-0.5 text-[11px] font-semibold text-white">Spectate</button>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
               {isSpectator && (
                 <div className="mt-2 text-xs text-amber-300">You are watching as a spectator.</div>
               )}
@@ -1830,6 +1935,28 @@ export default function HTTPMultiplayerPage() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {gameState?.phase === 'battle' && isSpectator && (
+        <div className="fixed top-4 right-4 z-30 w-80 max-w-[85vw] rounded-lg border border-slate-600 bg-slate-900/90 p-3 text-xs shadow-lg backdrop-blur space-y-3">
+          <div>
+            <div className="font-semibold text-amber-300">Observer POV</div>
+            <div className="mt-2 flex flex-wrap gap-1">
+              <button onClick={() => setSpectatorVision('all')} className={`rounded px-2 py-1 ${spectatorVision === 'all' ? 'bg-amber-500 text-slate-900' : 'bg-slate-700 text-slate-100'}`}>Full</button>
+              <button onClick={() => setSpectatorVision('blueGreen')} className={`rounded px-2 py-1 ${spectatorVision === 'blueGreen' ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-100'}`}>Blue/Green POV</button>
+              <button onClick={() => setSpectatorVision('redYellow')} className={`rounded px-2 py-1 ${spectatorVision === 'redYellow' ? 'bg-red-500 text-white' : 'bg-slate-700 text-slate-100'}`}>Red/Yellow POV</button>
+            </div>
+          </div>
+          {advantageSummary && (
+            <div>
+              <div className="font-semibold text-amber-300">Current Advantage</div>
+              <div className="mt-1 text-slate-200">HP — Blue/Green: {advantageSummary.blueHP} vs Red/Yellow: {advantageSummary.redHP}</div>
+              <div className="text-slate-300">Objectives — Blue/Green: {advantageSummary.blueObjectives} • Red/Yellow: {advantageSummary.redObjectives}</div>
+            </div>
+          )}
+          <button onClick={copyDiscordSummary} disabled={!discordSummary} className="w-full rounded bg-emerald-600 px-3 py-2 font-semibold text-white disabled:bg-slate-700 disabled:text-slate-400">Copy summary for Discord</button>
+          {copyStatus && <div className="text-emerald-300">{copyStatus}</div>}
         </div>
       )}
       

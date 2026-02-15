@@ -103,6 +103,7 @@ export async function POST(request) {
     
     const takenPlayers = new Set(Object.keys(game.players || {}))
     const maxPlayers = game.maxPlayers || 2
+    game.waitlist = Array.isArray(game.waitlist) ? game.waitlist : []
     let assignedPlayerID = sanitizedPlayerID
 
     if (!assignedPlayerID) {
@@ -111,8 +112,7 @@ export async function POST(request) {
     }
 
     if (!assignedPlayerID) {
-      const playOrder = game.teamMode ? getTeamPlayOrder(maxPlayers) : ['0', '1']
-      assignedPlayerID = playOrder[0] || '0'
+      assignedPlayerID = 'spectator'
     }
 
     if (assignedPlayerID !== 'spectator' && Number(assignedPlayerID) >= maxPlayers) {
@@ -136,11 +136,22 @@ export async function POST(request) {
     if (assignedPlayerID === 'spectator') {
       const spectatorId = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
       game.spectators = game.spectators || []
+      const spectatorName = sanitizedPlayerName || defaultName
       game.spectators.push({
         id: spectatorId,
-        name: sanitizedPlayerName || defaultName,
+        name: spectatorName,
         joinTime: Date.now(),
       })
+
+      const playOrder = game.teamMode ? getTeamPlayOrder(maxPlayers) : ['0', '1']
+      const hasFreeSlot = playOrder.some((id) => !takenPlayers.has(id))
+      if (!hasFreeSlot) {
+        game.waitlist.push({
+          id: spectatorId,
+          name: spectatorName,
+          joinTime: Date.now(),
+        })
+      }
     } else {
       game.players[assignedPlayerID] = {
         name: sanitizedPlayerName || defaultName,
