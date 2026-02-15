@@ -172,6 +172,7 @@ export default function HTTPMultiplayerPage() {
   const [nowTs, setNowTs] = useState(Date.now())
   const [spectatorVision, setSpectatorVision] = useState('all')
   const [copyStatus, setCopyStatus] = useState('')
+  const [isObserverPanelOpen, setIsObserverPanelOpen] = useState(true)
   const chatInputRef = useRef(null)
   const isSpectator = useMemo(() => {
     if (playerID === 'spectator') return true
@@ -1708,12 +1709,7 @@ export default function HTTPMultiplayerPage() {
       <LandscapePrompt />
 
       {/* Status Bar - Hidden when deploy panel is open */}
-      {<div className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-20 transition-all duration-300
-        ${(gameState?.phase === 'setup' && !isLeftPanelCollapsed) 
-          ? 'hidden lg:block'  // Mobile/Tablet: Hidden, Desktop: Force Block
-          : 'block'            // Default: Selalu Block
-        }
-      `}>
+      {<div className={`hidden fixed top-4 left-1/2 transform -translate-x-1/2 z-20 transition-all duration-300 ${(gameState?.phase === 'setup' && !isLeftPanelCollapsed) ? 'lg:hidden' : 'lg:block'}`}>
         <div className="bg-slate-800/90 border border-slate-600 rounded-lg px-4 py-2 shadow-xl backdrop-blur-sm">
           <div className="flex items-center justify-center gap-6 text-sm">
             
@@ -1772,8 +1768,31 @@ export default function HTTPMultiplayerPage() {
       </div>
       }
 
+      {/* Mobile Status Bar */}
+      <div className={`fixed top-2 left-2 right-2 z-20 lg:hidden pointer-events-none ${gameState?.phase === 'setup' ? 'hidden' : 'block'}`}>
+        <div className="rounded-lg border border-slate-600 bg-slate-800/90 px-3 py-2 text-xs shadow-xl backdrop-blur-sm">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+            <span className="font-semibold text-amber-300">T{gameState?.turn || 1}</span>
+            <span className={`rounded px-2 py-0.5 font-bold ${
+              gameState?.phase === 'setup' ? 'bg-purple-600' : 'bg-orange-600'
+            }`}>
+              {gameState?.phase?.toUpperCase() || 'SETUP'}
+            </span>
+            <span className={`rounded px-2 py-0.5 font-bold ${
+              isObserver ? 'bg-slate-600' : playerID === '0' ? 'bg-blue-600' : 'bg-red-600'
+            }`}>
+              {isWaitlisted ? 'Waitlist' : isSpectator ? 'Spectator' : `P${playerID || '?'}`}
+            </span>
+            <span className="text-slate-300">Game: {matchID || 'default'}</span>
+            <span className={isMyTurn ? 'font-bold text-green-400' : 'font-semibold text-amber-400'}>
+              {isMyTurn ? 'YOUR TURN' : `Turn: P${gameState?.currentPlayer || '?'}`}
+            </span>
+          </div>
+        </div>
+      </div>
+
       {gameState?.phase === 'battle' && turnTimer && (
-        <div className={`fixed top-[4.65rem] left-1/2 -translate-x-1/2 z-20 transition-all duration-300 ${(gameState?.phase === 'setup' && !isLeftPanelCollapsed) ? 'hidden lg:block' : 'block'}`}>
+        <div className="hidden lg:block fixed top-[4.65rem] left-1/2 -translate-x-1/2 z-20 transition-all duration-300">
           <div className="min-w-[220px] rounded-lg border border-slate-600 bg-slate-800/90 px-4 py-2 text-center shadow-xl backdrop-blur-sm">
             <div className={`text-lg font-extrabold tabular-nums ${currentTurnColorClass}`}>
               ⏱ {turnTimer.remainingSeconds}s
@@ -1784,6 +1803,14 @@ export default function HTTPMultiplayerPage() {
                 style={{ width: `${Math.max(0, Math.min(100, turnTimer.percent))}%` }}
               />
             </div>
+          </div>
+        </div>
+      )}
+
+      {gameState?.phase === 'battle' && turnTimer && (
+        <div className="fixed top-[3.7rem] left-2 z-20 lg:hidden pointer-events-none">
+          <div className={`min-w-[4rem] rounded-md border border-slate-600 bg-slate-800/90 px-2 py-1 text-left text-xs font-extrabold tabular-nums shadow-xl backdrop-blur-sm ${currentTurnColorClass}`}>
+            ⏱ {turnTimer.remainingSeconds}s
           </div>
         </div>
       )}
@@ -1906,62 +1933,79 @@ export default function HTTPMultiplayerPage() {
       </div>
 
       {gameState?.phase === 'battle' && map4ObjectivePanel && (
-        <div className="fixed top-4 left-4 z-30 w-80 max-w-[85vw] rounded-lg border border-slate-600 bg-slate-900/85 p-3 text-xs shadow-lg backdrop-blur">
-          <div className="font-semibold text-amber-300">Objective</div>
-          <div className="mt-1 text-slate-200">{map4ObjectivePanel.title}</div>
-          {map4ObjectivePanel.buildings.length > 0 && (
-            <div className="mt-2 space-y-1 text-slate-100">
-              {map4ObjectivePanel.buildings.map((building) => (
-                <div key={building.label} className="flex items-center justify-between">
-                  <span>{building.label} ({building.progress}/{building.captureTurns})</span>
-                  <span className={building.owner === 'blue-green' || building.owner === '0' ? 'text-blue-300' : 'text-red-300'}>
-                    {building.owner === 'blue-green' || building.owner === '0' ? 'Blue-owned' : 'Red-owned'}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
+        <div className="fixed top-[5.8rem] left-2 lg:top-4 lg:left-4 z-30 text-[11px] lg:text-xs pointer-events-none">
+          <div className="font-semibold text-amber-300">Objectives</div>
+          <ul className="mt-1 space-y-0.5 text-slate-100">
+            <li className="text-slate-200">{map4ObjectivePanel.title}</li>
+            {map4ObjectivePanel.buildings.map((building) => (
+              <li key={building.label} className="flex items-center gap-2">
+                <span>{building.label} ({building.progress}/{building.captureTurns})</span>
+                <span className={building.owner === 'blue-green' || building.owner === '0' ? 'text-blue-300' : 'text-red-300'}>
+                  {building.owner === 'blue-green' || building.owner === '0' ? 'Blue' : 'Red'}
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
       {gameState?.phase === 'battle' && isObserver && fogOfWarEnabled && (
-        <div className="fixed top-4 right-4 z-30 w-80 max-w-[85vw] rounded-lg border border-slate-600 bg-slate-900/90 p-3 text-xs shadow-lg backdrop-blur space-y-3">
-          <div>
-            <div className="font-semibold text-amber-300">Observer POV</div>
-            <div className="mt-2 flex flex-wrap gap-1">
-              <button onClick={() => setSpectatorVision('all')} className={`rounded px-2 py-1 ${spectatorVision === 'all' ? 'bg-amber-500 text-slate-900' : 'bg-slate-700 text-slate-100'}`}>Full</button>
-              <button onClick={() => setSpectatorVision('blueGreen')} className={`rounded px-2 py-1 ${spectatorVision === 'blueGreen' ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-100'}`}>Blue/Green POV</button>
-              <button onClick={() => setSpectatorVision('redYellow')} className={`rounded px-2 py-1 ${spectatorVision === 'redYellow' ? 'bg-red-500 text-white' : 'bg-slate-700 text-slate-100'}`}>Red/Yellow POV</button>
-            </div>
-          </div>
-          {advantageSummary && (
-            <div>
-              <div className="font-semibold text-amber-300">Current Advantage</div>
-              <div className="mt-1 text-slate-200">HP — Blue/Green: {advantageSummary.blueHP} vs Red/Yellow: {advantageSummary.redHP}</div>
-              <div className="text-slate-300">Objectives — Blue/Green: {advantageSummary.blueObjectives} • Red/Yellow: {advantageSummary.redObjectives}</div>
+        <div className="fixed top-3 right-2 lg:top-4 lg:right-4 z-30 w-[min(90vw,22rem)]">
+          {!isObserverPanelOpen && (
+            <button
+              onClick={() => setIsObserverPanelOpen(true)}
+              className="rounded-md border border-slate-600 bg-slate-900/90 px-3 py-1.5 text-xs font-semibold text-amber-300 shadow-lg backdrop-blur"
+            >
+              Observer POV
+            </button>
+          )}
+          {isObserverPanelOpen && (
+            <div className="rounded-lg border border-slate-600 bg-slate-900/90 p-3 text-xs shadow-lg backdrop-blur space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="font-semibold text-amber-300">Observer POV</div>
+                <button
+                  onClick={() => setIsObserverPanelOpen(false)}
+                  className="h-6 w-6 rounded bg-slate-700 text-slate-100 hover:bg-slate-600"
+                  aria-label="Close observer panel"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                <button onClick={() => setSpectatorVision('all')} className={`rounded px-2 py-1 ${spectatorVision === 'all' ? 'bg-amber-500 text-slate-900' : 'bg-slate-700 text-slate-100'}`}>Full</button>
+                <button onClick={() => setSpectatorVision('blueGreen')} className={`rounded px-2 py-1 ${spectatorVision === 'blueGreen' ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-100'}`}>Blue/Green POV</button>
+                <button onClick={() => setSpectatorVision('redYellow')} className={`rounded px-2 py-1 ${spectatorVision === 'redYellow' ? 'bg-red-500 text-white' : 'bg-slate-700 text-slate-100'}`}>Red/Yellow POV</button>
+              </div>
+              {advantageSummary && (
+                <div>
+                  <div className="font-semibold text-amber-300">Current Advantage</div>
+                  <div className="mt-1 text-slate-200">HP — Blue/Green: {advantageSummary.blueHP} vs Red/Yellow: {advantageSummary.redHP}</div>
+                  <div className="text-slate-300">Objectives — Blue/Green: {advantageSummary.blueObjectives} • Red/Yellow: {advantageSummary.redObjectives}</div>
+                </div>
+              )}
+              <button onClick={copyDiscordSummary} disabled={!discordSummary} className="w-full rounded bg-emerald-600 px-3 py-2 font-semibold text-white disabled:bg-slate-700 disabled:text-slate-400">Copy summary for Discord</button>
+              {copyStatus && <div className="text-emerald-300">{copyStatus}</div>}
             </div>
           )}
-          <button onClick={copyDiscordSummary} disabled={!discordSummary} className="w-full rounded bg-emerald-600 px-3 py-2 font-semibold text-white disabled:bg-slate-700 disabled:text-slate-400">Copy summary for Discord</button>
-          {copyStatus && <div className="text-emerald-300">{copyStatus}</div>}
         </div>
       )}
       
       {/* Action Buttons - Bottom Right Corner */}
-      <div className="fixed bottom-4 right-4 z-30">
+      <div className="fixed bottom-2 left-1/2 -translate-x-1/2 lg:bottom-4 lg:left-auto lg:right-4 lg:translate-x-0 z-40">
         {gameState?.phase === 'setup' && (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-center gap-2">
             <button
               onClick={() => setIsChatOpen(true)}
-              className="w-12 h-12 bg-slate-700 hover:bg-slate-600 text-white rounded-lg shadow-lg transition-all transform hover:scale-105 flex items-center justify-center"
+              className="w-10 h-10 lg:w-12 lg:h-12 bg-slate-700 hover:bg-slate-600 text-white rounded-lg shadow-lg transition-all transform hover:scale-105 flex items-center justify-center"
               aria-label="Open chat"
             >
-              <img src="/icons/chat%20icon.png" alt="Chat" className="w-7 h-7" />
+              <img src="/icons/chat%20icon.png" alt="Chat" className="w-6 h-6 lg:w-7 lg:h-7" />
             </button>
             {!isObserver && (
               <button
                 onClick={readyForBattle}
                 disabled={!isMyTurn}
-                className="px-6 py-3 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-600 text-white font-bold rounded-lg shadow-lg transition-all transform hover:scale-105"
+                className="px-4 h-10 lg:px-6 lg:py-3 lg:h-auto bg-amber-500 hover:bg-amber-400 disabled:bg-slate-600 text-white text-sm lg:text-base font-bold rounded-lg shadow-lg transition-all transform hover:scale-105"
               >
                 Ready For Battle
               </button>
@@ -1970,37 +2014,37 @@ export default function HTTPMultiplayerPage() {
         )}
         
         {gameState?.phase === 'battle' && (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-center gap-2">
             <button
               onClick={() => setIsChatOpen(true)}
-              className="w-12 h-12 bg-slate-700 hover:bg-slate-600 text-white rounded-lg shadow-lg transition-all transform hover:scale-105 flex items-center justify-center"
+              className="w-10 h-10 lg:w-12 lg:h-12 bg-slate-700 hover:bg-slate-600 text-white rounded-lg shadow-lg transition-all transform hover:scale-105 flex items-center justify-center"
               aria-label="Open chat"
             >
-              <img src="/icons/chat%20icon.png" alt="Chat" className="w-7 h-7" />
+              <img src="/icons/chat%20icon.png" alt="Chat" className="w-6 h-6 lg:w-7 lg:h-7" />
             </button>
             {!isObserver && (
               <>
                 <button
                   onClick={undoMove}
                   disabled={!isMyTurn || !selectedUnit?.lastMove || selectedUnit?.hasAttacked}
-                  className="w-12 h-12 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:opacity-60 text-white rounded-lg shadow-lg transition-all transform hover:scale-105 flex items-center justify-center"
+                  className="w-10 h-10 lg:w-12 lg:h-12 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:opacity-60 text-white rounded-lg shadow-lg transition-all transform hover:scale-105 flex items-center justify-center"
                   aria-label="Undo move"
                 >
-                  <img src="/icons/Undo%20Button.png" alt="Undo move" className="w-7 h-7" />
+                  <img src="/icons/Undo%20Button.png" alt="Undo move" className="w-6 h-6 lg:w-7 lg:h-7" />
                 </button>
                 <button
                   onClick={retreatSelectedUnit}
                   disabled={!isMyTurn || !canRetreatSelectedUnit}
                   title={retreatActivationTurn ? `Retreat available from turn ${retreatActivationTurn}` : 'Retreat'}
-                  className="w-12 h-12 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:opacity-60 rounded-lg shadow-lg transition-all transform hover:scale-105 flex items-center justify-center"
+                  className="w-10 h-10 lg:w-12 lg:h-12 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:opacity-60 rounded-lg shadow-lg transition-all transform hover:scale-105 flex items-center justify-center"
                   aria-label="Retreat unit"
                 >
-                  <img src="/units/retreat.png" alt="Retreat" className="w-7 h-7" />
+                  <img src="/units/retreat.png" alt="Retreat" className="w-6 h-6 lg:w-7 lg:h-7" />
                 </button>
                 <button
                   onClick={endTurn}
                   disabled={!isMyTurn}
-                  className="px-5 h-12 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 text-white font-bold rounded-lg shadow-lg transition-all transform hover:scale-105"
+                  className="px-4 h-10 lg:px-5 lg:h-12 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 text-white text-sm lg:text-base font-bold rounded-lg shadow-lg transition-all transform hover:scale-105"
                 >
                   End Turn
                 </button>
@@ -2012,8 +2056,8 @@ export default function HTTPMultiplayerPage() {
 
       {/* Chat Messages */}
       {joined && (
-        <div className={`fixed right-4 z-30 w-72 max-w-[70vw] ${isObserver && gameState?.phase === 'battle' ? 'top-[38%]' : 'top-[12%]'}`}>
-          <div className="bg-slate-900/70 border border-slate-700 rounded-lg p-2 space-y-1 text-xs text-slate-100 shadow-lg backdrop-blur">
+        <div className={`fixed left-2 right-2 bottom-14 lg:left-auto lg:right-4 z-30 lg:w-72 lg:max-w-[70vw] pointer-events-none ${isObserver && gameState?.phase === 'battle' ? 'lg:top-[38%]' : 'lg:top-[12%]'}`}>
+          <div className="max-h-24 overflow-y-auto lg:max-h-64 bg-slate-900/70 border border-slate-700 rounded-lg p-2 space-y-1 text-xs text-slate-100 shadow-lg backdrop-blur">
             {chatMessages.length === 0 && (
               <div className="text-slate-400">No chat messages yet.</div>
             )}
@@ -2031,7 +2075,7 @@ export default function HTTPMultiplayerPage() {
 
       {/* Chat Input */}
       {isChatOpen && (
-        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-40 w-[min(90vw,420px)]">
+        <div className="fixed bottom-16 lg:bottom-20 left-1/2 -translate-x-1/2 z-40 w-[min(94vw,420px)] lg:w-[min(90vw,420px)]">
           <form
             onSubmit={handleChatSubmit}
             className="flex items-center gap-2 bg-slate-900/90 border border-slate-700 rounded-lg p-2 shadow-lg backdrop-blur"
@@ -2060,17 +2104,17 @@ export default function HTTPMultiplayerPage() {
       
       {/* Unit Info Box - Right Side */}
       {selectedUnitForInfo && (
-        <div className="fixed right-4 top-1/2 transform -translate-y-1/2 z-20">
-          <div className={`p-4 rounded-lg border-2 shadow-xl backdrop-blur-sm ${
+        <div className="fixed left-2 right-2 bottom-24 lg:left-auto lg:right-4 lg:top-1/2 lg:bottom-auto transform-none lg:-translate-y-1/2 z-20 pointer-events-none">
+          <div className={`p-3 lg:p-4 rounded-lg border-2 shadow-xl backdrop-blur-sm ${
             selectedUnitForInfo.ownerID === playerID 
               ? 'border-amber-400 bg-amber-400/10' 
               : 'border-slate-600 bg-slate-800/90'
           }`}>
             <div className="flex items-center gap-3 mb-3">
-              <span className="text-3xl">{selectedUnitForInfo.emoji || '⚔️'}</span>
+              <span className="text-2xl lg:text-3xl">{selectedUnitForInfo.emoji || '⚔️'}</span>
               <div>
-                <div className="font-bold text-white text-lg">{selectedUnitForInfo.name || 'Unit'}</div>
-                <div className={`text-sm ${selectedUnitForInfo.ownerID === '0' ? 'text-blue-400' : 'text-red-400'}`}>
+                <div className="font-bold text-white text-base lg:text-lg">{selectedUnitForInfo.name || 'Unit'}</div>
+                <div className={`text-xs lg:text-sm ${selectedUnitForInfo.ownerID === '0' ? 'text-blue-400' : 'text-red-400'}`}>
                   Player {selectedUnitForInfo.ownerID}
                 </div>
               </div>
