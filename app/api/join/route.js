@@ -103,6 +103,7 @@ export async function POST(request) {
     
     const takenPlayers = new Set(Object.keys(game.players || {}))
     const maxPlayers = game.maxPlayers || 2
+    game.waitlist = Array.isArray(game.waitlist) ? game.waitlist : []
     let assignedPlayerID = sanitizedPlayerID
 
     if (!assignedPlayerID) {
@@ -111,8 +112,7 @@ export async function POST(request) {
     }
 
     if (!assignedPlayerID) {
-      const playOrder = game.teamMode ? getTeamPlayOrder(maxPlayers) : ['0', '1']
-      assignedPlayerID = playOrder[0] || '0'
+      assignedPlayerID = 'spectator'
     }
 
     if (assignedPlayerID !== 'spectator' && Number(assignedPlayerID) >= maxPlayers) {
@@ -133,14 +133,29 @@ export async function POST(request) {
       ? 'Spectator'
       : `Player ${assignedPlayerID}`
 
+    let participantID = assignedPlayerID
+
     if (assignedPlayerID === 'spectator') {
-      const spectatorId = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-      game.spectators = game.spectators || []
-      game.spectators.push({
-        id: spectatorId,
-        name: sanitizedPlayerName || defaultName,
-        joinTime: Date.now(),
-      })
+      const participantId = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+      const participantName = sanitizedPlayerName || defaultName
+      const playOrder = game.teamMode ? getTeamPlayOrder(maxPlayers) : ['0', '1']
+      const hasFreeSlot = playOrder.some((id) => !takenPlayers.has(id))
+
+      if (hasFreeSlot) {
+        game.spectators = game.spectators || []
+        game.spectators.push({
+          id: participantId,
+          name: participantName,
+          joinTime: Date.now(),
+        })
+      } else {
+        game.waitlist.push({
+          id: participantId,
+          name: participantName,
+          joinTime: Date.now(),
+        })
+      }
+      participantID = participantId
     } else {
       game.players[assignedPlayerID] = {
         name: sanitizedPlayerName || defaultName,
@@ -170,13 +185,13 @@ export async function POST(request) {
       })
     }
     
-    console.log(`✅ Player ${assignedPlayerID} joined game ${gameId}`)
+    console.log(`✅ Player ${participantID} joined game ${gameId}`)
     
     return NextResponse.json({ 
       success: true, 
       gameState: game,
-      playerID: assignedPlayerID,
-      message: `Player ${assignedPlayerID} joined successfully`
+      playerID: participantID,
+      message: `Player ${participantID} joined successfully`
     }, {
       headers: {
         'Access-Control-Allow-Origin': '*',

@@ -52,6 +52,23 @@ const VictoryScreen = ({
   const teamBlueUnits = units.filter(u => getTeamId(u.ownerID) === 'blue-green' && u.currentHP > 0)
   const teamRedUnits = units.filter(u => getTeamId(u.ownerID) === 'red-yellow' && u.currentHP > 0)
 
+
+  const discordSummary = [
+    `🏁 Winner: ${isDraw ? 'Draw' : teamMode ? getTeamLabel(winnerTeam) : `Player ${winner}`}`,
+    `⏱️ Turns: ${turn}`,
+    `🎯 Victory: ${victoryType.replace('_', ' ')}`,
+    `🛡️ Survivors: ${(units || []).filter((unit) => unit.currentHP > 0).map((unit) => `${unit.name}(P${unit.ownerID})`).join(', ') || 'None'}`,
+    `🏃 Retreated: ${(units || []).filter((unit) => unit.retreated).map((unit) => `${unit.name}(P${unit.ownerID})`).join(', ') || 'None'}`,
+  ].join('\n')
+
+  const copySummary = async () => {
+    try {
+      await navigator.clipboard.writeText(discordSummary)
+    } catch (error) {
+      console.error('Failed to copy summary', error)
+    }
+  }
+
   const UnitList = ({ playerUnits, playerNumber, label, teamId }) => {
     const isWinningSide = !isDraw && (teamMode ? winnerTeam === teamId : winner === playerNumber)
     const isTeamZero = teamMode ? teamId === 'blue-green' : playerNumber === '0'
@@ -195,6 +212,12 @@ const VictoryScreen = ({
 
         {/* Action Buttons */}
         <div className="flex gap-3">
+          <button
+            onClick={copySummary}
+            className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg transition-all"
+          >
+            📋 Copy summary for Discord
+          </button>
           <button
             onClick={() => window.location.href = '/'}
             className="flex-1 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-300 font-semibold rounded-lg transition-all"

@@ -102,6 +102,25 @@ const pickRandomLeader = (players = {}, excludedId = null) => {
   return eligiblePlayers[randomIndex]
 }
 
+const getUnitCountsByOwner = (units = []) => {
+  return units.reduce((acc, unit) => {
+    if (!unit?.ownerID) return acc
+    acc[unit.ownerID] = (acc[unit.ownerID] || 0) + 1
+    return acc
+  }, {})
+}
+
+const ensureBattleStats = (game) => {
+  if (game.battleStats) return
+  const initialCounts = getUnitCountsByOwner((game.units || []).filter((unit) => unit.currentHP > 0))
+  game.battleStats = {
+    initialUnitCounts: initialCounts,
+    firstKill: null,
+    retreatCounts: {},
+    objectiveCaptures: [],
+  }
+}
+
 const TRANSPORT_STATS = {
   name: 'Transport',
   image: 'transport',
@@ -767,6 +786,13 @@ export async function POST(request) {
     if (!game.spectators) {
       game.spectators = []
     }
+    if (!Array.isArray(game.waitlist)) {
+      game.waitlist = []
+    }
+    if (game.waitlist.length > 0 && game.spectators.length > 0) {
+      const waitlistIds = new Set(game.waitlist.map((entry) => entry?.id).filter(Boolean))
+      game.spectators = game.spectators.filter((spectator) => !waitlistIds.has(spectator?.id))
+    }
     if (!game.leaderId && game.players?.['0']) {
       game.leaderId = '0'
     }
@@ -859,7 +885,7 @@ export async function POST(request) {
         }
         case 'claimSlot': {
           const claimSlotSchema = {
-            playerID: { required: true, sanitize: sanitizePlayerID },
+            playerID: { required: true, sanitize: sanitizeParticipantID },
             desiredSlot: { required: true },
             playerName: { required: false, sanitize: sanitizePlayerName },
           }
@@ -870,92 +896,70 @@ export async function POST(request) {
               error: 'Invalid payload for claimSlot: ' + claimSlotValidation.error 
             }, { 
               status: 400,
-              headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type',
-              }
+              headers: ACTION_CORS_HEADERS,
             })
           }
 
           const { playerID: claimPlayerID, desiredSlot, playerName: claimPlayerName } = claimSlotValidation.sanitized
-          if (!claimPlayerID || claimPlayerID === 'spectator') {
-            return NextResponse.json({ 
-              error: 'Invalid playerID for claimSlot' 
-            }, { 
-              status: 400,
-              headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type',
-              }
-            })
+          if (!claimPlayerID) {
+            return NextResponse.json({ error: 'Invalid playerID for claimSlot' }, { status: 400, headers: ACTION_CORS_HEADERS })
           }
 
           const maxPlayers = game.maxPlayers || (teamMode ? 4 : 2)
           const normalizedDesired = String(desiredSlot)
           const desiredIsSpectator = normalizedDesired === 'spectator'
+          const desiredIsWaitlist = normalizedDesired === 'waitlist'
           const desiredIndex = Number(normalizedDesired)
 
-          if (!desiredIsSpectator && (!Number.isInteger(desiredIndex) || desiredIndex < 0 || desiredIndex >= maxPlayers)) {
-            return NextResponse.json({ 
-              error: 'Desired slot is not valid for this lobby' 
-            }, { 
-              status: 400,
-              headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type',
-              }
-            })
+          if (!desiredIsSpectator && !desiredIsWaitlist && (!Number.isInteger(desiredIndex) || desiredIndex < 0 || desiredIndex >= maxPlayers)) {
+            return NextResponse.json({ error: 'Desired slot is not valid for this lobby' }, { status: 400, headers: ACTION_CORS_HEADERS })
           }
 
           const existingEntry = game.players?.[claimPlayerID]
-          if (!existingEntry) {
-            return NextResponse.json({ 
-              error: 'Player is not registered in this lobby' 
-            }, { 
-              status: 400,
-              headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type',
-              }
-            })
+          const spectatorIndex = (game.spectators || []).findIndex((spectator) => spectator?.id === claimPlayerID)
+          const waitlistIndex = (game.waitlist || []).findIndex((entry) => entry?.id === claimPlayerID)
+          const fromSpectator = spectatorIndex >= 0
+          const fromWaitlist = waitlistIndex >= 0
+
+          const sourceEntry = existingEntry || (fromSpectator ? game.spectators[spectatorIndex] : null) || (fromWaitlist ? game.waitlist[waitlistIndex] : null)
+          if (!sourceEntry) {
+            return NextResponse.json({ error: 'Player is not registered in this lobby' }, { status: 400, headers: ACTION_CORS_HEADERS })
           }
+
+          const sourceName = claimPlayerName || sourceEntry.name || `Player ${claimPlayerID}`
+          if (existingEntry) delete game.players[claimPlayerID]
+          if (fromSpectator) game.spectators.splice(spectatorIndex, 1)
+          if (fromWaitlist) game.waitlist.splice(waitlistIndex, 1)
 
           if (desiredIsSpectator) {
             game.spectators = game.spectators || []
-            game.spectators.push({
-              id: claimPlayerID,
-              name: claimPlayerName || existingEntry.name || `Player ${claimPlayerID}`,
-              joinTime: Date.now(),
-            })
-            delete game.players[claimPlayerID]
+            game.spectators.push({ id: claimPlayerID, name: sourceName, joinTime: Date.now() })
+            if (game.leaderId === claimPlayerID) {
+              game.leaderId = pickRandomLeader(game.players, claimPlayerID)
+            }
+          } else if (desiredIsWaitlist) {
+            game.waitlist = game.waitlist || []
+            game.waitlist.push({ id: claimPlayerID, name: sourceName, joinTime: Date.now() })
             if (game.leaderId === claimPlayerID) {
               game.leaderId = pickRandomLeader(game.players, claimPlayerID)
             }
           } else {
             const desiredSlotId = String(desiredIndex)
-            if (desiredSlotId !== claimPlayerID) {
-              game.players[desiredSlotId] = {
-                ...existingEntry,
-                name: claimPlayerName || existingEntry.name || `Player ${desiredSlotId}`,
-                joinTime: existingEntry.joinTime || Date.now(),
-                joined: true,
-              }
-              delete game.players[claimPlayerID]
-              if (game.leaderId === claimPlayerID) {
-                game.leaderId = desiredSlotId
-              }
-            } else if (claimPlayerName) {
-              game.players[claimPlayerID] = {
-                ...existingEntry,
-                name: claimPlayerName,
-              }
+            const displaced = game.players?.[desiredSlotId]
+            game.players[desiredSlotId] = {
+              ...(sourceEntry || {}),
+              name: sourceName,
+              joinTime: sourceEntry?.joinTime || Date.now(),
+              joined: true,
             }
-
-            if (!game.leaderId) {
+            if (displaced) {
+              game.waitlist.push({
+                id: desiredSlotId,
+                name: displaced.name || `Player ${desiredSlotId}`,
+                joinTime: displaced.joinTime || Date.now(),
+              })
+            }
+            if (game.leaderId === claimPlayerID || !game.leaderId) {
               game.leaderId = desiredSlotId
             }
           }
@@ -964,6 +968,75 @@ export async function POST(request) {
           break
         }
 
+        case 'moveParticipant': {
+          const moveSchema = {
+            playerID: { required: true, sanitize: sanitizeParticipantID },
+            targetID: { required: true, sanitize: sanitizeParticipantID },
+            destination: { required: true },
+          }
+          const moveValidation = validatePayload(payload, moveSchema)
+          if (moveValidation.error) {
+            return NextResponse.json({ error: 'Invalid payload for moveParticipant: ' + moveValidation.error }, { status: 400, headers: ACTION_CORS_HEADERS })
+          }
+
+          const { playerID: actingPlayerID, targetID, destination } = moveValidation.sanitized
+          const normalizedDestination = String(destination)
+          const maxPlayers = game.maxPlayers || (teamMode ? 4 : 2)
+          const destinationIsSpectator = normalizedDestination === 'spectator'
+          const destinationIsWaitlist = normalizedDestination === 'waitlist'
+          const destinationIndex = Number(normalizedDestination)
+          if (!destinationIsSpectator && !destinationIsWaitlist && (!Number.isInteger(destinationIndex) || destinationIndex < 0 || destinationIndex >= maxPlayers)) {
+            return NextResponse.json({ error: 'Destination slot is not valid for this lobby' }, { status: 400, headers: ACTION_CORS_HEADERS })
+          }
+
+          const isLeader = game.leaderId && game.leaderId === actingPlayerID
+          const isSelfMove = actingPlayerID === targetID
+          if (!isLeader && !isSelfMove) {
+            return NextResponse.json({ error: 'Only the lobby leader can move other participants' }, { status: 403, headers: ACTION_CORS_HEADERS })
+          }
+
+          const currentPlayerEntry = game.players?.[targetID]
+          const spectatorIndex = (game.spectators || []).findIndex((spectator) => spectator?.id === targetID)
+          const waitlistIndex = (game.waitlist || []).findIndex((entry) => entry?.id === targetID)
+          const sourceEntry = currentPlayerEntry || (spectatorIndex >= 0 ? game.spectators[spectatorIndex] : null) || (waitlistIndex >= 0 ? game.waitlist[waitlistIndex] : null)
+          if (!sourceEntry) {
+            return NextResponse.json({ error: 'Target participant was not found in this lobby' }, { status: 404, headers: ACTION_CORS_HEADERS })
+          }
+
+          if (currentPlayerEntry) delete game.players[targetID]
+          if (spectatorIndex >= 0) game.spectators.splice(spectatorIndex, 1)
+          if (waitlistIndex >= 0) game.waitlist.splice(waitlistIndex, 1)
+
+          if (destinationIsSpectator) {
+            game.spectators.push({ id: targetID, name: sourceEntry.name || `Player ${targetID}`, joinTime: sourceEntry.joinTime || Date.now() })
+            if (game.leaderId === targetID) {
+              game.leaderId = pickRandomLeader(game.players, targetID)
+            }
+          } else if (destinationIsWaitlist) {
+            game.waitlist.push({ id: targetID, name: sourceEntry.name || `Player ${targetID}`, joinTime: sourceEntry.joinTime || Date.now() })
+            if (game.leaderId === targetID) {
+              game.leaderId = pickRandomLeader(game.players, targetID)
+            }
+          } else {
+            const slotId = String(destinationIndex)
+            const displaced = game.players?.[slotId]
+            game.players[slotId] = {
+              ...sourceEntry,
+              name: sourceEntry.name || `Player ${slotId}`,
+              joinTime: sourceEntry.joinTime || Date.now(),
+              joined: true,
+            }
+            if (displaced) {
+              game.waitlist.push({ id: slotId, name: displaced.name || `Player ${slotId}`, joinTime: displaced.joinTime || Date.now() })
+            }
+            if (!game.leaderId || game.leaderId === targetID) {
+              game.leaderId = slotId
+            }
+          }
+
+          game.lastUpdate = Date.now()
+          break
+        }
 
         case 'kickParticipant': {
           const kickSchema = {
@@ -1012,8 +1085,9 @@ export async function POST(request) {
 
           const targetIsPlayer = Boolean(game.players?.[targetID])
           const targetSpectatorIndex = (game.spectators || []).findIndex(spectator => spectator?.id === targetID)
+          const targetWaitlistIndex = (game.waitlist || []).findIndex(entry => entry?.id === targetID)
 
-          if (!targetIsPlayer && targetSpectatorIndex === -1) {
+          if (!targetIsPlayer && targetSpectatorIndex === -1 && targetWaitlistIndex === -1) {
             return NextResponse.json({
               error: 'Kick target was not found in this lobby'
             }, {
@@ -1031,10 +1105,14 @@ export async function POST(request) {
             }
 
             game.log.push(`${targetName} was kicked from the lobby.`)
-          } else {
+          } else if (targetSpectatorIndex >= 0) {
             const [removedSpectator] = game.spectators.splice(targetSpectatorIndex, 1)
             const spectatorName = removedSpectator?.name || 'Spectator'
             game.log.push(`${spectatorName} was kicked from spectators.`)
+          } else {
+            const [removedWaitlist] = game.waitlist.splice(targetWaitlistIndex, 1)
+            const waitlistName = removedWaitlist?.name || 'Participant'
+            game.log.push(`${waitlistName} was kicked from waitlist.`)
           }
 
           game.lastUpdate = Date.now()
@@ -1135,6 +1213,7 @@ export async function POST(request) {
           }
 
           game.phase = 'battle'
+          ensureBattleStats(game)
           game.inactivePlayers = playOrder.filter(id => !activePlayers.includes(id))
           game.currentPlayer = activePlayers[0] || '0'
           game.log.push(`⚔️ BATTLE PHASE BEGINS! Player ${game.currentPlayer} gets the first turn.`)
@@ -1995,6 +2074,14 @@ export async function POST(request) {
             
             if (target.currentHP <= 0) {
               promoteMoraleFromKill(attacker)
+              if (game.battleStats && !game.battleStats.firstKill) {
+                game.battleStats.firstKill = {
+                  attacker: attacker.ownerID,
+                  victim: target.ownerID,
+                  unit: target.name,
+                  turn: game.turn || 1,
+                }
+              }
               game.units = game.units.filter(u => u.id !== target.id)
               game.log.push(`${target.name} was defeated!`)
             }
@@ -2201,6 +2288,7 @@ export async function POST(request) {
             readyActivePlayers.length === readyEligiblePlayers.length
           ) {
             game.phase = 'battle'
+            ensureBattleStats(game)
             game.inactivePlayers = readyPlayOrder.filter(id => !readyActivePlayers.includes(id))
             game.currentPlayer = readyActivePlayers[0] || readyEligiblePlayers[0] || '0'
             game.log.push(`⚔️ BATTLE PHASE BEGINS! Player ${game.currentPlayer} gets the first turn.`)
@@ -2326,6 +2414,10 @@ export async function POST(request) {
           game.retreatedUnitIds = game.retreatedUnitIds || []
           game.retreatedUnits.push({ ...unit, retreated: true })
           game.retreatedUnitIds.push(unit.id)
+          if (game.battleStats) {
+            game.battleStats.retreatCounts = game.battleStats.retreatCounts || {}
+            game.battleStats.retreatCounts[retreatPlayerID] = (game.battleStats.retreatCounts[retreatPlayerID] || 0) + 1
+          }
           game.units.splice(unitIndex, 1)
           if (game.selectedUnitId === retreatUnitId) {
             game.selectedUnitId = null
