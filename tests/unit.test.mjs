@@ -38,6 +38,12 @@ import {
   shouldShowUnitActionRing,
 } from '../game/unitActionIndicators.js'
 import {
+  DAMAGE_ANIMATION_DURATION,
+  DEATH_ANIMATION_DURATION,
+  getDamageAnimationFrame,
+  getDeathAnimationFrame,
+} from '../lib/unitAnimations.js'
+import {
   createUnit,
   getAttackableHexes,
   getDeployableHexes,
@@ -256,6 +262,32 @@ test('validatePayload sanitizes values and reports errors', () => {
 test('getMapConfig falls back to default map', () => {
   assert.equal(getMapConfig('MAP_1').id, 'MAP_1')
   assert.equal(getMapConfig('missing').id, DEFAULT_MAP_ID)
+})
+
+test('getDamageAnimationFrame returns animated shake and fades out by duration', () => {
+  const createdAt = 1000
+  const middleFrame = getDamageAnimationFrame({ now: createdAt + (DAMAGE_ANIMATION_DURATION / 2), createdAt })
+  assert.equal(middleFrame.active, true)
+  assert.ok(middleFrame.intensity > 0)
+  assert.ok(Math.abs(middleFrame.shakeX) <= 1.6)
+  assert.ok(middleFrame.flashOpacity > 0)
+
+  const expiredFrame = getDamageAnimationFrame({ now: createdAt + DAMAGE_ANIMATION_DURATION + 1, createdAt })
+  assert.equal(expiredFrame.active, false)
+})
+
+test('getDeathAnimationFrame expands ring and expires after configured duration', () => {
+  const createdAt = 500
+  const openingFrame = getDeathAnimationFrame({ now: createdAt + 1, createdAt })
+  const lateFrame = getDeathAnimationFrame({ now: createdAt + (DEATH_ANIMATION_DURATION * 0.8), createdAt })
+
+  assert.equal(openingFrame.active, true)
+  assert.equal(lateFrame.active, true)
+  assert.ok(lateFrame.ringRadius > openingFrame.ringRadius)
+  assert.ok(lateFrame.opacity < openingFrame.opacity)
+
+  const expired = getDeathAnimationFrame({ now: createdAt + DEATH_ANIMATION_DURATION + 1, createdAt })
+  assert.equal(expired.active, false)
 })
 
 test('generateMapData returns map config, hexes, and terrain', () => {
