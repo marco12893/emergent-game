@@ -209,6 +209,17 @@ const GameBoard = ({
   const previousUnitsForAnimationRef = useRef(new Map())
   const [movementAnimations, setMovementAnimations] = useState(new Map())
 
+
+  // Generate the hex map data
+  const hexData = useMemo(() => {
+    const sourceHexes = hexes.length ? hexes : generateHexMap(mapWidth, mapHeight)
+    return sourceHexes.map(hex => ({
+      ...hex,
+      terrain: getTerrainType(hex.q, hex.r, terrainMap),
+      spawnZone: getSpawnZone(hex.q, hex.r, mapWidth),
+    }))
+  }, [terrainMap, hexes, mapWidth, mapHeight])
+
   useEffect(() => {
     const interval = setInterval(() => {
       setNow(Date.now())
@@ -610,16 +621,6 @@ const GameBoard = ({
   useEffect(() => {
     setCameraOffset((prev) => getClampedOffset(prev))
   }, [getClampedOffset])
-
-  // Generate the hex map data
-  const hexData = useMemo(() => {
-    const sourceHexes = hexes.length ? hexes : generateHexMap(mapWidth, mapHeight)
-    return sourceHexes.map(hex => ({
-      ...hex,
-      terrain: getTerrainType(hex.q, hex.r, terrainMap),
-      spawnZone: getSpawnZone(hex.q, hex.r, mapWidth),
-    }))
-  }, [terrainMap, hexes, mapWidth, mapHeight])
 
   // Handle hex click
   const handleHexClick = useCallback((hex, event) => {
