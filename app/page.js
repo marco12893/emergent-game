@@ -1708,12 +1708,7 @@ export default function HTTPMultiplayerPage() {
       <LandscapePrompt />
 
       {/* Status Bar - Hidden when deploy panel is open */}
-      {<div className={`hidden lg:block fixed top-4 left-1/2 transform -translate-x-1/2 z-20 transition-all duration-300
-        ${(gameState?.phase === 'setup' && !isLeftPanelCollapsed) 
-          ? 'hidden lg:block'  // Mobile/Tablet: Hidden, Desktop: Force Block
-          : 'block'            // Default: Selalu Block
-        }
-      `}>
+      {<div className={`hidden fixed top-4 left-1/2 transform -translate-x-1/2 z-20 transition-all duration-300 ${(gameState?.phase === 'setup' && !isLeftPanelCollapsed) ? 'lg:hidden' : 'lg:block'}`}>
         <div className="bg-slate-800/90 border border-slate-600 rounded-lg px-4 py-2 shadow-xl backdrop-blur-sm">
           <div className="flex items-center justify-center gap-6 text-sm">
             
@@ -1773,7 +1768,7 @@ export default function HTTPMultiplayerPage() {
       }
 
       {/* Mobile Status Bar */}
-      <div className="fixed top-2 left-2 right-2 z-20 lg:hidden">
+      <div className={`fixed top-2 left-2 right-2 z-20 lg:hidden pointer-events-none ${gameState?.phase === 'setup' ? 'hidden' : 'block'}`}>
         <div className="rounded-lg border border-slate-600 bg-slate-800/90 px-3 py-2 text-xs shadow-xl backdrop-blur-sm">
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
             <span className="font-semibold text-amber-300">T{gameState?.turn || 1}</span>
@@ -1796,7 +1791,7 @@ export default function HTTPMultiplayerPage() {
       </div>
 
       {gameState?.phase === 'battle' && turnTimer && (
-        <div className={`hidden lg:block fixed top-[4.65rem] left-1/2 -translate-x-1/2 z-20 transition-all duration-300 ${(gameState?.phase === 'setup' && !isLeftPanelCollapsed) ? 'hidden lg:block' : 'block'}`}>
+        <div className="hidden lg:block fixed top-[4.65rem] left-1/2 -translate-x-1/2 z-20 transition-all duration-300">
           <div className="min-w-[220px] rounded-lg border border-slate-600 bg-slate-800/90 px-4 py-2 text-center shadow-xl backdrop-blur-sm">
             <div className={`text-lg font-extrabold tabular-nums ${currentTurnColorClass}`}>
               ⏱ {turnTimer.remainingSeconds}s
@@ -1812,7 +1807,7 @@ export default function HTTPMultiplayerPage() {
       )}
 
       {gameState?.phase === 'battle' && turnTimer && (
-        <div className="fixed top-[3.6rem] left-2 right-2 z-20 lg:hidden">
+        <div className="fixed top-[3.6rem] left-2 right-2 z-20 lg:hidden pointer-events-none">
           <div className="rounded-lg border border-slate-600 bg-slate-800/90 px-3 py-1.5 text-center shadow-xl backdrop-blur-sm">
             <div className={`text-sm font-extrabold tabular-nums ${currentTurnColorClass}`}>⏱ {turnTimer.remainingSeconds}s</div>
             <div className="mt-1 h-1.5 w-full overflow-hidden rounded bg-slate-700">
@@ -1962,7 +1957,7 @@ export default function HTTPMultiplayerPage() {
       )}
 
       {gameState?.phase === 'battle' && map4ObjectivePanel && (
-        <div className="fixed top-[6.9rem] left-2 right-2 z-30 rounded-lg border border-slate-600 bg-slate-900/85 p-2 text-[11px] shadow-lg backdrop-blur lg:hidden">
+        <div className="fixed top-[6.9rem] left-2 right-2 z-30 rounded-lg border border-slate-600 bg-slate-900/85 p-2 text-[11px] shadow-lg backdrop-blur lg:hidden pointer-events-none">
           <div className="font-semibold text-amber-300">Objective</div>
           <div className="mt-0.5 text-slate-200">{map4ObjectivePanel.title}</div>
           {map4ObjectivePanel.buildings.length > 0 && (
@@ -2003,7 +1998,7 @@ export default function HTTPMultiplayerPage() {
       )}
       
       {/* Action Buttons - Bottom Right Corner */}
-      <div className="fixed bottom-2 left-1/2 -translate-x-1/2 lg:bottom-4 lg:left-auto lg:right-4 lg:translate-x-0 z-30">
+      <div className="fixed bottom-2 left-1/2 -translate-x-1/2 lg:bottom-4 lg:left-auto lg:right-4 lg:translate-x-0 z-40">
         {gameState?.phase === 'setup' && (
           <div className="flex flex-wrap items-center justify-center gap-2">
             <button
@@ -2068,7 +2063,7 @@ export default function HTTPMultiplayerPage() {
 
       {/* Chat Messages */}
       {joined && (
-        <div className={`fixed left-2 right-2 bottom-14 lg:left-auto lg:right-4 z-30 lg:w-72 lg:max-w-[70vw] ${isObserver && gameState?.phase === 'battle' ? 'lg:top-[38%]' : 'lg:top-[12%]'}`}>
+        <div className={`fixed left-2 right-2 bottom-14 lg:left-auto lg:right-4 z-30 lg:w-72 lg:max-w-[70vw] pointer-events-none ${isObserver && gameState?.phase === 'battle' ? 'lg:top-[38%]' : 'lg:top-[12%]'}`}>
           <div className="max-h-24 overflow-y-auto lg:max-h-64 bg-slate-900/70 border border-slate-700 rounded-lg p-2 space-y-1 text-xs text-slate-100 shadow-lg backdrop-blur">
             {chatMessages.length === 0 && (
               <div className="text-slate-400">No chat messages yet.</div>
@@ -2116,7 +2111,7 @@ export default function HTTPMultiplayerPage() {
       
       {/* Unit Info Box - Right Side */}
       {selectedUnitForInfo && (
-        <div className="fixed left-2 right-2 bottom-24 lg:left-auto lg:right-4 lg:top-1/2 lg:bottom-auto transform-none lg:-translate-y-1/2 z-20">
+        <div className="fixed left-2 right-2 bottom-24 lg:left-auto lg:right-4 lg:top-1/2 lg:bottom-auto transform-none lg:-translate-y-1/2 z-20 pointer-events-none">
           <div className={`p-3 lg:p-4 rounded-lg border-2 shadow-xl backdrop-blur-sm ${
             selectedUnitForInfo.ownerID === playerID 
               ? 'border-amber-400 bg-amber-400/10' 
