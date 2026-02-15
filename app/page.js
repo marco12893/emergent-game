@@ -798,7 +798,7 @@ export default function HTTPMultiplayerPage() {
       }
     } catch (err) {
       console.error('Connection error:', err)
-      setError('Failed to connect to game server. Make sure server is running on localhost:8000')
+      setError(`Failed to connect to game server at ${serverUrl || 'current host'}. Please try again.`)
     } finally {
       setLoading(false)
     }
@@ -1919,7 +1919,7 @@ export default function HTTPMultiplayerPage() {
         </div>
       )}
 
-      {gameState?.phase === 'battle' && isObserver && (
+      {gameState?.phase === 'battle' && isObserver && fogOfWarEnabled && (
         <div className="fixed top-4 right-4 z-30 w-80 max-w-[85vw] rounded-lg border border-slate-600 bg-slate-900/90 p-3 text-xs shadow-lg backdrop-blur space-y-3">
           <div>
             <div className="font-semibold text-amber-300">Observer POV</div>

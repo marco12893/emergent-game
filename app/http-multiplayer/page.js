@@ -501,7 +501,7 @@ export default function HTTPMultiplayerPage() {
       }
     } catch (err) {
       console.error('Connection error:', err)
-      setError('Failed to connect to game server. Make sure server is running on localhost:8000')
+      setError(`Failed to connect to game server at ${serverUrl || 'current host'}. Please try again.`)
     } finally {
       setLoading(false)
     }
