@@ -1621,12 +1621,12 @@ export default function HTTPMultiplayerPage() {
             <div className="rounded-2xl border border-slate-700/80 bg-slate-900/70 p-4 text-xs text-slate-300">
               <div className="flex items-center justify-between">
                 <span className="font-semibold text-slate-200">Spectators</span>
-                {!isObserver && (
+                {!isSpectator && (
                   <button
                     onClick={() => claimSlot('spectator')}
                     className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white"
                   >
-                    Watch as Spectator
+                    {isWaitlisted ? 'Move to Spectator' : 'Watch as Spectator'}
                   </button>
                 )}
               </div>
