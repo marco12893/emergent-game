@@ -1281,7 +1281,7 @@ export async function POST(request) {
       const waitlistIds = new Set(game.waitlist.map((entry) => entry?.id).filter(Boolean))
       game.spectators = game.spectators.filter((spectator) => !waitlistIds.has(spectator?.id))
     }
-    if (!game.leaderId) {
+    if (!game.leaderId || !isRegisteredParticipant(game.leaderId, game)) {
       game.leaderId = pickRandomLeader(game)
     }
     if (typeof game.fogOfWarEnabled !== 'boolean') {

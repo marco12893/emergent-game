@@ -975,7 +975,8 @@ export default function HTTPMultiplayerPage() {
                         <button
                           onClick={() => sendAction('addAiPlayer', { playerID, desiredSlot: slot.id })}
                           disabled={!canAddAi}
-                          className="rounded-full bg-emerald-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
+                            title={canAddAi ? 'Add AI commander' : 'Only the lobby leader can add AI, and fog must be disabled'}
+                          className="rounded-full bg-emerald-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800 disabled:opacity-50"
                         >
                           +AI
                         </button>
@@ -1071,7 +1072,8 @@ export default function HTTPMultiplayerPage() {
                         <button
                           onClick={() => sendAction('addAiPlayer', { playerID, desiredSlot: slot.id })}
                           disabled={!canAddAi}
-                          className="rounded-full bg-emerald-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
+                            title={canAddAi ? 'Add AI commander' : 'Only the lobby leader can add AI, and fog must be disabled'}
+                          className="rounded-full bg-emerald-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800 disabled:opacity-50"
                         >
                           +AI
                         </button>
