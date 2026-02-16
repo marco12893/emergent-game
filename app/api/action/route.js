@@ -1514,6 +1514,17 @@ export async function POST(request) {
           }
 
           const sourceName = claimPlayerName || sourceEntry.name || `Player ${claimPlayerID}`
+
+          if (!desiredIsSpectator && !desiredIsWaitlist) {
+            const desiredSlotId = String(desiredIndex)
+            const displaced = game.players?.[desiredSlotId]
+            if (displaced && desiredSlotId !== claimPlayerID) {
+              return NextResponse.json({
+                error: 'That slot is currently occupied by an active player. Ask them to move first.'
+              }, { status: 409, headers: ACTION_CORS_HEADERS })
+            }
+          }
+
           if (existingEntry) delete game.players[claimPlayerID]
           if (fromSpectator) game.spectators.splice(spectatorIndex, 1)
           if (fromWaitlist) game.waitlist.splice(waitlistIndex, 1)
@@ -1540,13 +1551,6 @@ export async function POST(request) {
             }
           } else {
             const desiredSlotId = String(desiredIndex)
-            const displaced = game.players?.[desiredSlotId]
-            if (displaced && desiredSlotId !== claimPlayerID) {
-              return NextResponse.json({
-                error: 'That slot is currently occupied by an active player. Ask them to move first.'
-              }, { status: 409, headers: ACTION_CORS_HEADERS })
-            }
-
             game.players[desiredSlotId] = {
               ...(sourceEntry || {}),
               name: sourceName,
@@ -1555,6 +1559,9 @@ export async function POST(request) {
             }
             if (!game.leaderId) {
               game.leaderId = desiredSlotId
+            }
+            if (claimPlayerID === payload?.playerID && claimPlayerID !== desiredSlotId) {
+              reassignedPlayerID = desiredSlotId
             }
           }
 
