@@ -204,6 +204,21 @@ export default function HTTPMultiplayerPage() {
       sessionStorage.removeItem('lobbySession')
     }
   }
+
+  const returnToPreGameLobby = ({ notice } = {}) => {
+    setJoined(false)
+    setGameState(null)
+    setPlayerID('')
+    setForceLobbySelection(false)
+    setMatchID('')
+    setStoredSession(null)
+    if (notice) {
+      setKickedOutNotice(notice)
+    }
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('lobbySession')
+    }
+  }
   const fogOfWarEnabled = Boolean(gameState?.fogOfWarEnabled)
   const spectatorPovPlayerID = useMemo(() => {
     if (!isObserver) return playerID
@@ -563,6 +578,11 @@ export default function HTTPMultiplayerPage() {
             setHighlightedHexes([])
             setAttackableHexes([])
           }
+        } else if (response.status === 410) {
+          const data = await response.json().catch(() => ({}))
+          returnToPreGameLobby({
+            notice: data?.message || 'This game has been disbanded by the lobby leader.',
+          })
         }
       } catch (err) {
         console.error('Failed to poll game state:', err)
@@ -798,6 +818,28 @@ export default function HTTPMultiplayerPage() {
       setError(`Failed to connect to game server at ${serverUrl || 'current host'}. Please try again.`)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const disbandLobbyGame = async () => {
+    if (!matchID || !serverUrl) return
+    try {
+      const response = await fetch(`${serverUrl}/api/game/${matchID}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerID }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        setError(data?.error || 'Unable to disband this lobby.')
+        return
+      }
+      returnToPreGameLobby({
+        notice: data?.message || 'You disbanded this game.',
+      })
+    } catch (err) {
+      console.error('Failed to disband game:', err)
+      setError('Unable to disband this lobby right now.')
     }
   }
 
@@ -1362,15 +1404,16 @@ export default function HTTPMultiplayerPage() {
     const teamOneSlots = teamSlotConfig.filter(slot => slot.team === 'TEAM 1')
     const teamTwoSlots = teamSlotConfig.filter(slot => slot.team === 'TEAM 2')
     const playerCount = Object.keys(lobbyPlayers).length
-    const canStartMatch = playerID === lobbyLeaderId && playerCount >= 2
-    const canChangeLobbySettings = playerID === lobbyLeaderId && playerID !== 'spectator'
+    const canStartMatch = String(playerID) === String(lobbyLeaderId) && playerCount >= 2
+    const canChangeLobbySettings = String(playerID) === String(lobbyLeaderId) && playerID !== 'spectator'
     const lobbyFogEnabled = Boolean(gameState?.fogOfWarEnabled)
     const lobbyIsWinter = Boolean(gameState?.isWinter)
     const canDisableTeamMode = teamMode
       ? !Object.keys(lobbyPlayers).some((id) => Number.parseInt(id, 10) >= 2)
       : true
 
-    const canKickFromLobby = !isObserver && playerID === lobbyLeaderId
+    const canKickFromLobby = !isObserver && String(playerID) === String(lobbyLeaderId)
+    const canDisbandLobby = String(playerID) === String(lobbyLeaderId) && playerID !== 'spectator'
 
     const moveParticipant = async (targetID, destination) => {
       if (!joined) return
@@ -1388,18 +1431,25 @@ export default function HTTPMultiplayerPage() {
     return (
       <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-10">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-300/80">Match Lobby</p>
-              <h1 className="text-3xl font-bold text-amber-200">Choose Your Command Slot</h1>
-              <p className="mt-1 text-sm text-slate-400">
-                {teamMode ? '2v2 Team Battle' : '1v1 Duel'} • Lobby {matchID}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
-              <span className="rounded-full bg-slate-800/80 px-3 py-1">Players: {playerCount}/{maxPlayers}</span>
-              <span className="rounded-full bg-slate-800/80 px-3 py-1">Leader: {lobbyLeaderId ?? 'TBD'}</span>
-              <span className="rounded-full bg-slate-800/80 px-3 py-1">Map: {lobbyMap?.name}</span>
+          <div className="relative flex min-h-12 items-center justify-start">
+            <div className="flex items-center gap-1 overflow-hidden rounded-md border border-slate-700/80 bg-slate-900/80">
+              <button
+                type="button"
+                onClick={() => returnToPreGameLobby()}
+                className="flex h-12 w-20 items-center justify-center border-r border-slate-700/80 text-slate-200 transition hover:bg-slate-800"
+                aria-label="Back to pre-game lobby"
+              >
+                <img src="/icons/back button.png" alt="Back" className="h-6 w-6" />
+              </button>
+              {canDisbandLobby && (
+                <button
+                  type="button"
+                  onClick={disbandLobbyGame}
+                  className="h-12 px-5 text-sm font-bold uppercase tracking-wide text-red-300 transition hover:bg-red-900/30"
+                >
+                  Disband
+                </button>
+              )}
             </div>
           </div>
 
@@ -1444,7 +1494,7 @@ export default function HTTPMultiplayerPage() {
                           disabled={false}
                           className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
                         >
-                          {isCurrent ? 'Your Slot' : isOccupied ? 'Claim' : isSpectator ? 'Spectator' : 'Join'}
+                          {isSpectator ? 'Join' : isCurrent ? 'Your Slot' : isOccupied ? 'Claim' : 'Join'}
                         </button>
                         {isOccupied && canKickFromLobby && (
                           <button
@@ -1462,9 +1512,9 @@ export default function HTTPMultiplayerPage() {
             </div>
 
             <div className="rounded-2xl border border-slate-700/80 bg-slate-900/70 p-5 shadow-xl">
-              <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">Battlefield</div>
-              <div className="mt-4 rounded-2xl border border-slate-700/70 bg-slate-800/70 p-4 text-center">
+              <div className="rounded-2xl border border-slate-700/70 bg-slate-800/70 p-4 text-center">
                 <div className="text-sm font-semibold text-amber-200">{lobbyMap?.name || 'Random Map'}</div>
+                <p className="mt-1 text-xs text-slate-400">Lobby {matchID}</p>
                 <div className="mx-auto mt-3 flex h-40 w-full max-w-[220px] items-center justify-center rounded-xl border border-slate-700 bg-slate-900/70 text-4xl text-slate-500">
                   🗺️
                 </div>
@@ -1473,18 +1523,22 @@ export default function HTTPMultiplayerPage() {
 
               <div className="mt-5 space-y-3 text-xs text-slate-300">
                 <div className="flex items-center justify-between rounded-lg bg-slate-800/70 px-3 py-2">
-                  <span>Season</span>
-                  <span className="text-slate-200">{gameState?.isWinter ? 'Winter' : 'Standard'}</span>
-                </div>
-                <div className="flex items-center justify-between rounded-lg bg-slate-800/70 px-3 py-2">
                   <span>Mode</span>
-                  <span className="text-slate-200">{teamMode ? 'Team Battle' : 'Duel'}</span>
+                  <button
+                    type="button"
+                    onClick={() => sendAction('setTeamMode', { playerID, enabled: !teamMode })}
+                    disabled={!canChangeLobbySettings || (teamMode && !canDisableTeamMode)}
+                    className={`rounded-full px-3 py-1 text-[11px] font-semibold transition ${
+                      teamMode
+                        ? 'bg-blue-500/20 text-blue-200'
+                        : 'bg-slate-700 text-slate-200'
+                    } ${(canChangeLobbySettings && (canDisableTeamMode || !teamMode)) ? 'hover:bg-blue-500/30' : 'opacity-60 cursor-not-allowed'}`}
+                  >
+                    {teamMode ? '2v2' : '1v1'}
+                  </button>
                 </div>
                 <div className="flex items-center justify-between rounded-lg bg-slate-800/70 px-3 py-2">
-                  <div>
-                    <div className="text-slate-200">Winter visuals</div>
-                    <div className="text-[11px] text-slate-400">Snowy map art only.</div>
-                  </div>
+                  <span>Season</span>
                   <button
                     type="button"
                     onClick={() => sendAction('setWinterMode', { playerID, enabled: !lobbyIsWinter })}
@@ -1500,26 +1554,7 @@ export default function HTTPMultiplayerPage() {
                 </div>
                 <div className="flex items-center justify-between rounded-lg bg-slate-800/70 px-3 py-2">
                   <div>
-                    <div className="text-slate-200">Game mode</div>
-                    <div className="text-[11px] text-slate-400">Duel (1v1) or Team Battle (2v2).</div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => sendAction('setTeamMode', { playerID, enabled: !teamMode })}
-                    disabled={!canChangeLobbySettings || (teamMode && !canDisableTeamMode)}
-                    className={`rounded-full px-3 py-1 text-[11px] font-semibold transition ${
-                      teamMode
-                        ? 'bg-blue-500/20 text-blue-200'
-                        : 'bg-slate-700 text-slate-200'
-                    } ${(canChangeLobbySettings && (canDisableTeamMode || !teamMode)) ? 'hover:bg-blue-500/30' : 'opacity-60 cursor-not-allowed'}`}
-                  >
-                    {teamMode ? '2v2 Enabled' : '1v1 Enabled'}
-                  </button>
-                </div>
-                <div className="flex items-center justify-between rounded-lg bg-slate-800/70 px-3 py-2">
-                  <div>
                     <div className="text-slate-200">Fog of war</div>
-                    <div className="text-[11px] text-slate-400">Shared team vision + concealment.</div>
                   </div>
                   <button
                     type="button"
@@ -1597,7 +1632,7 @@ export default function HTTPMultiplayerPage() {
                           disabled={false}
                           className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
                         >
-                          {isCurrent ? 'Your Slot' : isOccupied ? 'Claim' : isSpectator ? 'Spectator' : 'Join'}
+                          {isSpectator ? 'Join' : isCurrent ? 'Your Slot' : isOccupied ? 'Claim' : 'Join'}
                         </button>
                         {isOccupied && canKickFromLobby && (
                           <button
