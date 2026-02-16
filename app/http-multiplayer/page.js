@@ -919,6 +919,7 @@ export default function HTTPMultiplayerPage() {
     const canStartMatch = playerID === lobbyLeaderId && playerCount >= 2
     const canToggleFog = playerID === lobbyLeaderId
     const lobbyFogEnabled = Boolean(gameState?.fogOfWarEnabled)
+    const canAddAi = playerID === lobbyLeaderId && !lobbyFogEnabled
     const slotConfig = [
       { id: '0', label: 'Team 1' },
       { id: '1', label: 'Team 2' },
@@ -959,15 +960,27 @@ export default function HTTPMultiplayerPage() {
                       <div className="text-sm font-semibold text-white">{slot.label}</div>
                       <div className="text-xs text-slate-400">
                         {occupant ? occupant.name : 'Add the player'}
+                        {occupant?.isAI && <span className="ml-2 text-emerald-300">(AI)</span>}
                         {lobbyLeaderId === slot.id && <span className="ml-2 text-amber-300">(Leader)</span>}
                       </div>
                     </div>
-                    <button
-                      onClick={() => sendAction('claimSlot', { playerID, desiredSlot: slot.id, playerName: playerName || undefined })}
-                      className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
-                    >
-                      {isCurrent ? 'Your Slot' : 'Join'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => sendAction('claimSlot', { playerID, desiredSlot: slot.id, playerName: playerName || undefined })}
+                        className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
+                      >
+                        {isCurrent ? 'Your Slot' : 'Join'}
+                      </button>
+                      {!occupant && (
+                        <button
+                          onClick={() => sendAction('addAiPlayer', { playerID, desiredSlot: slot.id })}
+                          disabled={!canAddAi}
+                          className="rounded-full bg-emerald-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
+                        >
+                          +AI
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )
               })}
@@ -1006,6 +1019,7 @@ export default function HTTPMultiplayerPage() {
                     Only the lobby leader can change fog settings.
                   </div>
                 )}
+                <div className="mt-2 text-[11px] text-slate-500">AI commanders are available in non-fog matches only.</div>
               </div>
               {forceLobbySelection ? (
                 <div className="mt-5 space-y-3">
@@ -1042,15 +1056,27 @@ export default function HTTPMultiplayerPage() {
                       <div className="text-sm font-semibold text-white">{slot.label}</div>
                       <div className="text-xs text-slate-400">
                         {occupant ? occupant.name : 'Add the player'}
+                        {occupant?.isAI && <span className="ml-2 text-emerald-300">(AI)</span>}
                         {lobbyLeaderId === slot.id && <span className="ml-2 text-amber-300">(Leader)</span>}
                       </div>
                     </div>
-                    <button
-                      onClick={() => sendAction('claimSlot', { playerID, desiredSlot: slot.id, playerName: playerName || undefined })}
-                      className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
-                    >
-                      {isCurrent ? 'Your Slot' : 'Join'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => sendAction('claimSlot', { playerID, desiredSlot: slot.id, playerName: playerName || undefined })}
+                        className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
+                      >
+                        {isCurrent ? 'Your Slot' : 'Join'}
+                      </button>
+                      {!occupant && (
+                        <button
+                          onClick={() => sendAction('addAiPlayer', { playerID, desiredSlot: slot.id })}
+                          disabled={!canAddAi}
+                          className="rounded-full bg-emerald-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
+                        >
+                          +AI
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )
               })}

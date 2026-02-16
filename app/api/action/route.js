@@ -12,7 +12,7 @@ import {
   sanitizeParticipantID,
   validatePayload 
 } from '@/lib/inputSanitization'
-import { isInSpawnZone } from '@/game/GameLogic'
+import { isInSpawnZone, getAttackableHexes, getDeployableHexes } from '@/game/GameLogic'
 import { areAllies, getTeamId, getTeamLabel } from '@/game/teamUtils'
 import { createMap4ObjectiveState, getMap4VictoryInfo } from '@/game/map4Objectives'
 import { advanceTurn, getGamePlayOrder, hasTurnTimedOut, setTurnTimerForCurrentPlayer } from '@/lib/turnTimer'
@@ -206,6 +206,212 @@ const ACTION_CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
+}
+
+const AI_PARTICIPANT_PREFIX = 'ai-player-'
+
+
+const createAiParticipant = (slotId) => ({
+  id: `${AI_PARTICIPANT_PREFIX}${slotId}`,
+  name: `AI Commander ${slotId}`,
+  joinTime: Date.now(),
+  joined: true,
+  isAI: true,
+})
+
+const getAliveUnitsForPlayer = (game, playerID) =>
+  (game.units || []).filter((unit) => unit.ownerID === playerID && unit.currentHP > 0)
+
+const getDistance = (a, b) => Math.max(
+  Math.abs(a.q - b.q),
+  Math.abs(a.r - b.r),
+  Math.abs(a.s - b.s),
+)
+
+
+const getPreferredDeployOrder = (terrainMap, hexes) => {
+  const terrainScore = {
+    HILLS: 7,
+    FOREST: 6,
+    CITY: 5,
+    CASTLE: 5,
+    BARRACKS: 5,
+    CATHEDRAL: 5,
+    FARM: 4,
+    LIBRARY: 4,
+    MOSQUE: 4,
+    HOSPITAL: 4,
+    UNIVERSITY: 4,
+    FLOOR: 3,
+    PLAIN: 2,
+    WATER: 1,
+  }
+
+  return [...hexes].sort((a, b) => {
+    const aScore = terrainScore[terrainMap?.[`${a.q},${a.r}`] || 'PLAIN'] || 0
+    const bScore = terrainScore[terrainMap?.[`${b.q},${b.r}`] || 'PLAIN'] || 0
+    if (aScore !== bScore) return bScore - aScore
+    return Math.abs(a.q) + Math.abs(a.r) - (Math.abs(b.q) + Math.abs(b.r))
+  })
+}
+
+const chooseAiSetupAction = ({ game, playerID }) => {
+  if (game.fogOfWarEnabled) {
+    return null
+  }
+
+  const unitRoster = ['KNIGHT', 'SWORDSMAN', 'ARCHER', 'MILITIA', 'CATAPULT']
+  const myUnits = getAliveUnitsForPlayer(game, playerID)
+
+  if (myUnits.length >= 5) {
+    if (!game.playersReady?.[playerID]) {
+      return { type: 'readyForBattle', payload: { playerID } }
+    }
+    return null
+  }
+
+  const availableTypes = unitRoster.filter((type) => {
+    const count = myUnits.filter((unit) => unit.baseType === type || unit.type === type).length
+    if (type === 'CATAPULT') return count < 1
+    if (type === 'KNIGHT') return count < 2
+    if (type === 'ARCHER') return count < 2
+    return true
+  })
+
+  const candidateType = availableTypes[0] || unitRoster[0]
+  const deployable = getDeployableHexes({
+    unitType: candidateType,
+    hexes: game.hexes || [],
+    units: game.units || [],
+    terrainMap: game.terrainMap || {},
+    playerID,
+    mapWidth: game.mapSize?.width || 6,
+    teamMode: Boolean(game.teamMode),
+    deploymentZones: game.deploymentZones || null,
+  })
+
+  if (deployable.length === 0) {
+    if (!game.playersReady?.[playerID]) {
+      return { type: 'readyForBattle', payload: { playerID } }
+    }
+    return null
+  }
+
+  const preferredHex = getPreferredDeployOrder(game.terrainMap || {}, deployable)[0]
+  return {
+    type: 'placeUnit',
+    payload: {
+      playerID,
+      unitType: candidateType,
+      q: preferredHex.q,
+      r: preferredHex.r,
+    },
+  }
+}
+
+const chooseAiBattleAction = ({ game, playerID, teamMode }) => {
+  if (game.fogOfWarEnabled || game.gameOver) {
+    return null
+  }
+
+  const units = getAliveUnitsForPlayer(game, playerID)
+  const enemies = (game.units || []).filter((unit) =>
+    unit.currentHP > 0 && (teamMode ? !areAllies(unit.ownerID, playerID) : unit.ownerID !== playerID)
+  )
+
+  if (units.length === 0 || enemies.length === 0) {
+    return { type: 'endTurn', payload: { playerID } }
+  }
+
+  let bestAttack = null
+
+  for (const unit of units) {
+    if (unit.hasAttacked) continue
+    const attackableHexes = getAttackableHexes(unit, game.hexes || [], game.units || [], { teamMode })
+    for (const hex of attackableHexes) {
+      const target = (game.units || []).find((candidate) => candidate.q === hex.q && candidate.r === hex.r && candidate.currentHP > 0)
+      if (!target) continue
+      const killBias = unit.attackPower >= target.currentHP ? 50 : 0
+      const score = (100 - target.currentHP) + killBias + (target.attackPower || 0)
+      if (!bestAttack || score > bestAttack.score) {
+        bestAttack = {
+          score,
+          attackerId: unit.id,
+          targetId: target.id,
+        }
+      }
+    }
+  }
+
+  if (bestAttack) {
+    return {
+      type: 'attackUnit',
+      payload: {
+        playerID,
+        attackerId: bestAttack.attackerId,
+        targetId: bestAttack.targetId,
+      },
+    }
+  }
+
+  let bestMove = null
+
+  for (const unit of units) {
+    if (unit.hasMoved || unit.movePoints <= 0) continue
+    const reachable = getReachableHexes(unit, game.hexes || [], game.units || [], game.terrainMap || {}, { teamMode })
+    for (const destination of reachable) {
+      const nearestEnemyDistance = enemies.reduce((acc, enemy) => {
+        const d = getDistance(destination, enemy)
+        return Math.min(acc, d)
+      }, Infinity)
+      const terrain = game.terrainMap?.[`${destination.q},${destination.r}`] || 'PLAIN'
+      const terrainBias = terrain === 'HILLS' || terrain === 'FOREST' ? 1.5 : terrain === 'CITY' ? 1 : 0
+      const score = (20 - nearestEnemyDistance * 3) + terrainBias
+
+      if (!bestMove || score > bestMove.score) {
+        bestMove = {
+          score,
+          unitId: unit.id,
+          targetQ: destination.q,
+          targetR: destination.r,
+        }
+      }
+    }
+  }
+
+  if (bestMove) {
+    return {
+      type: 'moveUnit',
+      payload: {
+        playerID,
+        unitId: bestMove.unitId,
+        targetQ: bestMove.targetQ,
+        targetR: bestMove.targetR,
+      },
+    }
+  }
+
+  return { type: 'endTurn', payload: { playerID } }
+}
+
+const getAiDecision = ({ game, playerID }) => {
+  if (!game || game.gameOver || !playerID || !game.players?.[playerID]?.isAI) {
+    return null
+  }
+
+  if (game.fogOfWarEnabled) {
+    return null
+  }
+
+  if (game.phase === 'setup' && game.currentPlayer === playerID) {
+    return chooseAiSetupAction({ game, playerID })
+  }
+
+  if (game.phase === 'battle' && game.currentPlayer === playerID) {
+    return chooseAiBattleAction({ game, playerID, teamMode: Boolean(game.teamMode) })
+  }
+
+  return null
 }
 
 const ensurePlayersTurn = (playerID, game, actionLabel) => {
@@ -1249,6 +1455,57 @@ export async function POST(request) {
             game.log.push(`${waitlistName} was kicked from waitlist.`)
           }
 
+          game.lastUpdate = Date.now()
+          break
+        }
+
+
+        case 'addAiPlayer': {
+          const addAiSchema = {
+            playerID: { required: true, sanitize: sanitizeParticipantID },
+            desiredSlot: { required: true },
+          }
+
+          const addAiValidation = validatePayload(payload, addAiSchema)
+          if (addAiValidation.error) {
+            return NextResponse.json({
+              error: 'Invalid payload for addAiPlayer: ' + addAiValidation.error
+            }, { status: 400, headers: ACTION_CORS_HEADERS })
+          }
+
+          const { playerID: actingPlayerID, desiredSlot } = addAiValidation.sanitized
+          if (!actingPlayerID || !isRegisteredParticipant(actingPlayerID, game)) {
+            return NextResponse.json({ error: 'Invalid playerID for addAiPlayer' }, { status: 400, headers: ACTION_CORS_HEADERS })
+          }
+
+          if (game.phase !== 'lobby') {
+            return NextResponse.json({ error: 'AI players can only be added while in the lobby' }, { status: 409, headers: ACTION_CORS_HEADERS })
+          }
+
+          if (game.fogOfWarEnabled) {
+            return NextResponse.json({ error: 'AI players are currently available only when fog of war is disabled' }, { status: 409, headers: ACTION_CORS_HEADERS })
+          }
+
+          if (game.leaderId && game.leaderId !== actingPlayerID) {
+            return NextResponse.json({ error: 'Only the lobby leader can add AI players' }, { status: 403, headers: ACTION_CORS_HEADERS })
+          }
+
+          const maxPlayers = game.maxPlayers || (teamMode ? 4 : 2)
+          const slotId = String(desiredSlot)
+          const slotIndex = Number(slotId)
+          if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex >= maxPlayers) {
+            return NextResponse.json({ error: 'Desired slot is not valid for this lobby' }, { status: 400, headers: ACTION_CORS_HEADERS })
+          }
+
+          if (game.players?.[slotId]) {
+            return NextResponse.json({ error: 'That slot is already occupied' }, { status: 409, headers: ACTION_CORS_HEADERS })
+          }
+
+          game.players = game.players || {}
+          game.players[slotId] = createAiParticipant(slotId)
+          game.playersReady = game.playersReady || {}
+          game.playersReady[slotId] = false
+          game.log.push(`Lobby leader added AI Commander to slot ${slotId}.`)
           game.lastUpdate = Date.now()
           break
         }
@@ -2781,7 +3038,226 @@ export async function POST(request) {
         game.log.push(`🎮 GAME OVER: ${victoryInfo.message}`)
       }
     }
-    
+
+    let aiIterations = 0
+    const maxAiIterations = 40
+    while (!game.gameOver && aiIterations < maxAiIterations) {
+      const aiPlayerID = game.currentPlayer
+      const aiDecision = getAiDecision({ game, playerID: aiPlayerID })
+      if (!aiDecision) {
+        break
+      }
+
+      const aiPayload = aiDecision.payload || {}
+      const aiAction = aiDecision.type
+
+      if (aiAction === 'placeUnit') {
+        const stats = UNIT_TYPES[aiPayload.unitType]
+        if (!stats) break
+        const terrainData = getTerrainData(game.terrainMap, aiPayload.q, aiPayload.r)
+        const mapWidth = game.mapSize?.width || 6
+        const inSpawnZone = isInSpawnZone(aiPayload.q, aiPayload.r, aiPlayerID, mapWidth, teamMode, game.deploymentZones)
+        const isOccupied = game.units.some((u) => u.q === aiPayload.q && u.r === aiPayload.r && u.currentHP > 0)
+        if (!inSpawnZone || isOccupied || (stats.isNaval && !terrainData.waterOnly)) {
+          break
+        }
+
+        const unitId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        const newUnit = {
+          id: unitId,
+          type: aiPayload.unitType,
+          baseType: aiPayload.unitType,
+          name: stats.name,
+          image: stats.image,
+          ownerID: aiPlayerID,
+          q: aiPayload.q,
+          r: aiPayload.r,
+          s: -aiPayload.q - aiPayload.r,
+          currentHP: stats.maxHP,
+          maxHP: stats.maxHP,
+          attackPower: stats.attackPower,
+          movePoints: stats.movePoints,
+          maxMovePoints: stats.movePoints,
+          range: stats.range,
+          isNaval: stats.isNaval || false,
+          isTransport: false,
+          hasMoved: false,
+          hasAttacked: false,
+          hasMovedOrAttacked: false,
+          lastMove: null,
+          morale: MORALE_STATES.NEUTRAL,
+          moraleBase: MORALE_STATES.NEUTRAL,
+        }
+        if (terrainData.waterOnly && !newUnit.isNaval) {
+          applyTransportState(newUnit, { resetMovePoints: true })
+        }
+        game.units.push(newUnit)
+        applyEncirclementMorale(game.units, teamMode)
+        game.log.push(`🤖 Player ${aiPlayerID} (AI) placed ${newUnit.name} at (${newUnit.q}, ${newUnit.r})`)
+      } else if (aiAction === 'readyForBattle') {
+        game.playersReady[aiPlayerID] = true
+        game.log.push(`🤖 Player ${aiPlayerID} (AI) is ready for battle!`)
+
+        const readyPlayOrder = getGamePlayOrder(game)
+        const readyLobbyPlayers = readyPlayOrder.filter((id) => game.players?.[id])
+        const readyEligiblePlayers = readyLobbyPlayers.length > 0 ? readyLobbyPlayers : readyPlayOrder
+        const readyActivePlayers = readyEligiblePlayers.filter((id) =>
+          game.units.some((unit) => unit.ownerID === id && unit.currentHP > 0)
+        )
+        const readyPlayers = readyEligiblePlayers.filter((id) => game.playersReady[id])
+
+        if (
+          readyEligiblePlayers.length >= 2 &&
+          readyPlayers.length === readyEligiblePlayers.length &&
+          readyActivePlayers.length === readyEligiblePlayers.length
+        ) {
+          game.phase = 'battle'
+          ensureBattleStats(game)
+          game.inactivePlayers = readyPlayOrder.filter((id) => !readyActivePlayers.includes(id))
+          game.currentPlayer = readyActivePlayers[0] || readyEligiblePlayers[0] || '0'
+          game.log.push(`⚔️ BATTLE PHASE BEGINS! Player ${game.currentPlayer} gets the first turn.`)
+          setTurnTimerForCurrentPlayer(game)
+        } else {
+          const turnOrder = readyEligiblePlayers.length > 0 ? readyEligiblePlayers : readyPlayOrder
+          const currentIndex = Math.max(0, turnOrder.indexOf(game.currentPlayer))
+          const nextIndex = (currentIndex + 1) % turnOrder.length
+          game.currentPlayer = turnOrder[nextIndex]
+          game.log.push(`Player ${aiPlayerID} is ready. Turn passes to Player ${game.currentPlayer}.`)
+        }
+      } else if (aiAction === 'attackUnit') {
+        const attacker = game.units.find((u) => u.id === aiPayload.attackerId)
+        const target = game.units.find((u) => u.id === aiPayload.targetId)
+        if (!attacker || !target || attacker.ownerID !== aiPlayerID || attacker.hasAttacked) {
+          break
+        }
+
+        const targetTerrainKey = `${sanitizeCoordinate(target.q)},${sanitizeCoordinate(target.r)}`
+        const targetTerrain = game.terrainMap[targetTerrainKey] || 'PLAIN'
+        const terrainData = TERRAIN_TYPES[targetTerrain]
+        const defenseBonus = terrainData.defenseBonus || 0
+
+        const attackerTerrainKey = `${sanitizeCoordinate(attacker.q)},${sanitizeCoordinate(attacker.r)}`
+        const attackerTerrain = game.terrainMap[attackerTerrainKey] || 'PLAIN'
+        const hillBonus = attackerTerrain === 'HILLS' && ['ARCHER', 'CATAPULT'].includes(attacker.type) ? 5 : 0
+        const attackerOnPenaltyTerrain = isKnightPenaltyTerrain(attackerTerrain) && attacker.type === 'KNIGHT'
+        const terrainDebuffMultiplier = attackerOnPenaltyTerrain ? 0.75 : 1
+        const baseDamage = Math.round((attacker.attackPower + hillBonus) * terrainDebuffMultiplier)
+
+        const hpPercentage = attacker.currentHP / attacker.maxHP
+        let damageMultiplier = 1.0
+        if (hpPercentage > 0.75) damageMultiplier = 1.0
+        else if (hpPercentage > 0.5) damageMultiplier = 0.85
+        else if (hpPercentage > 0.25) damageMultiplier = 0.7
+        else damageMultiplier = 0.5
+
+        const attackerMoraleMultiplier = getMoraleMultiplier(attacker.morale)
+        const reducedDamage = Math.round(baseDamage * damageMultiplier * attackerMoraleMultiplier)
+        const { damage: actualDamage, roll: attackRoll } = applyDamageVariance({ game, reducedDamage, defenseBonus })
+
+        target.currentHP -= actualDamage
+        attacker.hasAttacked = true
+        attacker.lastMove = null
+        if (attacker.type === 'CATAPULT' && !attacker.isTransport) {
+          attacker.hasMovedOrAttacked = true
+        }
+
+        game.log.push(`🤖 Player ${aiPlayerID} (AI) ${attacker.name} hit ${target.name} for ${actualDamage} damage (RNG ${attackRoll >= 1 ? '+' : ''}${Math.round((attackRoll - 1) * 100)}%).`)
+
+        if (target.currentHP > 0) {
+          const counterDistance = Math.max(
+            Math.abs(target.q - attacker.q),
+            Math.abs(target.r - attacker.r),
+            Math.abs(target.s - attacker.s),
+          )
+          const canCounter = counterDistance <= target.range && !target.hasAttacked
+          if (canCounter) {
+            const attackerTerrainData = TERRAIN_TYPES[game.terrainMap[`${sanitizeCoordinate(attacker.q)},${sanitizeCoordinate(attacker.r)}`] || 'PLAIN']
+            const attackerDefenseBonus = attackerTerrainData.defenseBonus || 0
+            const targetHpPct = target.currentHP / target.maxHP
+            let targetDamageMultiplier = 1.0
+            if (targetHpPct > 0.75) targetDamageMultiplier = 1.0
+            else if (targetHpPct > 0.5) targetDamageMultiplier = 0.85
+            else if (targetHpPct > 0.25) targetDamageMultiplier = 0.7
+            else targetDamageMultiplier = 0.5
+            const targetMoraleMultiplier = getMoraleMultiplier(target.morale)
+            const meleePenaltyMultiplier = target.range > 1 && counterDistance === 1 ? 0.5 : 1
+            const counterReducedDamage = Math.round(target.attackPower * targetDamageMultiplier * targetMoraleMultiplier * meleePenaltyMultiplier)
+            const { damage: counterDamage } = applyDamageVariance({ game, reducedDamage: counterReducedDamage, defenseBonus: attackerDefenseBonus })
+            attacker.currentHP -= counterDamage
+            game.log.push(`🤖 ${target.name} counter-attacked for ${counterDamage} damage.`)
+          }
+        }
+
+        game.units = game.units.filter((u) => u.currentHP > 0)
+        applyEncirclementMorale(game.units, teamMode)
+      } else if (aiAction === 'moveUnit') {
+        const movingUnit = game.units.find((u) => u.id === aiPayload.unitId)
+        if (!movingUnit || movingUnit.ownerID !== aiPlayerID || movingUnit.hasMoved || movingUnit.movePoints <= 0) {
+          break
+        }
+        const reachable = getReachableHexes(movingUnit, game.hexes || [], game.units || [], game.terrainMap || {}, { teamMode })
+        const isReachable = reachable.some((hex) => hex.q === aiPayload.targetQ && hex.r === aiPayload.targetR)
+        if (!isReachable) {
+          break
+        }
+        const destinationTerrain = getTerrainData(game.terrainMap, aiPayload.targetQ, aiPayload.targetR)
+        const wasEmbarked = Boolean(movingUnit.isTransport)
+        movingUnit.lastMove = {
+          q: movingUnit.q,
+          r: movingUnit.r,
+          s: movingUnit.s,
+          movePoints: movingUnit.movePoints,
+          isTransport: movingUnit.isTransport,
+          isNaval: movingUnit.isNaval,
+          type: movingUnit.type,
+          image: movingUnit.image,
+          name: movingUnit.name,
+        }
+        movingUnit.q = aiPayload.targetQ
+        movingUnit.r = aiPayload.targetR
+        movingUnit.s = -aiPayload.targetQ - aiPayload.targetR
+        movingUnit.hasMoved = true
+        movingUnit.lastMove = movingUnit.lastMove
+        movingUnit.movePoints = 0
+        const enteringWater = destinationTerrain.waterOnly
+        if (enteringWater && !movingUnit.isNaval && !movingUnit.isTransport) {
+          applyTransportState(movingUnit, { resetMovePoints: false })
+        } else if (!enteringWater && movingUnit.isTransport && wasEmbarked) {
+          restoreFromTransport(movingUnit, { resetMovePoints: false })
+        }
+        if (movingUnit.type === 'CATAPULT' && !movingUnit.isTransport) {
+          movingUnit.hasMovedOrAttacked = true
+        }
+        game.log.push(`🤖 Player ${aiPlayerID} (AI) moved ${movingUnit.name} to (${movingUnit.q}, ${movingUnit.r}).`)
+      } else if (aiAction === 'endTurn') {
+        advanceTurn({ game, endingPlayerID: aiPlayerID })
+      } else {
+        break
+      }
+
+      // Evaluate victory after each AI action
+      const aiUnitsByPlayer = {}
+      game.units.forEach((unit) => {
+        if (unit.currentHP > 0) {
+          aiUnitsByPlayer[unit.ownerID] = (aiUnitsByPlayer[unit.ownerID] || 0) + 1
+        }
+      })
+      const p0Alive = aiUnitsByPlayer['0'] || 0
+      const p1Alive = aiUnitsByPlayer['1'] || 0
+      let aiVictoryInfo = null
+      if (!teamMode && p0Alive === 0 && p1Alive > 0) {
+        aiVictoryInfo = { winner: '1', turn: game.turn || 1, victoryType: 'elimination', message: `Player 1 wins by eliminating all enemy units in ${game.turn || 1} turns!` }
+      } else if (!teamMode && p1Alive === 0 && p0Alive > 0) {
+        aiVictoryInfo = { winner: '0', turn: game.turn || 1, victoryType: 'elimination', message: `Player 0 wins by eliminating all enemy units in ${game.turn || 1} turns!` }
+      }
+      if (aiVictoryInfo) {
+        game.gameOver = aiVictoryInfo
+        game.log.push(`🎮 GAME OVER: ${aiVictoryInfo.message}`)
+      }
+
+      aiIterations += 1
+    }
+
     // Save updated game state
     try {
       await setGame(gameId, game)
