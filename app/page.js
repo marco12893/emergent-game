@@ -169,6 +169,7 @@ export default function HTTPMultiplayerPage() {
   const [selectedUnitType, setSelectedUnitType] = useState('SWORDSMAN')
   const [error, setError] = useState('')
   const errorTimeoutRef = useRef(null)
+  const identityTransitionRef = useRef({ pending: false, until: 0 })
   const [loading, setLoading] = useState(false)
   const [highlightedHexes, setHighlightedHexes] = useState([])
   const [attackableHexes, setAttackableHexes] = useState([])
@@ -528,7 +529,15 @@ export default function HTTPMultiplayerPage() {
           const isKnownSpectator = currentSpectators.some((spectator) => spectator?.id === playerID)
           const isKnownWaitlist = currentWaitlist.some((entry) => entry?.id === playerID)
           const isStillInMatch = !playerID ? true : (isKnownPlayer || isKnownSpectator || isKnownWaitlist)
+          if (isStillInMatch) {
+            identityTransitionRef.current = { pending: false, until: 0 }
+          }
           if (!isStillInMatch) {
+            const now = Date.now()
+            const transitionPending = identityTransitionRef.current.pending && identityTransitionRef.current.until > now
+            if (transitionPending) {
+              return
+            }
             handleKickedOut({ message: 'You were kicked from this match. Rejoin from the lobby if you want to play again.' })
             return
           }
@@ -889,6 +898,11 @@ export default function HTTPMultiplayerPage() {
     }
 
     try {
+      const isIdentityTransitionAction = (action === 'claimSlot' || action === 'moveParticipant') && String(payload?.playerID) === String(playerID)
+      if (isIdentityTransitionAction) {
+        identityTransitionRef.current = { pending: true, until: Date.now() + 6000 }
+      }
+
       const requestBody = { gameId: matchID, action, payload }
       
       const response = await fetch(`${serverUrl}/api/action`, {
@@ -918,12 +932,14 @@ export default function HTTPMultiplayerPage() {
             }
           }
         }
+        identityTransitionRef.current = { pending: false, until: 0 }
         return data
       } else {
         const errorData = await response.json()
         throw new Error(errorData.error || 'Failed to send action')
       }
     } catch (err) {
+      identityTransitionRef.current = { pending: false, until: 0 }
       console.error('Action error:', err)
       setError(err.message || 'Failed to send action to server')
       return null
@@ -1194,10 +1210,8 @@ export default function HTTPMultiplayerPage() {
       desiredSlot: slotId,
       playerName: playerName || undefined,
     })
-    if (result?.success) {
-      if (slotId !== 'spectator' && slotId !== 'waitlist') {
-        setPlayerID(String(slotId))
-      }
+    if (result?.success && !result?.reassignedPlayerID && slotId !== 'spectator' && slotId !== 'waitlist') {
+      setPlayerID(String(slotId))
     }
   }
 
