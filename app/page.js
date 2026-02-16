@@ -173,7 +173,6 @@ export default function HTTPMultiplayerPage() {
   const [spectatorVision, setSpectatorVision] = useState('all')
   const [copyStatus, setCopyStatus] = useState('')
   const [isObserverPanelOpen, setIsObserverPanelOpen] = useState(true)
-  const [isModeDropdownOpen, setIsModeDropdownOpen] = useState(false)
   const chatInputRef = useRef(null)
   const isSpectator = useMemo(() => {
     if (playerID === 'spectator') return true
@@ -1452,47 +1451,6 @@ export default function HTTPMultiplayerPage() {
                 </button>
               )}
             </div>
-            <div className="absolute left-1/2 top-1/2 z-10 w-full max-w-sm -translate-x-1/2 -translate-y-1/2">
-              <div className="relative flex items-center overflow-hidden rounded-md border border-cyan-700/40 bg-slate-900/90 shadow-[0_0_18px_rgba(34,211,238,0.12)]">
-              <div className="flex-1 px-4 py-2 text-center text-lg font-semibold text-cyan-200">
-                {teamMode ? '2v2' : '1v1'}
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsModeDropdownOpen((current) => !current)}
-                className="flex h-full items-center gap-1 border-l border-cyan-700/40 px-3 py-2 text-cyan-300 transition hover:bg-cyan-500/10"
-                aria-label="Toggle game mode menu"
-              >
-                <span className="text-lg leading-none">▾</span>
-              </button>
-              {isModeDropdownOpen && (
-                <div className="absolute right-0 top-full z-20 mt-1 w-28 overflow-hidden rounded-md border border-slate-700/90 bg-slate-900/95 text-xs shadow-xl">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      sendAction('setTeamMode', { playerID, enabled: false })
-                      setIsModeDropdownOpen(false)
-                    }}
-                    disabled={!canChangeLobbySettings || teamMode && !canDisableTeamMode}
-                    className="block w-full px-3 py-2 text-left text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    1v1
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      sendAction('setTeamMode', { playerID, enabled: true })
-                      setIsModeDropdownOpen(false)
-                    }}
-                    disabled={!canChangeLobbySettings}
-                    className="block w-full border-t border-slate-700/80 px-3 py-2 text-left text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    2v2
-                  </button>
-                </div>
-              )}
-              </div>
-            </div>
           </div>
 
           {kickedOutNotice && (
@@ -1554,8 +1512,7 @@ export default function HTTPMultiplayerPage() {
             </div>
 
             <div className="rounded-2xl border border-slate-700/80 bg-slate-900/70 p-5 shadow-xl">
-              <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">Battlefield</div>
-              <div className="mt-4 rounded-2xl border border-slate-700/70 bg-slate-800/70 p-4 text-center">
+              <div className="rounded-2xl border border-slate-700/70 bg-slate-800/70 p-4 text-center">
                 <div className="text-sm font-semibold text-amber-200">{lobbyMap?.name || 'Random Map'}</div>
                 <p className="mt-1 text-xs text-slate-400">Lobby {matchID}</p>
                 <div className="mx-auto mt-3 flex h-40 w-full max-w-[220px] items-center justify-center rounded-xl border border-slate-700 bg-slate-900/70 text-4xl text-slate-500">
@@ -1565,6 +1522,21 @@ export default function HTTPMultiplayerPage() {
               </div>
 
               <div className="mt-5 space-y-3 text-xs text-slate-300">
+                <div className="flex items-center justify-between rounded-lg bg-slate-800/70 px-3 py-2">
+                  <span>Mode</span>
+                  <button
+                    type="button"
+                    onClick={() => sendAction('setTeamMode', { playerID, enabled: !teamMode })}
+                    disabled={!canChangeLobbySettings || (teamMode && !canDisableTeamMode)}
+                    className={`rounded-full px-3 py-1 text-[11px] font-semibold transition ${
+                      teamMode
+                        ? 'bg-blue-500/20 text-blue-200'
+                        : 'bg-slate-700 text-slate-200'
+                    } ${(canChangeLobbySettings && (canDisableTeamMode || !teamMode)) ? 'hover:bg-blue-500/30' : 'opacity-60 cursor-not-allowed'}`}
+                  >
+                    {teamMode ? '2v2' : '1v1'}
+                  </button>
+                </div>
                 <div className="flex items-center justify-between rounded-lg bg-slate-800/70 px-3 py-2">
                   <span>Season</span>
                   <button
@@ -1579,10 +1551,6 @@ export default function HTTPMultiplayerPage() {
                   >
                     {lobbyIsWinter ? 'Winter' : 'Standard'}
                   </button>
-                </div>
-                <div className="flex items-center justify-between rounded-lg bg-slate-800/70 px-3 py-2">
-                  <span>Mode</span>
-                  <span className="text-slate-200">{teamMode ? 'Team Battle' : 'Duel'}</span>
                 </div>
                 <div className="flex items-center justify-between rounded-lg bg-slate-800/70 px-3 py-2">
                   <div>
