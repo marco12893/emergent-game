@@ -1043,18 +1043,17 @@ export async function POST(request) {
           } else {
             const desiredSlotId = String(desiredIndex)
             const displaced = game.players?.[desiredSlotId]
+            if (displaced && desiredSlotId !== claimPlayerID) {
+              return NextResponse.json({
+                error: 'That slot is currently occupied by an active player. Ask them to move first.'
+              }, { status: 409, headers: ACTION_CORS_HEADERS })
+            }
+
             game.players[desiredSlotId] = {
               ...(sourceEntry || {}),
               name: sourceName,
               joinTime: sourceEntry?.joinTime || Date.now(),
               joined: true,
-            }
-            if (displaced) {
-              game.waitlist.push({
-                id: desiredSlotId,
-                name: displaced.name || `Player ${desiredSlotId}`,
-                joinTime: displaced.joinTime || Date.now(),
-              })
             }
             if (game.leaderId === claimPlayerID || !game.leaderId) {
               game.leaderId = desiredSlotId
