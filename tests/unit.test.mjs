@@ -649,6 +649,29 @@ test('undo move is blocked after attacking or without a previous move', () => {
   assert.equal(attackedResult, INVALID_MOVE)
 })
 
+test('undo move is blocked when fog of war is enabled', () => {
+  const hexes = makeHexGrid(2)
+  const terrainMap = makeTerrainMap(hexes)
+  const unit = createUnit('SWORDSMAN', '0', 0, 0)
+  const G = { hexes, units: [unit], terrainMap, log: [], fogOfWarEnabled: true }
+
+  MedievalBattleGame.phases.battle.moves.moveUnit(
+    { G, ctx: {}, playerID: '0' },
+    unit.id,
+    1,
+    0
+  )
+
+  const fogUndoResult = MedievalBattleGame.phases.battle.moves.undoMove(
+    { G, ctx: {}, playerID: '0' },
+    unit.id
+  )
+
+  assert.equal(fogUndoResult, INVALID_MOVE)
+  assert.equal(unit.q, 1)
+  assert.equal(unit.r, 0)
+})
+
 test('battle endTurn clears selected unit', () => {
   const ctx = { numPlayers: 2, playOrder: ['0', '1'], phase: 'battle' }
   const game = MedievalBattleGame.setup({ ctx, setupData: {} })

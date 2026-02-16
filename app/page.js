@@ -1525,7 +1525,7 @@ export default function HTTPMultiplayerPage() {
                           disabled={false}
                           className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
                         >
-                          {isSpectator ? 'Join' : isCurrent ? 'Your Slot' : isOccupied ? 'Claim' : 'Join'}
+                          {isSpectator ? 'Join' : isCurrent ? 'Your Slot' : 'Join'}
                         </button>
                         {isOccupied && canKickFromLobby && (
                           <button
@@ -1670,7 +1670,7 @@ export default function HTTPMultiplayerPage() {
                           disabled={false}
                           className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
                         >
-                          {isSpectator ? 'Join' : isCurrent ? 'Your Slot' : isOccupied ? 'Claim' : 'Join'}
+                          {isSpectator ? 'Join' : isCurrent ? 'Your Slot' : 'Join'}
                         </button>
                         {isOccupied && canKickFromLobby && (
                           <button
@@ -2101,14 +2101,16 @@ export default function HTTPMultiplayerPage() {
             </button>
             {!isObserver && (
               <>
-                <button
-                  onClick={undoMove}
-                  disabled={!isMyTurn || !selectedUnit?.lastMove || selectedUnit?.hasAttacked}
-                  className="w-10 h-10 lg:w-12 lg:h-12 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:opacity-60 text-white rounded-lg shadow-lg transition-all transform hover:scale-105 flex items-center justify-center"
-                  aria-label="Undo move"
-                >
-                  <img src="/icons/Undo%20Button.png" alt="Undo move" className="w-6 h-6 lg:w-7 lg:h-7" />
-                </button>
+                {!fogOfWarEnabled && (
+                  <button
+                    onClick={undoMove}
+                    disabled={!isMyTurn || !selectedUnit?.lastMove || selectedUnit?.hasAttacked}
+                    className="w-10 h-10 lg:w-12 lg:h-12 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:opacity-60 text-white rounded-lg shadow-lg transition-all transform hover:scale-105 flex items-center justify-center"
+                    aria-label="Undo move"
+                  >
+                    <img src="/icons/Undo%20Button.png" alt="Undo move" className="w-6 h-6 lg:w-7 lg:h-7" />
+                  </button>
+                )}
                 <button
                   onClick={retreatSelectedUnit}
                   disabled={!isMyTurn || !canRetreatSelectedUnit}

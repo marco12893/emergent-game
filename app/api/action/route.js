@@ -1841,6 +1841,19 @@ export async function POST(request) {
           if (undoTurnError) {
             return undoTurnError
           }
+          if (game.fogOfWarEnabled) {
+            return NextResponse.json({
+              error: 'Undo is disabled when fog of war is enabled'
+            }, {
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              }
+            })
+          }
+
           const undoUnit = game.units.find(u => u.id === undoUnitId)
 
           if (!undoUnit || undoUnit.ownerID !== undoPlayerID) {
