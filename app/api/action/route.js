@@ -1559,6 +1559,8 @@ export async function POST(request) {
             }
             if (!game.leaderId) {
               game.leaderId = desiredSlotId
+            } else if (game.leaderId === claimPlayerID && claimPlayerID !== desiredSlotId) {
+              game.leaderId = desiredSlotId
             }
             if (claimPlayerID === payload?.playerID && claimPlayerID !== desiredSlotId) {
               reassignedPlayerID = desiredSlotId
@@ -1639,6 +1641,8 @@ export async function POST(request) {
               game.waitlist.push({ id: slotId, name: displaced.name || `Player ${slotId}`, joinTime: displaced.joinTime || Date.now() })
             }
             if (!game.leaderId) {
+              game.leaderId = slotId
+            } else if (game.leaderId === targetID && targetID !== slotId) {
               game.leaderId = slotId
             }
             if (actingPlayerID === targetID && targetID !== slotId) {
