@@ -1451,14 +1451,33 @@ export default function HTTPMultiplayerPage() {
                 </button>
               )}
             </div>
-            <div>
-              <h1 className="text-2xl font-bold text-amber-200">{lobbyMap?.name}</h1>
-              <p className="mt-1 text-sm text-slate-400">Lobby {matchID}</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
-              <span className="rounded-full bg-slate-800/80 px-3 py-1">Players: {playerCount}/{maxPlayers}</span>
-              <span className="rounded-full bg-slate-800/80 px-3 py-1">Leader: {lobbyLeaderId ?? 'TBD'}</span>
-              <span className="rounded-full bg-slate-800/80 px-3 py-1">Map: {lobbyMap?.name}</span>
+            <div className="flex w-full max-w-sm items-center overflow-hidden rounded-md border border-cyan-700/40 bg-slate-900/90 shadow-[0_0_18px_rgba(34,211,238,0.12)]">
+              <div className="flex-1 px-4 py-2 text-center text-lg font-semibold text-cyan-200">
+                {teamMode ? '2v2' : '1v1'}
+              </div>
+              <details className="group relative h-full border-l border-cyan-700/40">
+                <summary className="flex h-full cursor-pointer list-none items-center gap-1 px-3 py-2 text-cyan-300 transition hover:bg-cyan-500/10">
+                  <span className="text-lg leading-none">▾</span>
+                </summary>
+                <div className="absolute right-0 top-full z-20 mt-1 w-28 overflow-hidden rounded-md border border-slate-700/90 bg-slate-900/95 text-xs shadow-xl">
+                  <button
+                    type="button"
+                    onClick={() => sendAction('setTeamMode', { playerID, enabled: false })}
+                    disabled={!canChangeLobbySettings || teamMode && !canDisableTeamMode}
+                    className="block w-full px-3 py-2 text-left text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    1v1
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => sendAction('setTeamMode', { playerID, enabled: true })}
+                    disabled={!canChangeLobbySettings}
+                    className="block w-full border-t border-slate-700/80 px-3 py-2 text-left text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    2v2
+                  </button>
+                </div>
+              </details>
             </div>
           </div>
 
@@ -1524,6 +1543,7 @@ export default function HTTPMultiplayerPage() {
               <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">Battlefield</div>
               <div className="mt-4 rounded-2xl border border-slate-700/70 bg-slate-800/70 p-4 text-center">
                 <div className="text-sm font-semibold text-amber-200">{lobbyMap?.name || 'Random Map'}</div>
+                <p className="mt-1 text-xs text-slate-400">Lobby {matchID}</p>
                 <div className="mx-auto mt-3 flex h-40 w-full max-w-[220px] items-center justify-center rounded-xl border border-slate-700 bg-slate-900/70 text-4xl text-slate-500">
                   🗺️
                 </div>
