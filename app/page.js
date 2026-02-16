@@ -902,6 +902,22 @@ export default function HTTPMultiplayerPage() {
       if (response.ok) {
         const data = await response.json()
         setGameState(data.gameState)
+        if (data?.reassignedPlayerID && data.reassignedPlayerID !== playerID) {
+          setPlayerID(data.reassignedPlayerID)
+          if (typeof window !== 'undefined') {
+            try {
+              const existing = JSON.parse(sessionStorage.getItem('lobbySession') || '{}')
+              sessionStorage.setItem('lobbySession', JSON.stringify({
+                ...existing,
+                playerID: data.reassignedPlayerID,
+                matchID,
+                playerName,
+              }))
+            } catch (storageError) {
+              console.error('Failed to persist reassigned lobby identity:', storageError)
+            }
+          }
+        }
         return data
       } else {
         const errorData = await response.json()

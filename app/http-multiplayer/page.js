@@ -529,6 +529,9 @@ export default function HTTPMultiplayerPage() {
       if (response.ok) {
         const data = await response.json()
         setGameState(data.gameState)
+        if (data?.reassignedPlayerID && data.reassignedPlayerID !== playerID) {
+          setPlayerID(data.reassignedPlayerID)
+        }
       } else {
         throw new Error('Failed to send action')
       }

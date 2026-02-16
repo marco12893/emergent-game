@@ -114,6 +114,11 @@ const pickRandomLeader = (game, excludedId = null) => {
   return eligiblePlayers[randomIndex]
 }
 
+const createObserverParticipantId = (baseId = 'observer') => {
+  const normalizedBase = String(baseId || 'observer').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24) || 'observer'
+  return `${normalizedBase}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
 const getUnitCountsByOwner = (units = []) => {
   return units.reduce((acc, unit) => {
     if (!unit?.ownerID) return acc
@@ -828,6 +833,8 @@ export async function POST(request) {
       }
     }
     
+    let reassignedPlayerID = null
+
     // Handle different game actions
     try {
       switch (gameAction) {
@@ -1042,10 +1049,24 @@ export async function POST(request) {
 
           if (desiredIsSpectator) {
             game.spectators = game.spectators || []
-            game.spectators.push({ id: claimPlayerID, name: sourceName, joinTime: Date.now() })
+            const observerId = existingEntry ? createObserverParticipantId(claimPlayerID) : claimPlayerID
+            game.spectators.push({ id: observerId, name: sourceName, joinTime: Date.now() })
+            if (game.leaderId === claimPlayerID) {
+              game.leaderId = observerId
+            }
+            if (claimPlayerID === payload?.playerID && observerId !== claimPlayerID) {
+              reassignedPlayerID = observerId
+            }
           } else if (desiredIsWaitlist) {
             game.waitlist = game.waitlist || []
-            game.waitlist.push({ id: claimPlayerID, name: sourceName, joinTime: Date.now() })
+            const observerId = existingEntry ? createObserverParticipantId(claimPlayerID) : claimPlayerID
+            game.waitlist.push({ id: observerId, name: sourceName, joinTime: Date.now() })
+            if (game.leaderId === claimPlayerID) {
+              game.leaderId = observerId
+            }
+            if (claimPlayerID === payload?.playerID && observerId !== claimPlayerID) {
+              reassignedPlayerID = observerId
+            }
           } else {
             const desiredSlotId = String(desiredIndex)
             const displaced = game.players?.[desiredSlotId]
@@ -1110,9 +1131,23 @@ export async function POST(request) {
           if (waitlistIndex >= 0) game.waitlist.splice(waitlistIndex, 1)
 
           if (destinationIsSpectator) {
-            game.spectators.push({ id: targetID, name: sourceEntry.name || `Player ${targetID}`, joinTime: sourceEntry.joinTime || Date.now() })
+            const observerId = currentPlayerEntry ? createObserverParticipantId(targetID) : targetID
+            game.spectators.push({ id: observerId, name: sourceEntry.name || `Player ${targetID}`, joinTime: sourceEntry.joinTime || Date.now() })
+            if (game.leaderId === targetID) {
+              game.leaderId = observerId
+            }
+            if (actingPlayerID === targetID && observerId !== targetID) {
+              reassignedPlayerID = observerId
+            }
           } else if (destinationIsWaitlist) {
-            game.waitlist.push({ id: targetID, name: sourceEntry.name || `Player ${targetID}`, joinTime: sourceEntry.joinTime || Date.now() })
+            const observerId = currentPlayerEntry ? createObserverParticipantId(targetID) : targetID
+            game.waitlist.push({ id: observerId, name: sourceEntry.name || `Player ${targetID}`, joinTime: sourceEntry.joinTime || Date.now() })
+            if (game.leaderId === targetID) {
+              game.leaderId = observerId
+            }
+            if (actingPlayerID === targetID && observerId !== targetID) {
+              reassignedPlayerID = observerId
+            }
           } else {
             const slotId = String(destinationIndex)
             const displaced = game.players?.[slotId]
@@ -1127,6 +1162,9 @@ export async function POST(request) {
             }
             if (!game.leaderId) {
               game.leaderId = slotId
+            }
+            if (actingPlayerID === targetID && targetID !== slotId) {
+              reassignedPlayerID = slotId
             }
           }
 
@@ -2766,7 +2804,8 @@ export async function POST(request) {
     return NextResponse.json({ 
       success: true, 
       gameState: game,
-      message: `Action ${gameAction} completed successfully`
+      message: `Action ${gameAction} completed successfully`,
+      reassignedPlayerID,
     }, {
       headers: {
         'Access-Control-Allow-Origin': '*',
