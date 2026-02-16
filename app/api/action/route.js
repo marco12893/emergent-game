@@ -119,6 +119,17 @@ const createObserverParticipantId = (baseId = 'observer') => {
   return `${normalizedBase}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+const DEFAULT_AI_DEPLOYMENT_UNIT_COUNT = 5
+const MIN_AI_DEPLOYMENT_UNIT_COUNT = 1
+const MAX_AI_DEPLOYMENT_UNIT_COUNT = 20
+
+const sanitizeAiDeploymentUnitCount = (value) => {
+  const parsed = Number.parseInt(value, 10)
+  if (!Number.isInteger(parsed)) return null
+  if (parsed < MIN_AI_DEPLOYMENT_UNIT_COUNT || parsed > MAX_AI_DEPLOYMENT_UNIT_COUNT) return null
+  return parsed
+}
+
 const getUnitCountsByOwner = (units = []) => {
   return units.reduce((acc, unit) => {
     if (!unit?.ownerID) return acc
@@ -262,8 +273,9 @@ const chooseAiSetupAction = ({ game, playerID }) => {
 
   const unitRoster = ['KNIGHT', 'SWORDSMAN', 'ARCHER', 'MILITIA', 'CATAPULT']
   const myUnits = getAliveUnitsForPlayer(game, playerID)
+  const desiredUnitCount = sanitizeAiDeploymentUnitCount(game.aiDeploymentUnitCount) || DEFAULT_AI_DEPLOYMENT_UNIT_COUNT
 
-  if (myUnits.length >= 5) {
+  if (myUnits.length >= desiredUnitCount) {
     if (!game.playersReady?.[playerID]) {
       return { type: 'readyForBattle', payload: { playerID } }
     }
@@ -1296,6 +1308,7 @@ export async function POST(request) {
     if (!Array.isArray(game.retreatedUnitIds)) {
       game.retreatedUnitIds = []
     }
+    game.aiDeploymentUnitCount = sanitizeAiDeploymentUnitCount(game.aiDeploymentUnitCount) || DEFAULT_AI_DEPLOYMENT_UNIT_COUNT
 
     if (game.phase === 'battle') {
       if (!game.turnStartedAt || !game.turnTimeLimitSeconds) {
@@ -1473,6 +1486,46 @@ export async function POST(request) {
           game.lastUpdate = Date.now()
           break
         }
+
+        case 'setAiDeploymentUnitCount': {
+          const aiDeploymentSchema = {
+            playerID: { required: true, sanitize: sanitizeParticipantID },
+            unitCount: { required: true, sanitize: sanitizeAiDeploymentUnitCount },
+          }
+          const aiDeploymentValidation = validatePayload(payload, aiDeploymentSchema)
+          if (aiDeploymentValidation.error) {
+            return NextResponse.json({
+              error: 'Invalid payload for setAiDeploymentUnitCount: ' + aiDeploymentValidation.error
+            }, {
+              status: 400,
+              headers: ACTION_CORS_HEADERS
+            })
+          }
+
+          const { playerID: deploymentPlayerID, unitCount } = aiDeploymentValidation.sanitized
+          if (!deploymentPlayerID || !isRegisteredParticipant(deploymentPlayerID, game)) {
+            return NextResponse.json({
+              error: 'Invalid playerID for setAiDeploymentUnitCount'
+            }, { status: 400, headers: ACTION_CORS_HEADERS })
+          }
+
+          if (game.phase !== 'lobby') {
+            return NextResponse.json({
+              error: 'AI deployment settings can only be updated in the lobby'
+            }, { status: 409, headers: ACTION_CORS_HEADERS })
+          }
+
+          if (game.leaderId && game.leaderId !== deploymentPlayerID) {
+            return NextResponse.json({
+              error: 'Only the lobby leader can update AI deployment settings'
+            }, { status: 403, headers: ACTION_CORS_HEADERS })
+          }
+
+          game.aiDeploymentUnitCount = unitCount
+          game.log.push(`AI deployment target updated to ${unitCount} unit${unitCount === 1 ? '' : 's'}.`)
+          break
+        }
+
         case 'claimSlot': {
           const claimSlotSchema = {
             playerID: { required: true, sanitize: sanitizeParticipantID },

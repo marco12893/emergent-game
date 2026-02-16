@@ -889,7 +889,7 @@ export default function HTTPMultiplayerPage() {
       const observerAllowedActions = ['claimSlot', 'moveParticipant']
       const isLobbyLeader = String(playerID) === String(gameState?.leaderId)
       if (isLobbyLeader) {
-        observerAllowedActions.push('setTeamMode', 'setWinterMode', 'setFogOfWar', 'startBattle', 'kickParticipant', 'addAiPlayer')
+        observerAllowedActions.push('setTeamMode', 'setWinterMode', 'setFogOfWar', 'setAiDeploymentUnitCount', 'startBattle', 'kickParticipant', 'addAiPlayer')
       }
       if (!observerAllowedActions.includes(action)) {
         setError('Spectators cannot perform game actions.')
@@ -1470,6 +1470,7 @@ export default function HTTPMultiplayerPage() {
     const lobbyFogEnabled = Boolean(gameState?.fogOfWarEnabled)
     const lobbyIsWinter = Boolean(gameState?.isWinter)
     const canAddAi = canChangeLobbySettings && !lobbyFogEnabled
+    const aiDeploymentUnitCount = Number(gameState?.aiDeploymentUnitCount) || 5
     const canDisableTeamMode = teamMode
       ? !Object.keys(lobbyPlayers).some((id) => Number.parseInt(id, 10) >= 2)
       : true
@@ -1659,6 +1660,31 @@ export default function HTTPMultiplayerPage() {
                     2v2 cannot be disabled while players occupy Green/Yellow slots.
                   </div>
                 )}
+                <div className="rounded-lg bg-slate-800/70 px-3 py-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-200">AI deployment size</span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => sendAction('setAiDeploymentUnitCount', { playerID, unitCount: Math.max(1, aiDeploymentUnitCount - 1) })}
+                        disabled={!canChangeLobbySettings || aiDeploymentUnitCount <= 1}
+                        className="rounded-full bg-slate-700 px-2 py-0.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        −
+                      </button>
+                      <span className="min-w-8 text-center text-[11px] font-semibold text-amber-200">{aiDeploymentUnitCount}</span>
+                      <button
+                        type="button"
+                        onClick={() => sendAction('setAiDeploymentUnitCount', { playerID, unitCount: Math.min(20, aiDeploymentUnitCount + 1) })}
+                        disabled={!canChangeLobbySettings || aiDeploymentUnitCount >= 20}
+                        className="rounded-full bg-slate-700 px-2 py-0.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-1 text-[11px] text-slate-500">Lobby leader controls how many units each AI deploys in setup (1–20).</div>
+                </div>
                 <div className="text-[11px] text-slate-500">
                   AI commanders are available in non-fog matches only.
                 </div>
