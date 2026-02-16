@@ -441,20 +441,23 @@ const chooseAiBattleAction = ({ game, playerID, teamMode }) => {
 
     const unitLocalBalance = getLocalBalance({ game, playerID, position: unit, teamMode, radius: 2 })
     const holdGround = shouldAiHoldGround({ unit, localBalance: unitLocalBalance })
+    const nearestEnemyFromCurrent = enemies.reduce((acc, enemy) => Math.min(acc, getDistance(unit, enemy)), Infinity)
     const reachable = getReachableHexes(unit, game.hexes || [], game.units || [], game.terrainMap || {}, { teamMode })
     for (const destination of reachable) {
       const nearestEnemyDistance = enemies.reduce((acc, enemy) => Math.min(acc, getDistance(destination, enemy)), Infinity)
+      const distanceGain = nearestEnemyFromCurrent - nearestEnemyDistance
       const terrainKey = game.terrainMap?.[`${destination.q},${destination.r}`] || 'PLAIN'
       const terrainDefense = getTerrainDefenseScore(terrainKey)
       const destinationBalance = getLocalBalance({ game, playerID, position: destination, teamMode, radius: 2 })
       const allySupport = Math.max(0, destinationBalance.allyPower - destinationBalance.enemyPower)
       const pressurePenalty = Math.max(0, destinationBalance.enemyPower - destinationBalance.allyPower)
+      const canEngageAfterMove = enemies.some((enemy) => getDistance(destination, enemy) <= unit.range)
 
       let score
       if (holdGround) {
-        score = (nearestEnemyDistance * 4) + terrainDefense + allySupport * 0.5 - pressurePenalty * 0.8
+        score = (nearestEnemyDistance * 2.5) + terrainDefense + allySupport * 0.55 - pressurePenalty * 0.8 + (canEngageAfterMove ? 8 : 0)
       } else {
-        score = (20 - nearestEnemyDistance * 3) + terrainDefense * 0.8 + allySupport * 0.25 - pressurePenalty * 0.5
+        score = (distanceGain * 12) + (canEngageAfterMove ? 28 : 0) + terrainDefense * 0.6 + allySupport * 0.2 - pressurePenalty * 0.35 - Math.max(0, -distanceGain * 4)
       }
 
       if (!bestMove || score > bestMove.score) {
