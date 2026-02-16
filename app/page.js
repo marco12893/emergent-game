@@ -876,9 +876,16 @@ export default function HTTPMultiplayerPage() {
 
   const sendAction = async (action, payload) => {
     if (!joined) return
-    if (isObserver && !['claimSlot', 'moveParticipant'].includes(action)) {
-      setError('Spectators cannot perform game actions.')
-      return
+    if (isObserver) {
+      const observerAllowedActions = ['claimSlot', 'moveParticipant']
+      const isLobbyLeader = String(playerID) === String(gameState?.leaderId)
+      if (isLobbyLeader) {
+        observerAllowedActions.push('setTeamMode', 'setWinterMode', 'setFogOfWar', 'startBattle', 'kickParticipant')
+      }
+      if (!observerAllowedActions.includes(action)) {
+        setError('Spectators cannot perform game actions.')
+        return
+      }
     }
 
     try {
@@ -895,6 +902,22 @@ export default function HTTPMultiplayerPage() {
       if (response.ok) {
         const data = await response.json()
         setGameState(data.gameState)
+        if (data?.reassignedPlayerID && data.reassignedPlayerID !== playerID) {
+          setPlayerID(data.reassignedPlayerID)
+          if (typeof window !== 'undefined') {
+            try {
+              const existing = JSON.parse(sessionStorage.getItem('lobbySession') || '{}')
+              sessionStorage.setItem('lobbySession', JSON.stringify({
+                ...existing,
+                playerID: data.reassignedPlayerID,
+                matchID,
+                playerName,
+              }))
+            } catch (storageError) {
+              console.error('Failed to persist reassigned lobby identity:', storageError)
+            }
+          }
+        }
         return data
       } else {
         const errorData = await response.json()
@@ -1429,15 +1452,15 @@ export default function HTTPMultiplayerPage() {
     const teamTwoSlots = teamSlotConfig.filter(slot => slot.team === 'TEAM 2')
     const playerCount = Object.keys(lobbyPlayers).length
     const canStartMatch = String(playerID) === String(lobbyLeaderId) && playerCount >= 2
-    const canChangeLobbySettings = String(playerID) === String(lobbyLeaderId) && playerID !== 'spectator'
+    const canChangeLobbySettings = String(playerID) === String(lobbyLeaderId)
     const lobbyFogEnabled = Boolean(gameState?.fogOfWarEnabled)
     const lobbyIsWinter = Boolean(gameState?.isWinter)
     const canDisableTeamMode = teamMode
       ? !Object.keys(lobbyPlayers).some((id) => Number.parseInt(id, 10) >= 2)
       : true
 
-    const canKickFromLobby = !isObserver && String(playerID) === String(lobbyLeaderId)
-    const canDisbandLobby = String(playerID) === String(lobbyLeaderId) && playerID !== 'spectator'
+    const canKickFromLobby = String(playerID) === String(lobbyLeaderId)
+    const canDisbandLobby = String(playerID) === String(lobbyLeaderId)
 
     const moveParticipant = async (targetID, destination) => {
       if (!joined) return

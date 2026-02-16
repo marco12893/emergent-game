@@ -529,6 +529,9 @@ export default function HTTPMultiplayerPage() {
       if (response.ok) {
         const data = await response.json()
         setGameState(data.gameState)
+        if (data?.reassignedPlayerID && data.reassignedPlayerID !== playerID) {
+          setPlayerID(data.reassignedPlayerID)
+        }
       } else {
         throw new Error('Failed to send action')
       }
@@ -914,7 +917,7 @@ export default function HTTPMultiplayerPage() {
     const lobbyMap = MAPS[gameState?.mapId] || MAPS[selectedMapId]
     const playerCount = Object.keys(lobbyPlayers).length
     const canStartMatch = playerID === lobbyLeaderId && playerCount >= 2
-    const canToggleFog = playerID === lobbyLeaderId && playerID !== 'spectator'
+    const canToggleFog = playerID === lobbyLeaderId
     const lobbyFogEnabled = Boolean(gameState?.fogOfWarEnabled)
     const slotConfig = [
       { id: '0', label: 'Team 1' },
