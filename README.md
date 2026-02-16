@@ -9,7 +9,7 @@ Party leaders can now fill empty player slots with **AI commanders** in the lobb
 ### Supported right now
 - ✅ AI for **non fog-of-war matches**.
 - ✅ Multiple AI players in the same match (including **AI vs AI** if all slots are AI).
-- ✅ AI automatically stops when the game is over (win/loss/draw).
+- ✅ AI automatically stops when the game is over (win/loss/draw), including chained AI turns.
 
 ### Not supported yet
 - ❌ Fog-of-war AI behavior (intentionally disabled for now).
@@ -82,10 +82,12 @@ In setup phase, AI uses:
 Battle action priority is:
 1. **Best attack available now**
    - score favors: kill potential, low-HP targets, and dangerous enemy units.
-2. **Otherwise best move**
-   - move candidates from `getReachableHexes`.
-   - score favors reducing distance to nearest enemy and modest terrain preference (`HILLS`, `FOREST`, `CITY`).
-3. **Otherwise end turn**.
+2. **Otherwise evaluate stance (push / hold / fall back)**
+   - AI estimates local ally-vs-enemy power around each unit.
+   - when outmatched and wounded, it prefers to hold safer terrain or move away instead of charging.
+3. **Retreat when appropriate**
+   - once retreat is unlocked for the map, severely threatened low-HP units in retreat zones can retreat.
+4. **Otherwise end turn**.
 
 ### 5) Combat handling
 AI combat uses the same core combat mechanics as regular actions:
@@ -132,6 +134,7 @@ In the multiplayer lobby:
 - Empty slot now shows **+AI** button (leader only, non-fog).
 - AI occupants display `(AI)` tag.
 - Helper text indicates AI currently supports non-fog matches.
+- Available in both lobby UIs (`/` and `/http-multiplayer`) used for Vercel multiplayer play.
 
 ---
 

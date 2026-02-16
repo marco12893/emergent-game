@@ -880,7 +880,7 @@ export default function HTTPMultiplayerPage() {
       const observerAllowedActions = ['claimSlot', 'moveParticipant']
       const isLobbyLeader = String(playerID) === String(gameState?.leaderId)
       if (isLobbyLeader) {
-        observerAllowedActions.push('setTeamMode', 'setWinterMode', 'setFogOfWar', 'startBattle', 'kickParticipant')
+        observerAllowedActions.push('setTeamMode', 'setWinterMode', 'setFogOfWar', 'startBattle', 'kickParticipant', 'addAiPlayer')
       }
       if (!observerAllowedActions.includes(action)) {
         setError('Spectators cannot perform game actions.')
@@ -1455,6 +1455,7 @@ export default function HTTPMultiplayerPage() {
     const canChangeLobbySettings = String(playerID) === String(lobbyLeaderId)
     const lobbyFogEnabled = Boolean(gameState?.fogOfWarEnabled)
     const lobbyIsWinter = Boolean(gameState?.isWinter)
+    const canAddAi = canChangeLobbySettings && !lobbyFogEnabled
     const canDisableTeamMode = teamMode
       ? !Object.keys(lobbyPlayers).some((id) => Number.parseInt(id, 10) >= 2)
       : true
@@ -1539,6 +1540,7 @@ export default function HTTPMultiplayerPage() {
                         <div className="text-sm font-semibold text-white">{slot.label}</div>
                         <div className="text-xs text-slate-400">
                           {occupant ? occupant.name : 'Add the player'}
+                          {occupant?.isAI && <span className="ml-2 text-emerald-300">(AI)</span>}
                           {isLeader && <span className="ml-2 text-amber-300">(Leader)</span>}
                         </div>
                       </div>
@@ -1550,6 +1552,15 @@ export default function HTTPMultiplayerPage() {
                         >
                           {isSpectator ? 'Join' : isCurrent ? 'Your Slot' : 'Join'}
                         </button>
+                        {!isOccupied && (
+                          <button
+                            onClick={() => sendAction('addAiPlayer', { playerID, desiredSlot: slot.id })}
+                            disabled={!canAddAi}
+                            className="rounded-full bg-emerald-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
+                          >
+                            +AI
+                          </button>
+                        )}
                         {isOccupied && canKickFromLobby && (
                           <button
                             onClick={() => kickParticipant(slot.id)}
@@ -1633,6 +1644,9 @@ export default function HTTPMultiplayerPage() {
                     2v2 cannot be disabled while players occupy Green/Yellow slots.
                   </div>
                 )}
+                <div className="text-[11px] text-slate-500">
+                  AI commanders are available in non-fog matches only.
+                </div>
               </div>
 
               {forceLobbySelection ? (
@@ -1684,6 +1698,7 @@ export default function HTTPMultiplayerPage() {
                         <div className="text-sm font-semibold text-white">{slot.label}</div>
                         <div className="text-xs text-slate-400">
                           {occupant ? occupant.name : 'Add the player'}
+                          {occupant?.isAI && <span className="ml-2 text-emerald-300">(AI)</span>}
                           {isLeader && <span className="ml-2 text-amber-300">(Leader)</span>}
                         </div>
                       </div>
@@ -1695,6 +1710,15 @@ export default function HTTPMultiplayerPage() {
                         >
                           {isSpectator ? 'Join' : isCurrent ? 'Your Slot' : 'Join'}
                         </button>
+                        {!isOccupied && (
+                          <button
+                            onClick={() => sendAction('addAiPlayer', { playerID, desiredSlot: slot.id })}
+                            disabled={!canAddAi}
+                            className="rounded-full bg-emerald-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
+                          >
+                            +AI
+                          </button>
+                        )}
                         {isOccupied && canKickFromLobby && (
                           <button
                             onClick={() => kickParticipant(slot.id)}

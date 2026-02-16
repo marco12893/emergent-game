@@ -309,6 +309,69 @@ const chooseAiSetupAction = ({ game, playerID }) => {
   }
 }
 
+const getTerrainDefenseScore = (terrainKey) => {
+  const terrain = TERRAIN_TYPES[terrainKey] || TERRAIN_TYPES.PLAIN
+  return Number(terrain?.defenseBonus || 0)
+}
+
+const getLocalBalance = ({ game, playerID, position, teamMode, radius = 2 }) => {
+  const allies = (game.units || []).filter((unit) =>
+    unit.currentHP > 0 && getDistance(position, unit) <= radius && (teamMode ? areAllies(unit.ownerID, playerID) : unit.ownerID === playerID)
+  )
+  const enemies = (game.units || []).filter((unit) =>
+    unit.currentHP > 0 && getDistance(position, unit) <= radius && (teamMode ? !areAllies(unit.ownerID, playerID) : unit.ownerID !== playerID)
+  )
+
+  const allyPower = allies.reduce((sum, unit) => sum + (unit.currentHP / Math.max(1, unit.maxHP)) * (unit.attackPower || 0), 0)
+  const enemyPower = enemies.reduce((sum, unit) => sum + (unit.currentHP / Math.max(1, unit.maxHP)) * (unit.attackPower || 0), 0)
+
+  return {
+    allyPower,
+    enemyPower,
+    allyCount: allies.length,
+    enemyCount: enemies.length,
+    pressure: enemyPower - allyPower,
+  }
+}
+
+const shouldAiHoldGround = ({ unit, localBalance }) => {
+  const unitHpRatio = unit.currentHP / Math.max(1, unit.maxHP)
+  const underHeavyPressure = localBalance.enemyPower > localBalance.allyPower * 1.35
+  const outnumbered = localBalance.enemyCount > localBalance.allyCount
+  const lowHealth = unitHpRatio < 0.55
+  return lowHealth && (underHeavyPressure || outnumbered)
+}
+
+const chooseAiRetreatCandidate = ({ game, playerID, teamMode }) => {
+  const retreatTurn = getRetreatActivationTurn(game.mapId)
+  if ((game.turn || 1) < retreatTurn) return null
+
+  const mapWidth = game.mapSize?.width || 6
+  const retreatHexes = getRetreatZoneForPlayer({
+    hexes: game.hexes || [],
+    mapWidth,
+    playerID,
+    teamMode,
+  })
+
+  if (retreatHexes.length === 0) return null
+
+  const retreatSet = new Set(retreatHexes.map((hex) => `${hex.q},${hex.r}`))
+  const candidates = getAliveUnitsForPlayer(game, playerID)
+    .filter((unit) => retreatSet.has(`${unit.q},${unit.r}`))
+    .map((unit) => {
+      const localBalance = getLocalBalance({ game, playerID, position: unit, teamMode, radius: 2 })
+      const hpRatio = unit.currentHP / Math.max(1, unit.maxHP)
+      const dangerScore = (localBalance.enemyPower - localBalance.allyPower) + (1 - hpRatio) * 30
+      return { unit, localBalance, dangerScore, hpRatio }
+    })
+    .filter((entry) => entry.hpRatio < 0.4 && entry.localBalance.enemyPower > entry.localBalance.allyPower * 1.1)
+    .sort((a, b) => b.dangerScore - a.dangerScore)
+
+  if (candidates.length === 0) return null
+  return candidates[0].unit
+}
+
 const chooseAiBattleAction = ({ game, playerID, teamMode }) => {
   if (game.fogOfWarEnabled || game.gameOver) {
     return null
@@ -323,16 +386,33 @@ const chooseAiBattleAction = ({ game, playerID, teamMode }) => {
     return { type: 'endTurn', payload: { playerID } }
   }
 
+  const retreatUnit = chooseAiRetreatCandidate({ game, playerID, teamMode })
+  if (retreatUnit) {
+    return {
+      type: 'retreatUnit',
+      payload: {
+        playerID,
+        unitId: retreatUnit.id,
+      },
+    }
+  }
+
   let bestAttack = null
 
   for (const unit of units) {
     if (unit.hasAttacked) continue
+    const localBalance = getLocalBalance({ game, playerID, position: unit, teamMode, radius: 2 })
+    const holdGround = shouldAiHoldGround({ unit, localBalance })
     const attackableHexes = getAttackableHexes(unit, game.hexes || [], game.units || [], { teamMode })
     for (const hex of attackableHexes) {
       const target = (game.units || []).find((candidate) => candidate.q === hex.q && candidate.r === hex.r && candidate.currentHP > 0)
       if (!target) continue
-      const killBias = unit.attackPower >= target.currentHP ? 50 : 0
-      const score = (100 - target.currentHP) + killBias + (target.attackPower || 0)
+
+      const killBias = unit.attackPower >= target.currentHP ? 55 : 0
+      const riskPenalty = holdGround ? 18 : 0
+      const counterRiskPenalty = target.range >= unit.range && target.attackPower >= unit.attackPower ? 8 : 0
+      const score = (100 - target.currentHP) + killBias + (target.attackPower || 0) - riskPenalty - counterRiskPenalty
+
       if (!bestAttack || score > bestAttack.score) {
         bestAttack = {
           score,
@@ -358,15 +438,24 @@ const chooseAiBattleAction = ({ game, playerID, teamMode }) => {
 
   for (const unit of units) {
     if (unit.hasMoved || unit.movePoints <= 0) continue
+
+    const unitLocalBalance = getLocalBalance({ game, playerID, position: unit, teamMode, radius: 2 })
+    const holdGround = shouldAiHoldGround({ unit, localBalance: unitLocalBalance })
     const reachable = getReachableHexes(unit, game.hexes || [], game.units || [], game.terrainMap || {}, { teamMode })
     for (const destination of reachable) {
-      const nearestEnemyDistance = enemies.reduce((acc, enemy) => {
-        const d = getDistance(destination, enemy)
-        return Math.min(acc, d)
-      }, Infinity)
-      const terrain = game.terrainMap?.[`${destination.q},${destination.r}`] || 'PLAIN'
-      const terrainBias = terrain === 'HILLS' || terrain === 'FOREST' ? 1.5 : terrain === 'CITY' ? 1 : 0
-      const score = (20 - nearestEnemyDistance * 3) + terrainBias
+      const nearestEnemyDistance = enemies.reduce((acc, enemy) => Math.min(acc, getDistance(destination, enemy)), Infinity)
+      const terrainKey = game.terrainMap?.[`${destination.q},${destination.r}`] || 'PLAIN'
+      const terrainDefense = getTerrainDefenseScore(terrainKey)
+      const destinationBalance = getLocalBalance({ game, playerID, position: destination, teamMode, radius: 2 })
+      const allySupport = Math.max(0, destinationBalance.allyPower - destinationBalance.enemyPower)
+      const pressurePenalty = Math.max(0, destinationBalance.enemyPower - destinationBalance.allyPower)
+
+      let score
+      if (holdGround) {
+        score = (nearestEnemyDistance * 4) + terrainDefense + allySupport * 0.5 - pressurePenalty * 0.8
+      } else {
+        score = (20 - nearestEnemyDistance * 3) + terrainDefense * 0.8 + allySupport * 0.25 - pressurePenalty * 0.5
+      }
 
       if (!bestMove || score > bestMove.score) {
         bestMove = {
@@ -922,6 +1011,182 @@ export async function OPTIONS() {
       'Access-Control-Allow-Headers': 'Content-Type',
     },
   })
+}
+
+
+const evaluateVictoryInfo = ({ game, teamMode }) => {
+  if (game.phase !== 'battle') return null
+
+  const aliveUnits = game.units.filter(u => u.currentHP > 0)
+  const p0Alive = aliveUnits.filter(u => u.ownerID === '0').length
+  const p1Alive = aliveUnits.filter(u => u.ownerID === '1').length
+  const teamBlueGreenAlive = aliveUnits.filter(u => getTeamId(u.ownerID) === 'blue-green').length
+  const teamRedYellowAlive = aliveUnits.filter(u => getTeamId(u.ownerID) === 'red-yellow').length
+
+  let victoryInfo = null
+
+  if (game.map4ObjectiveState?.enabled) {
+    victoryInfo = getMap4VictoryInfo({ G: game, teamMode, turn: game.turn || 1 })
+  }
+
+  if (!victoryInfo && game.gameMode === 'ATTACK_DEFEND') {
+    if (game.objectiveControl[game.defenderId] >= game.turnLimit) {
+      victoryInfo = {
+        winner: game.defenderId,
+        winnerTeam: game.defenderId,
+        teamMode,
+        turn: game.turn || 1,
+        victoryType: 'objective_defense',
+        message: `${getTeamLabel(game.defenderId)} wins by holding Paris for ${game.turnLimit} turns!`
+      }
+    }
+
+    const p0ControlsAll = game.objectiveHexes.every(objHex => {
+      const unitOnHex = aliveUnits.find(u => u.q === sanitizeCoordinate(objHex.q) && u.r === sanitizeCoordinate(objHex.r))
+      if (!unitOnHex) return false
+      const teamId = teamMode ? getTeamId(unitOnHex.ownerID) : unitOnHex.ownerID
+      return teamId === game.attackerId
+    })
+
+    if (p0ControlsAll && game.objectiveControl[game.attackerId] >= 3) {
+      victoryInfo = {
+        winner: game.attackerId,
+        winnerTeam: game.attackerId,
+        teamMode,
+        turn: game.turn || 1,
+        victoryType: 'objective_capture',
+        message: `${getTeamLabel(game.attackerId)} wins by capturing Paris!`
+      }
+    }
+
+    if (teamMode ? teamRedYellowAlive === 0 : p1Alive === 0) {
+      victoryInfo = {
+        winner: game.attackerId,
+        winnerTeam: game.attackerId,
+        teamMode,
+        turn: game.turn || 1,
+        victoryType: 'elimination',
+        message: `${getTeamLabel(game.attackerId)} wins by eliminating all defenders!`
+      }
+    }
+    if (teamMode ? teamBlueGreenAlive === 0 : p0Alive === 0) {
+      victoryInfo = {
+        winner: game.defenderId,
+        winnerTeam: game.defenderId,
+        teamMode,
+        turn: game.turn || 1,
+        victoryType: 'elimination',
+        message: `${getTeamLabel(game.defenderId)} wins by eliminating all attackers!`
+      }
+    }
+    return victoryInfo
+  }
+
+  if (!teamMode && p0Alive === 0 && p1Alive > 0) {
+    victoryInfo = {
+      winner: '1',
+      turn: game.turn || 1,
+      victoryType: 'elimination',
+      message: `Player 1 wins by eliminating all enemy units in ${game.turn || 1} turns!`
+    }
+  } else if (!teamMode && p1Alive === 0 && p0Alive > 0) {
+    victoryInfo = {
+      winner: '0',
+      turn: game.turn || 1,
+      victoryType: 'elimination',
+      message: `Player 0 wins by eliminating all enemy units in ${game.turn || 1} turns!`
+    }
+  } else if (!teamMode && p0Alive === 0 && p1Alive === 0) {
+    victoryInfo = {
+      draw: true,
+      turn: game.turn || 1,
+      victoryType: 'mutual_destruction',
+      message: `Draw! Both players eliminated in ${game.turn || 1} turns!`
+    }
+  } else if (!teamMode && (game.turn || 1) >= 50) {
+    if (p0Alive > p1Alive) {
+      victoryInfo = {
+        winner: '0',
+        turn: game.turn,
+        victoryType: 'turn_limit',
+        message: `Player 0 wins by having more units after ${game.turn} turns!`
+      }
+    } else if (p1Alive > p0Alive) {
+      victoryInfo = {
+        winner: '1',
+        turn: game.turn,
+        victoryType: 'turn_limit',
+        message: `Player 1 wins by having more units after ${game.turn} turns!`
+      }
+    } else {
+      victoryInfo = {
+        draw: true,
+        turn: game.turn,
+        victoryType: 'turn_limit_draw',
+        message: `Draw! Equal units after ${game.turn} turns!`
+      }
+    }
+  }
+
+  if (teamMode) {
+    if (teamBlueGreenAlive === 0 && teamRedYellowAlive > 0) {
+      victoryInfo = {
+        winner: 'red-yellow',
+        winnerTeam: 'red-yellow',
+        teamMode,
+        turn: game.turn || 1,
+        victoryType: 'elimination',
+        message: `${getTeamLabel('red-yellow')} wins by eliminating all enemy units in ${game.turn || 1} turns!`
+      }
+    } else if (teamRedYellowAlive === 0 && teamBlueGreenAlive > 0) {
+      victoryInfo = {
+        winner: 'blue-green',
+        winnerTeam: 'blue-green',
+        teamMode,
+        turn: game.turn || 1,
+        victoryType: 'elimination',
+        message: `${getTeamLabel('blue-green')} wins by eliminating all enemy units in ${game.turn || 1} turns!`
+      }
+    } else if (teamRedYellowAlive === 0 && teamBlueGreenAlive === 0) {
+      victoryInfo = {
+        draw: true,
+        teamMode,
+        turn: game.turn || 1,
+        victoryType: 'mutual_destruction',
+        message: `Draw! Both teams eliminated in ${game.turn || 1} turns!`
+      }
+    } else if ((game.turn || 1) >= 50) {
+      if (teamBlueGreenAlive > teamRedYellowAlive) {
+        victoryInfo = {
+          winner: 'blue-green',
+          winnerTeam: 'blue-green',
+          teamMode,
+          turn: game.turn,
+          victoryType: 'turn_limit',
+          message: `${getTeamLabel('blue-green')} wins by having more units after ${game.turn} turns!`
+        }
+      } else if (teamRedYellowAlive > teamBlueGreenAlive) {
+        victoryInfo = {
+          winner: 'red-yellow',
+          winnerTeam: 'red-yellow',
+          teamMode,
+          turn: game.turn,
+          victoryType: 'turn_limit',
+          message: `${getTeamLabel('red-yellow')} wins by having more units after ${game.turn} turns!`
+        }
+      } else {
+        victoryInfo = {
+          draw: true,
+          teamMode,
+          turn: game.turn,
+          victoryType: 'turn_limit_draw',
+          message: `Draw! Equal units after ${game.turn} turns!`
+        }
+      }
+    }
+  }
+
+  return victoryInfo
 }
 
 export async function POST(request) {
@@ -2857,186 +3122,11 @@ export async function POST(request) {
         }
       })
     }
-    
     // Check victory conditions after each action
-    if (game.phase === 'battle') {
-      const aliveUnits = game.units.filter(u => u.currentHP > 0)
-      const p0Alive = aliveUnits.filter(u => u.ownerID === '0').length
-      const p1Alive = aliveUnits.filter(u => u.ownerID === '1').length
-      const teamBlueGreenAlive = aliveUnits.filter(u => getTeamId(u.ownerID) === 'blue-green').length
-      const teamRedYellowAlive = aliveUnits.filter(u => getTeamId(u.ownerID) === 'red-yellow').length
-      
-      let victoryInfo = null
-
-      if (game.map4ObjectiveState?.enabled) {
-        victoryInfo = getMap4VictoryInfo({ G: game, teamMode, turn: game.turn || 1 })
-      }
-      
-      // Attack & Defend mode victory conditions
-      if (!victoryInfo && game.gameMode === 'ATTACK_DEFEND') {
-        // Defender (Player 1) wins if they hold objective for required turns
-        if (game.objectiveControl[game.defenderId] >= game.turnLimit) {
-          victoryInfo = {
-            winner: game.defenderId,
-            winnerTeam: game.defenderId,
-            teamMode,
-            turn: game.turn || 1,
-            victoryType: 'objective_defense',
-            message: `${getTeamLabel(game.defenderId)} wins by holding Paris for ${game.turnLimit} turns!`
-          }
-        }
-        
-        // Attacker (Player 0) wins if they capture all objective hexes
-        const p0ControlsAll = game.objectiveHexes.every(objHex => {
-          const unitOnHex = aliveUnits.find(u => u.q === sanitizeCoordinate(objHex.q) && u.r === sanitizeCoordinate(objHex.r))
-          if (!unitOnHex) return false
-          const teamId = teamMode ? getTeamId(unitOnHex.ownerID) : unitOnHex.ownerID
-          return teamId === game.attackerId
-        })
-        
-        if (p0ControlsAll && game.objectiveControl[game.attackerId] >= 3) {
-          victoryInfo = {
-            winner: game.attackerId,
-            winnerTeam: game.attackerId,
-            teamMode,
-            turn: game.turn || 1,
-            victoryType: 'objective_capture',
-            message: `${getTeamLabel(game.attackerId)} wins by capturing Paris!`
-          }
-        }
-        
-        // Elimination still works as alternate victory
-        if (teamMode ? teamRedYellowAlive === 0 : p1Alive === 0) {
-          victoryInfo = {
-            winner: game.attackerId,
-            winnerTeam: game.attackerId,
-            teamMode,
-            turn: game.turn || 1,
-            victoryType: 'elimination',
-            message: `${getTeamLabel(game.attackerId)} wins by eliminating all defenders!`
-          }
-        }
-        if (teamMode ? teamBlueGreenAlive === 0 : p0Alive === 0) {
-          victoryInfo = {
-            winner: game.defenderId,
-            winnerTeam: game.defenderId,
-            teamMode,
-            turn: game.turn || 1,
-            victoryType: 'elimination',
-            message: `${getTeamLabel(game.defenderId)} wins by eliminating all attackers!`
-          }
-        }
-      } else {
-        // Standard ELIMINATION mode
-        if (!teamMode && p0Alive === 0 && p1Alive > 0) {
-          victoryInfo = {
-            winner: '1',
-            turn: game.turn || 1,
-            victoryType: 'elimination',
-            message: `Player 1 wins by eliminating all enemy units in ${game.turn || 1} turns!`
-          }
-        } else if (!teamMode && p1Alive === 0 && p0Alive > 0) {
-          victoryInfo = {
-            winner: '0',
-            turn: game.turn || 1,
-            victoryType: 'elimination',
-            message: `Player 0 wins by eliminating all enemy units in ${game.turn || 1} turns!`
-          }
-        } else if (!teamMode && p0Alive === 0 && p1Alive === 0) {
-          victoryInfo = {
-            draw: true,
-            turn: game.turn || 1,
-            victoryType: 'mutual_destruction',
-            message: `Draw! Both players eliminated in ${game.turn || 1} turns!`
-          }
-        } else if (!teamMode && (game.turn || 1) >= 50) {
-          if (p0Alive > p1Alive) {
-            victoryInfo = {
-              winner: '0',
-              turn: game.turn,
-              victoryType: 'turn_limit',
-              message: `Player 0 wins by having more units after ${game.turn} turns!`
-            }
-          } else if (p1Alive > p0Alive) {
-            victoryInfo = {
-              winner: '1',
-              turn: game.turn,
-              victoryType: 'turn_limit',
-              message: `Player 1 wins by having more units after ${game.turn} turns!`
-            }
-          } else {
-            victoryInfo = {
-              draw: true,
-              turn: game.turn,
-              victoryType: 'turn_limit_draw',
-              message: `Draw! Equal units after ${game.turn} turns!`
-            }
-          }
-        }
-
-        if (teamMode) {
-          if (teamBlueGreenAlive === 0 && teamRedYellowAlive > 0) {
-            victoryInfo = {
-              winner: 'red-yellow',
-              winnerTeam: 'red-yellow',
-              teamMode,
-              turn: game.turn || 1,
-              victoryType: 'elimination',
-              message: `${getTeamLabel('red-yellow')} wins by eliminating all enemy units in ${game.turn || 1} turns!`
-            }
-          } else if (teamRedYellowAlive === 0 && teamBlueGreenAlive > 0) {
-            victoryInfo = {
-              winner: 'blue-green',
-              winnerTeam: 'blue-green',
-              teamMode,
-              turn: game.turn || 1,
-              victoryType: 'elimination',
-              message: `${getTeamLabel('blue-green')} wins by eliminating all enemy units in ${game.turn || 1} turns!`
-            }
-          } else if (teamRedYellowAlive === 0 && teamBlueGreenAlive === 0) {
-            victoryInfo = {
-              draw: true,
-              teamMode,
-              turn: game.turn || 1,
-              victoryType: 'mutual_destruction',
-              message: `Draw! Both teams eliminated in ${game.turn || 1} turns!`
-            }
-          } else if ((game.turn || 1) >= 50) {
-            if (teamBlueGreenAlive > teamRedYellowAlive) {
-              victoryInfo = {
-                winner: 'blue-green',
-                winnerTeam: 'blue-green',
-                teamMode,
-                turn: game.turn,
-                victoryType: 'turn_limit',
-                message: `${getTeamLabel('blue-green')} wins by having more units after ${game.turn} turns!`
-              }
-            } else if (teamRedYellowAlive > teamBlueGreenAlive) {
-              victoryInfo = {
-                winner: 'red-yellow',
-                winnerTeam: 'red-yellow',
-                teamMode,
-                turn: game.turn,
-                victoryType: 'turn_limit',
-                message: `${getTeamLabel('red-yellow')} wins by having more units after ${game.turn} turns!`
-              }
-            } else {
-              victoryInfo = {
-                draw: true,
-                teamMode,
-                turn: game.turn,
-                victoryType: 'turn_limit_draw',
-                message: `Draw! Equal units after ${game.turn} turns!`
-              }
-            }
-          }
-        }
-      }
-      
-      if (victoryInfo) {
-        game.gameOver = victoryInfo
-        game.log.push(`🎮 GAME OVER: ${victoryInfo.message}`)
-      }
+    const victoryInfo = evaluateVictoryInfo({ game, teamMode })
+    if (victoryInfo) {
+      game.gameOver = victoryInfo
+      game.log.push(`🎮 GAME OVER: ${victoryInfo.message}`)
     }
 
     let aiIterations = 0
@@ -3229,27 +3319,57 @@ export async function POST(request) {
           movingUnit.hasMovedOrAttacked = true
         }
         game.log.push(`🤖 Player ${aiPlayerID} (AI) moved ${movingUnit.name} to (${movingUnit.q}, ${movingUnit.r}).`)
+      } else if (aiAction === 'retreatUnit') {
+        const unit = game.units.find((candidate) => candidate.id === aiPayload.unitId)
+        if (!unit || unit.ownerID !== aiPlayerID) {
+          break
+        }
+
+        const retreatTurn = getRetreatActivationTurn(game.mapId)
+        if ((game.turn || 1) < retreatTurn) {
+          break
+        }
+
+        const mapWidth = game.mapSize?.width || 6
+        const retreatHexes = getRetreatZoneForPlayer({
+          hexes: game.hexes,
+          mapWidth,
+          playerID: aiPlayerID,
+          teamMode,
+        })
+        const isInRetreatZone = retreatHexes.some((hex) => hex.q === unit.q && hex.r === unit.r)
+        if (!isInRetreatZone) {
+          break
+        }
+
+        const unitIndex = game.units.findIndex((candidate) => candidate.id === unit.id)
+        if (unitIndex === -1) {
+          break
+        }
+
+        game.retreatedUnits = game.retreatedUnits || []
+        game.retreatedUnitIds = game.retreatedUnitIds || []
+        game.retreatedUnits.push({ ...unit, retreated: true })
+        game.retreatedUnitIds.push(unit.id)
+        if (game.battleStats) {
+          game.battleStats.retreatCounts = game.battleStats.retreatCounts || {}
+          game.battleStats.retreatCounts[aiPlayerID] = (game.battleStats.retreatCounts[aiPlayerID] || 0) + 1
+        }
+
+        if (game.selectedUnitId === unit.id) {
+          game.selectedUnitId = null
+        }
+
+        game.units.splice(unitIndex, 1)
+        applyEncirclementMorale(game.units, teamMode)
+        game.log.push(`🤖 Player ${aiPlayerID} (AI) retreated ${unit.name} from (${unit.q}, ${unit.r}).`)
       } else if (aiAction === 'endTurn') {
         advanceTurn({ game, endingPlayerID: aiPlayerID })
       } else {
         break
       }
 
-      // Evaluate victory after each AI action
-      const aiUnitsByPlayer = {}
-      game.units.forEach((unit) => {
-        if (unit.currentHP > 0) {
-          aiUnitsByPlayer[unit.ownerID] = (aiUnitsByPlayer[unit.ownerID] || 0) + 1
-        }
-      })
-      const p0Alive = aiUnitsByPlayer['0'] || 0
-      const p1Alive = aiUnitsByPlayer['1'] || 0
-      let aiVictoryInfo = null
-      if (!teamMode && p0Alive === 0 && p1Alive > 0) {
-        aiVictoryInfo = { winner: '1', turn: game.turn || 1, victoryType: 'elimination', message: `Player 1 wins by eliminating all enemy units in ${game.turn || 1} turns!` }
-      } else if (!teamMode && p1Alive === 0 && p0Alive > 0) {
-        aiVictoryInfo = { winner: '0', turn: game.turn || 1, victoryType: 'elimination', message: `Player 0 wins by eliminating all enemy units in ${game.turn || 1} turns!` }
-      }
+      const aiVictoryInfo = evaluateVictoryInfo({ game, teamMode })
       if (aiVictoryInfo) {
         game.gameOver = aiVictoryInfo
         game.log.push(`🎮 GAME OVER: ${aiVictoryInfo.message}`)
