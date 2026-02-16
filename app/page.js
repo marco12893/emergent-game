@@ -2222,10 +2222,10 @@ export default function HTTPMultiplayerPage() {
             >
               <img src="/icons/chat%20icon.png" alt="Chat" className="w-6 h-6 lg:w-7 lg:h-7" />
             </button>
-            {!isObserver && (
+            {(!isObserver || canLeaderControlAiSetup) && (
               <button
                 onClick={readyForBattle}
-                disabled={!isMyTurn}
+                disabled={!isMyTurn && !canLeaderControlAiSetup}
                 className="px-4 h-10 lg:px-6 lg:py-3 lg:h-auto bg-amber-500 hover:bg-amber-400 disabled:bg-slate-600 text-white text-sm lg:text-base font-bold rounded-lg shadow-lg transition-all transform hover:scale-105"
               >
                 Ready For Battle
@@ -2243,7 +2243,7 @@ export default function HTTPMultiplayerPage() {
             >
               <img src="/icons/chat%20icon.png" alt="Chat" className="w-6 h-6 lg:w-7 lg:h-7" />
             </button>
-            {!isObserver && (
+            {(!isObserver || canLeaderControlAiSetup) && (
               <>
                 {!fogOfWarEnabled && (
                   <button

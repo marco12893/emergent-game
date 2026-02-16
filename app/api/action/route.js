@@ -3297,10 +3297,16 @@ export async function POST(request) {
       game.log.push(`🎮 GAME OVER: ${victoryInfo.message}`)
     }
 
+    const aiLoopParticipants = getGamePlayOrder(game).filter((id) => game.players?.[id])
+    const allActiveParticipantsAreAi = aiLoopParticipants.length >= 2 && aiLoopParticipants.every((id) => game.players?.[id]?.isAI)
+
     let aiIterations = 0
-    const maxAiIterations = 40
+    const maxAiIterations = allActiveParticipantsAreAi ? 1200 : 80
     while (!game.gameOver && aiIterations < maxAiIterations) {
       const aiPlayerID = game.currentPlayer
+      if (!allActiveParticipantsAreAi && !game.players?.[aiPlayerID]?.isAI) {
+        break
+      }
       const aiDecision = getAiDecision({ game, playerID: aiPlayerID })
       if (!aiDecision) {
         break
@@ -3544,6 +3550,10 @@ export async function POST(request) {
       }
 
       aiIterations += 1
+    }
+
+    if (!game.gameOver && aiIterations >= maxAiIterations && allActiveParticipantsAreAi) {
+      game.log.push('🤖 AI simulation paused after reaching the safety iteration cap. Send another action to continue simulation.')
     }
 
     // Save updated game state
