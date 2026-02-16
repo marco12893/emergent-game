@@ -1405,16 +1405,16 @@ export default function HTTPMultiplayerPage() {
     const teamOneSlots = teamSlotConfig.filter(slot => slot.team === 'TEAM 1')
     const teamTwoSlots = teamSlotConfig.filter(slot => slot.team === 'TEAM 2')
     const playerCount = Object.keys(lobbyPlayers).length
-    const canStartMatch = playerID === lobbyLeaderId && playerCount >= 2
-    const canChangeLobbySettings = playerID === lobbyLeaderId && playerID !== 'spectator'
+    const canStartMatch = String(playerID) === String(lobbyLeaderId) && playerCount >= 2
+    const canChangeLobbySettings = String(playerID) === String(lobbyLeaderId) && playerID !== 'spectator'
     const lobbyFogEnabled = Boolean(gameState?.fogOfWarEnabled)
     const lobbyIsWinter = Boolean(gameState?.isWinter)
     const canDisableTeamMode = teamMode
       ? !Object.keys(lobbyPlayers).some((id) => Number.parseInt(id, 10) >= 2)
       : true
 
-    const canKickFromLobby = !isObserver && playerID === lobbyLeaderId
-    const canDisbandLobby = playerID === lobbyLeaderId && playerID !== 'spectator'
+    const canKickFromLobby = !isObserver && String(playerID) === String(lobbyLeaderId)
+    const canDisbandLobby = String(playerID) === String(lobbyLeaderId) && playerID !== 'spectator'
 
     const moveParticipant = async (targetID, destination) => {
       if (!joined) return
@@ -1567,17 +1567,6 @@ export default function HTTPMultiplayerPage() {
               <div className="mt-5 space-y-3 text-xs text-slate-300">
                 <div className="flex items-center justify-between rounded-lg bg-slate-800/70 px-3 py-2">
                   <span>Season</span>
-                  <span className="text-slate-200">{gameState?.isWinter ? 'Winter' : 'Standard'}</span>
-                </div>
-                <div className="flex items-center justify-between rounded-lg bg-slate-800/70 px-3 py-2">
-                  <span>Mode</span>
-                  <span className="text-slate-200">{teamMode ? 'Team Battle' : 'Duel'}</span>
-                </div>
-                <div className="flex items-center justify-between rounded-lg bg-slate-800/70 px-3 py-2">
-                  <div>
-                    <div className="text-slate-200">Winter visuals</div>
-                    <div className="text-[11px] text-slate-400">Snowy map art only.</div>
-                  </div>
                   <button
                     type="button"
                     onClick={() => sendAction('setWinterMode', { playerID, enabled: !lobbyIsWinter })}
@@ -1592,9 +1581,12 @@ export default function HTTPMultiplayerPage() {
                   </button>
                 </div>
                 <div className="flex items-center justify-between rounded-lg bg-slate-800/70 px-3 py-2">
+                  <span>Mode</span>
+                  <span className="text-slate-200">{teamMode ? 'Team Battle' : 'Duel'}</span>
+                </div>
+                <div className="flex items-center justify-between rounded-lg bg-slate-800/70 px-3 py-2">
                   <div>
                     <div className="text-slate-200">Fog of war</div>
-                    <div className="text-[11px] text-slate-400">Shared team vision + concealment.</div>
                   </div>
                   <button
                     type="button"
