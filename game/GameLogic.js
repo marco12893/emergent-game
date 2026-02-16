@@ -964,6 +964,10 @@ const battlePhase = {
     },
 
     undoMove: ({ G, ctx, playerID }, unitId) => {
+      if (G.fogOfWarEnabled) {
+        return INVALID_MOVE
+      }
+
       const unit = G.units.find(u => u.id === unitId)
       if (!unit || unit.ownerID !== playerID) {
         return INVALID_MOVE

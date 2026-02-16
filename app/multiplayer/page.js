@@ -504,13 +504,15 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
               
               {phase === 'battle' && (
                 <div className="space-y-2">
-                  <button
-                    onClick={handleUndoMove}
-                    disabled={!isMyTurn || !selectedUnit?.lastMove || selectedUnit?.hasAttacked}
-                    className="w-full py-2.5 rounded-lg font-bold bg-slate-700 hover:bg-slate-600 transition-all disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed"
-                  >
-                    ↩ Undo Move
-                  </button>
+                  {!fogActive && (
+                    <button
+                      onClick={handleUndoMove}
+                      disabled={!isMyTurn || !selectedUnit?.lastMove || selectedUnit?.hasAttacked}
+                      className="w-full py-2.5 rounded-lg font-bold bg-slate-700 hover:bg-slate-600 transition-all disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed"
+                    >
+                      ↩ Undo Move
+                    </button>
+                  )}
                   <button
                     onClick={handleEndTurn}
                     disabled={!isMyTurn}

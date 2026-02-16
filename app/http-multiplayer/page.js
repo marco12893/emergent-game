@@ -963,7 +963,7 @@ export default function HTTPMultiplayerPage() {
                       onClick={() => sendAction('claimSlot', { playerID, desiredSlot: slot.id, playerName: playerName || undefined })}
                       className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
                     >
-                      {isCurrent ? 'Your Slot' : isOccupied ? 'Claim' : 'Join'}
+                      {isCurrent ? 'Your Slot' : 'Join'}
                     </button>
                   </div>
                 )
@@ -1046,7 +1046,7 @@ export default function HTTPMultiplayerPage() {
                       onClick={() => sendAction('claimSlot', { playerID, desiredSlot: slot.id, playerName: playerName || undefined })}
                       className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
                     >
-                      {isCurrent ? 'Your Slot' : isOccupied ? 'Claim' : 'Join'}
+                      {isCurrent ? 'Your Slot' : 'Join'}
                     </button>
                   </div>
                 )
@@ -1217,13 +1217,15 @@ export default function HTTPMultiplayerPage() {
                 
                 {gameState?.phase === 'battle' && (
                   <div className="space-y-2">
-                    <button
-                      onClick={undoMove}
-                      disabled={!isMyTurn || !selectedUnit?.lastMove || selectedUnit?.hasAttacked}
-                      className="w-full py-2.5 rounded-lg font-bold bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-500 transition-all"
-                    >
-                      ↩ Undo Move
-                    </button>
+                    {!fogOfWarEnabled && (
+                      <button
+                        onClick={undoMove}
+                        disabled={!isMyTurn || !selectedUnit?.lastMove || selectedUnit?.hasAttacked}
+                        className="w-full py-2.5 rounded-lg font-bold bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-500 transition-all"
+                      >
+                        ↩ Undo Move
+                      </button>
+                    )}
                     <button
                       onClick={endTurn}
                       disabled={!isMyTurn}
