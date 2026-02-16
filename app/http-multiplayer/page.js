@@ -919,7 +919,7 @@ export default function HTTPMultiplayerPage() {
     const canStartMatch = playerID === lobbyLeaderId && playerCount >= 2
     const canToggleFog = playerID === lobbyLeaderId
     const lobbyFogEnabled = Boolean(gameState?.fogOfWarEnabled)
-    const canAddAi = !lobbyFogEnabled && playerID !== 'spectator'
+    const canAddAi = playerID === lobbyLeaderId && !lobbyFogEnabled
     const slotConfig = [
       { id: '0', label: 'Team 1' },
       { id: '1', label: 'Team 2' },
@@ -975,7 +975,7 @@ export default function HTTPMultiplayerPage() {
                         <button
                           onClick={() => sendAction('addAiPlayer', { playerID, desiredSlot: slot.id })}
                           disabled={!canAddAi}
-                            title={canAddAi ? 'Add AI commander' : 'AI requires fog disabled and a non-spectator seat'}
+                            title={canAddAi ? 'Add AI commander' : 'Only the lobby leader can add AI, and fog must be disabled'}
                           className="rounded-full bg-emerald-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800 disabled:opacity-50"
                         >
                           +AI
@@ -1072,7 +1072,7 @@ export default function HTTPMultiplayerPage() {
                         <button
                           onClick={() => sendAction('addAiPlayer', { playerID, desiredSlot: slot.id })}
                           disabled={!canAddAi}
-                            title={canAddAi ? 'Add AI commander' : 'AI requires fog disabled and a non-spectator seat'}
+                            title={canAddAi ? 'Add AI commander' : 'Only the lobby leader can add AI, and fog must be disabled'}
                           className="rounded-full bg-emerald-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800 disabled:opacity-50"
                         >
                           +AI
