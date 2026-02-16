@@ -204,6 +204,21 @@ export default function HTTPMultiplayerPage() {
       sessionStorage.removeItem('lobbySession')
     }
   }
+
+  const returnToPreGameLobby = ({ notice } = {}) => {
+    setJoined(false)
+    setGameState(null)
+    setPlayerID('')
+    setForceLobbySelection(false)
+    setMatchID('')
+    setStoredSession(null)
+    if (notice) {
+      setKickedOutNotice(notice)
+    }
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('lobbySession')
+    }
+  }
   const fogOfWarEnabled = Boolean(gameState?.fogOfWarEnabled)
   const spectatorPovPlayerID = useMemo(() => {
     if (!isObserver) return playerID
@@ -563,6 +578,11 @@ export default function HTTPMultiplayerPage() {
             setHighlightedHexes([])
             setAttackableHexes([])
           }
+        } else if (response.status === 410) {
+          const data = await response.json().catch(() => ({}))
+          returnToPreGameLobby({
+            notice: data?.message || 'This game has been disbanded by the lobby leader.',
+          })
         }
       } catch (err) {
         console.error('Failed to poll game state:', err)
@@ -798,6 +818,28 @@ export default function HTTPMultiplayerPage() {
       setError(`Failed to connect to game server at ${serverUrl || 'current host'}. Please try again.`)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const disbandLobbyGame = async () => {
+    if (!matchID || !serverUrl) return
+    try {
+      const response = await fetch(`${serverUrl}/api/game/${matchID}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerID }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        setError(data?.error || 'Unable to disband this lobby.')
+        return
+      }
+      returnToPreGameLobby({
+        notice: data?.message || 'You disbanded this game.',
+      })
+    } catch (err) {
+      console.error('Failed to disband game:', err)
+      setError('Unable to disband this lobby right now.')
     }
   }
 
@@ -1371,6 +1413,7 @@ export default function HTTPMultiplayerPage() {
       : true
 
     const canKickFromLobby = !isObserver && playerID === lobbyLeaderId
+    const canDisbandLobby = playerID === lobbyLeaderId && playerID !== 'spectator'
 
     const moveParticipant = async (targetID, destination) => {
       if (!joined) return
@@ -1389,12 +1432,28 @@ export default function HTTPMultiplayerPage() {
       <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-10">
           <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-1 overflow-hidden rounded-md border border-slate-700/80 bg-slate-900/80">
+              <button
+                type="button"
+                onClick={() => returnToPreGameLobby()}
+                className="flex h-12 w-20 items-center justify-center border-r border-slate-700/80 text-slate-200 transition hover:bg-slate-800"
+                aria-label="Back to pre-game lobby"
+              >
+                <img src="/icons/back button.png" alt="Back" className="h-6 w-6" />
+              </button>
+              {canDisbandLobby && (
+                <button
+                  type="button"
+                  onClick={disbandLobbyGame}
+                  className="h-12 px-5 text-sm font-bold uppercase tracking-wide text-red-300 transition hover:bg-red-900/30"
+                >
+                  Disband
+                </button>
+              )}
+            </div>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-300/80">Match Lobby</p>
-              <h1 className="text-3xl font-bold text-amber-200">Choose Your Command Slot</h1>
-              <p className="mt-1 text-sm text-slate-400">
-                {teamMode ? '2v2 Team Battle' : '1v1 Duel'} • Lobby {matchID}
-              </p>
+              <h1 className="text-2xl font-bold text-amber-200">{lobbyMap?.name}</h1>
+              <p className="mt-1 text-sm text-slate-400">Lobby {matchID}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
               <span className="rounded-full bg-slate-800/80 px-3 py-1">Players: {playerCount}/{maxPlayers}</span>
