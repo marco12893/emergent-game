@@ -173,6 +173,7 @@ export default function HTTPMultiplayerPage() {
   const [spectatorVision, setSpectatorVision] = useState('all')
   const [copyStatus, setCopyStatus] = useState('')
   const [isObserverPanelOpen, setIsObserverPanelOpen] = useState(true)
+  const [isModeDropdownOpen, setIsModeDropdownOpen] = useState(false)
   const chatInputRef = useRef(null)
   const isSpectator = useMemo(() => {
     if (playerID === 'spectator') return true
@@ -1431,7 +1432,7 @@ export default function HTTPMultiplayerPage() {
     return (
       <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-10">
-          <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="relative flex min-h-12 items-center justify-start">
             <div className="flex items-center gap-1 overflow-hidden rounded-md border border-slate-700/80 bg-slate-900/80">
               <button
                 type="button"
@@ -1451,18 +1452,27 @@ export default function HTTPMultiplayerPage() {
                 </button>
               )}
             </div>
-            <div className="flex w-full max-w-sm items-center overflow-hidden rounded-md border border-cyan-700/40 bg-slate-900/90 shadow-[0_0_18px_rgba(34,211,238,0.12)]">
+            <div className="absolute left-1/2 top-1/2 z-10 w-full max-w-sm -translate-x-1/2 -translate-y-1/2">
+              <div className="relative flex items-center overflow-hidden rounded-md border border-cyan-700/40 bg-slate-900/90 shadow-[0_0_18px_rgba(34,211,238,0.12)]">
               <div className="flex-1 px-4 py-2 text-center text-lg font-semibold text-cyan-200">
                 {teamMode ? '2v2' : '1v1'}
               </div>
-              <details className="group relative h-full border-l border-cyan-700/40">
-                <summary className="flex h-full cursor-pointer list-none items-center gap-1 px-3 py-2 text-cyan-300 transition hover:bg-cyan-500/10">
-                  <span className="text-lg leading-none">▾</span>
-                </summary>
+              <button
+                type="button"
+                onClick={() => setIsModeDropdownOpen((current) => !current)}
+                className="flex h-full items-center gap-1 border-l border-cyan-700/40 px-3 py-2 text-cyan-300 transition hover:bg-cyan-500/10"
+                aria-label="Toggle game mode menu"
+              >
+                <span className="text-lg leading-none">▾</span>
+              </button>
+              {isModeDropdownOpen && (
                 <div className="absolute right-0 top-full z-20 mt-1 w-28 overflow-hidden rounded-md border border-slate-700/90 bg-slate-900/95 text-xs shadow-xl">
                   <button
                     type="button"
-                    onClick={() => sendAction('setTeamMode', { playerID, enabled: false })}
+                    onClick={() => {
+                      sendAction('setTeamMode', { playerID, enabled: false })
+                      setIsModeDropdownOpen(false)
+                    }}
                     disabled={!canChangeLobbySettings || teamMode && !canDisableTeamMode}
                     className="block w-full px-3 py-2 text-left text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                   >
@@ -1470,14 +1480,18 @@ export default function HTTPMultiplayerPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => sendAction('setTeamMode', { playerID, enabled: true })}
+                    onClick={() => {
+                      sendAction('setTeamMode', { playerID, enabled: true })
+                      setIsModeDropdownOpen(false)
+                    }}
                     disabled={!canChangeLobbySettings}
                     className="block w-full border-t border-slate-700/80 px-3 py-2 text-left text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     2v2
                   </button>
                 </div>
-              </details>
+              )}
+              </div>
             </div>
           </div>
 
@@ -1575,24 +1589,6 @@ export default function HTTPMultiplayerPage() {
                     } ${canChangeLobbySettings ? 'hover:bg-cyan-500/30' : 'opacity-60 cursor-not-allowed'}`}
                   >
                     {lobbyIsWinter ? 'Winter' : 'Standard'}
-                  </button>
-                </div>
-                <div className="flex items-center justify-between rounded-lg bg-slate-800/70 px-3 py-2">
-                  <div>
-                    <div className="text-slate-200">Game mode</div>
-                    <div className="text-[11px] text-slate-400">Duel (1v1) or Team Battle (2v2).</div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => sendAction('setTeamMode', { playerID, enabled: !teamMode })}
-                    disabled={!canChangeLobbySettings || (teamMode && !canDisableTeamMode)}
-                    className={`rounded-full px-3 py-1 text-[11px] font-semibold transition ${
-                      teamMode
-                        ? 'bg-blue-500/20 text-blue-200'
-                        : 'bg-slate-700 text-slate-200'
-                    } ${(canChangeLobbySettings && (canDisableTeamMode || !teamMode)) ? 'hover:bg-blue-500/30' : 'opacity-60 cursor-not-allowed'}`}
-                  >
-                    {teamMode ? '2v2 Enabled' : '1v1 Enabled'}
                   </button>
                 </div>
                 <div className="flex items-center justify-between rounded-lg bg-slate-800/70 px-3 py-2">
