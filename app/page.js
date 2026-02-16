@@ -1933,7 +1933,7 @@ export default function HTTPMultiplayerPage() {
       </div>
 
       {gameState?.phase === 'battle' && map4ObjectivePanel && (
-        <div className="fixed top-[5.8rem] left-2 lg:top-4 lg:left-4 z-30 text-[11px] lg:text-base pointer-events-none">
+        <div className="fixed top-[5.8rem] left-2 lg:top-[7.2rem] lg:left-4 z-30 text-[11px] lg:text-base pointer-events-none">
           <div className="font-semibold text-amber-300">Objectives</div>
           <ul className="mt-1 space-y-0.5 text-slate-100">
             <li className="flex items-center gap-2 text-slate-200">
