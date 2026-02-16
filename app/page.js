@@ -12,6 +12,12 @@ import { parseImportedCustomMap } from '@/lib/customMap'
 
 const DAMAGE_VARIANCE_MIN = 0.8
 const DAMAGE_VARIANCE_MAX = 1.2
+const SLOT_COLOR_CLASSES = {
+  '0': 'border-blue-400/80 bg-blue-500/15 shadow-[0_0_18px_rgba(59,130,246,0.35)]',
+  '1': 'border-red-400/80 bg-red-500/15 shadow-[0_0_18px_rgba(248,113,113,0.35)]',
+  '2': 'border-green-400/80 bg-green-500/15 shadow-[0_0_18px_rgba(74,222,128,0.35)]',
+  '3': 'border-yellow-300/80 bg-yellow-400/15 shadow-[0_0_18px_rgba(253,224,71,0.35)]',
+}
 
 // Landscape detection component
 const LandscapePrompt = () => {
@@ -1474,11 +1480,18 @@ export default function HTTPMultiplayerPage() {
                   const isCurrent = slot.id === playerID
                   const isOccupied = Boolean(occupant)
                   const isLeader = lobbyLeaderId === slot.id
+                  const occupiedClass = isOccupied
+                    ? SLOT_COLOR_CLASSES[slot.id] || 'border-slate-700 bg-slate-800/60'
+                    : 'border-slate-700 bg-slate-800/60'
                   return (
                     <div
                       key={slot.id}
                       className={`flex items-center justify-between gap-3 rounded-xl border p-4 ${
-                        isCurrent ? 'border-amber-400/70 bg-amber-400/10' : 'border-slate-700 bg-slate-800/60'
+                        occupiedClass
+                      } ${
+                        isCurrent
+                          ? 'ring-1 ring-amber-300/70'
+                          : ''
                       }`}
                     >
                       <div>
@@ -1494,7 +1507,7 @@ export default function HTTPMultiplayerPage() {
                           disabled={false}
                           className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
                         >
-                          {isCurrent ? 'Your Slot' : isOccupied ? 'Claim' : isSpectator ? 'Spectator' : 'Join'}
+                          {isSpectator ? 'Join' : isCurrent ? 'Your Slot' : isOccupied ? 'Claim' : 'Join'}
                         </button>
                         {isOccupied && canKickFromLobby && (
                           <button
@@ -1612,11 +1625,18 @@ export default function HTTPMultiplayerPage() {
                   const isCurrent = slot.id === playerID
                   const isOccupied = Boolean(occupant)
                   const isLeader = lobbyLeaderId === slot.id
+                  const occupiedClass = isOccupied
+                    ? SLOT_COLOR_CLASSES[slot.id] || 'border-slate-700 bg-slate-800/60'
+                    : 'border-slate-700 bg-slate-800/60'
                   return (
                     <div
                       key={slot.id}
                       className={`flex items-center justify-between gap-3 rounded-xl border p-4 ${
-                        isCurrent ? 'border-amber-400/70 bg-amber-400/10' : 'border-slate-700 bg-slate-800/60'
+                        occupiedClass
+                      } ${
+                        isCurrent
+                          ? 'ring-1 ring-amber-300/70'
+                          : ''
                       }`}
                     >
                       <div>
@@ -1632,7 +1652,7 @@ export default function HTTPMultiplayerPage() {
                           disabled={false}
                           className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
                         >
-                          {isCurrent ? 'Your Slot' : isOccupied ? 'Claim' : isSpectator ? 'Spectator' : 'Join'}
+                          {isSpectator ? 'Join' : isCurrent ? 'Your Slot' : isOccupied ? 'Claim' : 'Join'}
                         </button>
                         {isOccupied && canKickFromLobby && (
                           <button
