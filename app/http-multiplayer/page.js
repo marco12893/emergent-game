@@ -914,7 +914,7 @@ export default function HTTPMultiplayerPage() {
     const lobbyMap = MAPS[gameState?.mapId] || MAPS[selectedMapId]
     const playerCount = Object.keys(lobbyPlayers).length
     const canStartMatch = playerID === lobbyLeaderId && playerCount >= 2
-    const canToggleFog = playerID === lobbyLeaderId && playerID !== 'spectator'
+    const canToggleFog = playerID === lobbyLeaderId
     const lobbyFogEnabled = Boolean(gameState?.fogOfWarEnabled)
     const slotConfig = [
       { id: '0', label: 'Team 1' },

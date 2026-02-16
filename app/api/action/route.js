@@ -93,8 +93,20 @@ const isValidPlayerForGame = (playerID, game) => {
   return numericId >= 0 && numericId < maxPlayers
 }
 
-const pickRandomLeader = (players = {}, excludedId = null) => {
-  const eligiblePlayers = Object.keys(players).filter(playerId => playerId !== excludedId)
+const isRegisteredParticipant = (participantID, game) => {
+  if (!participantID || typeof participantID !== 'string' || !game) return false
+  if (game.players?.[participantID]) return true
+  if ((game.spectators || []).some((spectator) => spectator?.id === participantID)) return true
+  if ((game.waitlist || []).some((entry) => entry?.id === participantID)) return true
+  return false
+}
+
+const pickRandomLeader = (game, excludedId = null) => {
+  const playerIds = Object.keys(game?.players || {})
+  const spectatorIds = (game?.spectators || []).map((entry) => entry?.id).filter(Boolean)
+  const waitlistIds = (game?.waitlist || []).map((entry) => entry?.id).filter(Boolean)
+  const deduped = [...new Set([...playerIds, ...spectatorIds, ...waitlistIds])]
+  const eligiblePlayers = deduped.filter((participantId) => participantId !== excludedId)
   if (eligiblePlayers.length === 0) {
     return null
   }
@@ -793,8 +805,8 @@ export async function POST(request) {
       const waitlistIds = new Set(game.waitlist.map((entry) => entry?.id).filter(Boolean))
       game.spectators = game.spectators.filter((spectator) => !waitlistIds.has(spectator?.id))
     }
-    if (!game.leaderId && game.players?.['0']) {
-      game.leaderId = '0'
+    if (!game.leaderId) {
+      game.leaderId = pickRandomLeader(game)
     }
     if (typeof game.fogOfWarEnabled !== 'boolean') {
       game.fogOfWarEnabled = true
@@ -821,7 +833,7 @@ export async function POST(request) {
       switch (gameAction) {
         case 'setWinterMode': {
           const winterSchema = {
-            playerID: { required: true, sanitize: sanitizePlayerID },
+            playerID: { required: true, sanitize: sanitizeParticipantID },
           }
           const winterValidation = validatePayload(payload, winterSchema)
           if (winterValidation.error) {
@@ -834,7 +846,7 @@ export async function POST(request) {
           }
 
           const { playerID: winterPlayerID } = winterValidation.sanitized
-          if (!winterPlayerID || winterPlayerID === 'spectator' || !isValidPlayerForGame(winterPlayerID, game)) {
+          if (!winterPlayerID || !isRegisteredParticipant(winterPlayerID, game)) {
             return NextResponse.json({
               error: 'Invalid playerID for setWinterMode'
             }, { status: 400, headers: ACTION_CORS_HEADERS })
@@ -860,7 +872,7 @@ export async function POST(request) {
 
         case 'setTeamMode': {
           const teamSchema = {
-            playerID: { required: true, sanitize: sanitizePlayerID },
+            playerID: { required: true, sanitize: sanitizeParticipantID },
           }
           const teamValidation = validatePayload(payload, teamSchema)
           if (teamValidation.error) {
@@ -873,7 +885,7 @@ export async function POST(request) {
           }
 
           const { playerID: teamPlayerID } = teamValidation.sanitized
-          if (!teamPlayerID || teamPlayerID === 'spectator' || !isValidPlayerForGame(teamPlayerID, game)) {
+          if (!teamPlayerID || !isRegisteredParticipant(teamPlayerID, game)) {
             return NextResponse.json({
               error: 'Invalid playerID for setTeamMode'
             }, { status: 400, headers: ACTION_CORS_HEADERS })
@@ -918,7 +930,7 @@ export async function POST(request) {
 
         case 'setFogOfWar': {
           const fogSchema = {
-            playerID: { required: true, sanitize: sanitizePlayerID },
+            playerID: { required: true, sanitize: sanitizeParticipantID },
           }
           const fogValidation = validatePayload(payload, fogSchema)
           if (fogValidation.error) {
@@ -935,7 +947,7 @@ export async function POST(request) {
           }
 
           const { playerID: fogPlayerID } = fogValidation.sanitized
-          if (!fogPlayerID || fogPlayerID === 'spectator' || !isValidPlayerForGame(fogPlayerID, game)) {
+          if (!fogPlayerID || !isRegisteredParticipant(fogPlayerID, game)) {
             return NextResponse.json({
               error: 'Invalid playerID for setFogOfWar'
             }, {
@@ -1031,15 +1043,9 @@ export async function POST(request) {
           if (desiredIsSpectator) {
             game.spectators = game.spectators || []
             game.spectators.push({ id: claimPlayerID, name: sourceName, joinTime: Date.now() })
-            if (game.leaderId === claimPlayerID) {
-              game.leaderId = pickRandomLeader(game.players, claimPlayerID)
-            }
           } else if (desiredIsWaitlist) {
             game.waitlist = game.waitlist || []
             game.waitlist.push({ id: claimPlayerID, name: sourceName, joinTime: Date.now() })
-            if (game.leaderId === claimPlayerID) {
-              game.leaderId = pickRandomLeader(game.players, claimPlayerID)
-            }
           } else {
             const desiredSlotId = String(desiredIndex)
             const displaced = game.players?.[desiredSlotId]
@@ -1055,7 +1061,7 @@ export async function POST(request) {
               joinTime: sourceEntry?.joinTime || Date.now(),
               joined: true,
             }
-            if (game.leaderId === claimPlayerID || !game.leaderId) {
+            if (!game.leaderId) {
               game.leaderId = desiredSlotId
             }
           }
@@ -1105,14 +1111,8 @@ export async function POST(request) {
 
           if (destinationIsSpectator) {
             game.spectators.push({ id: targetID, name: sourceEntry.name || `Player ${targetID}`, joinTime: sourceEntry.joinTime || Date.now() })
-            if (game.leaderId === targetID) {
-              game.leaderId = pickRandomLeader(game.players, targetID)
-            }
           } else if (destinationIsWaitlist) {
             game.waitlist.push({ id: targetID, name: sourceEntry.name || `Player ${targetID}`, joinTime: sourceEntry.joinTime || Date.now() })
-            if (game.leaderId === targetID) {
-              game.leaderId = pickRandomLeader(game.players, targetID)
-            }
           } else {
             const slotId = String(destinationIndex)
             const displaced = game.players?.[slotId]
@@ -1125,7 +1125,7 @@ export async function POST(request) {
             if (displaced) {
               game.waitlist.push({ id: slotId, name: displaced.name || `Player ${slotId}`, joinTime: displaced.joinTime || Date.now() })
             }
-            if (!game.leaderId || game.leaderId === targetID) {
+            if (!game.leaderId) {
               game.leaderId = slotId
             }
           }
@@ -1136,7 +1136,7 @@ export async function POST(request) {
 
         case 'kickParticipant': {
           const kickSchema = {
-            playerID: { required: true, sanitize: sanitizePlayerID },
+            playerID: { required: true, sanitize: sanitizeParticipantID },
             targetID: { required: true, sanitize: sanitizeParticipantID },
           }
 
@@ -1152,7 +1152,7 @@ export async function POST(request) {
 
           const { playerID: actingPlayerID, targetID } = kickValidation.sanitized
 
-          if (!actingPlayerID || actingPlayerID === 'spectator' || !isValidPlayerForGame(actingPlayerID, game)) {
+          if (!actingPlayerID || !isRegisteredParticipant(actingPlayerID, game)) {
             return NextResponse.json({
               error: 'Invalid playerID for kickParticipant'
             }, {
@@ -1197,7 +1197,7 @@ export async function POST(request) {
             delete game.players[targetID]
 
             if (game.leaderId === targetID) {
-              game.leaderId = pickRandomLeader(game.players, targetID)
+              game.leaderId = pickRandomLeader(game, targetID)
             }
 
             game.log.push(`${targetName} was kicked from the lobby.`)
@@ -1229,8 +1229,8 @@ export async function POST(request) {
             })
           }
 
-          const startPlayerID = sanitizePlayerID(payload.playerID)
-          if (!startPlayerID || startPlayerID === 'spectator') {
+          const startPlayerID = sanitizeParticipantID(payload.playerID)
+          if (!startPlayerID) {
             return NextResponse.json({ 
               error: 'Invalid playerID for startBattle' 
             }, { 
@@ -1243,7 +1243,7 @@ export async function POST(request) {
             })
           }
 
-          if (!isValidPlayerForGame(startPlayerID, game)) {
+          if (!isRegisteredParticipant(startPlayerID, game)) {
             return NextResponse.json({ 
               error: 'Invalid playerID for this lobby' 
             }, { 
