@@ -146,6 +146,14 @@ const getUnitSpecialNotes = (unitType) => {
 
 const getObjectiveText = (mapId) => (['MAP_1', 'MAP_2', 'MAP_3'].includes(mapId) ? 'Defeat the enemy force.' : null)
 
+const createReconnectKey = () => {
+  if (typeof window === 'undefined') return ''
+  if (window.crypto?.randomUUID) {
+    return window.crypto.randomUUID().replace(/-/g, '')
+  }
+  return `${Date.now()}${Math.random().toString(36).slice(2, 12)}`
+}
+
 export default function HTTPMultiplayerPage() {
   const [gameState, setGameState] = useState(null)
   const [playerID, setPlayerID] = useState('')
@@ -771,7 +779,9 @@ export default function HTTPMultiplayerPage() {
     }
 
     const fallbackPlayerID = storedSession?.matchID === gameId ? storedSession.playerID : undefined
+    const fallbackReconnectKey = storedSession?.matchID === gameId ? storedSession.reconnectKey : ''
     const resolvedPlayerID = requestedPlayerID ?? fallbackPlayerID
+    const resolvedReconnectKey = fallbackReconnectKey || createReconnectKey()
 
     setLoading(true)
     setError('')
@@ -787,6 +797,9 @@ export default function HTTPMultiplayerPage() {
       }
       if (resolvedPlayerID !== undefined && resolvedPlayerID !== null) {
         payload.playerID = resolvedPlayerID
+      }
+      if (resolvedReconnectKey) {
+        payload.reconnectKey = resolvedReconnectKey
       }
 
       const response = await fetch(`${serverUrl}/api/join`, {
@@ -808,7 +821,12 @@ export default function HTTPMultiplayerPage() {
         setForceLobbySelection(
           joinedAsPlayer && data.gameState?.phase !== 'lobby'
         )
-        const nextSession = { matchID: gameId, playerID: data.playerID, playerName }
+        const nextSession = {
+          matchID: gameId,
+          playerID: data.playerID,
+          playerName,
+          reconnectKey: data.reconnectKey || resolvedReconnectKey,
+        }
         setStoredSession(nextSession)
         if (typeof window !== 'undefined') {
           sessionStorage.setItem('lobbySession', JSON.stringify(nextSession))

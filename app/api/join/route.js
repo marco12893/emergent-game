@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getGame, setGame, createNewGame } from '@/lib/gameState'
 import { parseImportedCustomMap } from '@/lib/customMap'
-import { sanitizeGameId, sanitizeMapId, sanitizePlayerID, sanitizePlayerName, sanitizeWinterFlag, sanitizeTeamModeFlag } from '@/lib/inputSanitization'
+import { sanitizeGameId, sanitizeMapId, sanitizePlayerID, sanitizePlayerName, sanitizeReconnectKey, sanitizeWinterFlag, sanitizeTeamModeFlag } from '@/lib/inputSanitization'
 import { getTeamPlayOrder } from '@/game/teamUtils'
 
 // Handle OPTIONS requests for CORS preflight
@@ -19,12 +19,13 @@ export async function OPTIONS() {
 export async function POST(request) {
   try {
     const body = await request.json()
-    const { gameId, playerID, playerName, mapId, winter, teamMode, customMap } = body
+    const { gameId, playerID, playerName, reconnectKey, mapId, winter, teamMode, customMap } = body
     
     // Sanitize and validate inputs
     const sanitizedGameId = sanitizeGameId(gameId)
     const sanitizedPlayerID = playerID === undefined || playerID === null ? null : sanitizePlayerID(playerID)
     const sanitizedPlayerName = sanitizePlayerName(playerName)
+    const sanitizedReconnectKey = sanitizeReconnectKey(reconnectKey)
     const sanitizedMapId = sanitizeMapId(mapId)
     const sanitizedWinter = sanitizeWinterFlag(winter)
     const sanitizedTeamMode = sanitizeTeamModeFlag(teamMode)
@@ -106,6 +107,13 @@ export async function POST(request) {
     game.waitlist = Array.isArray(game.waitlist) ? game.waitlist : []
     let assignedPlayerID = sanitizedPlayerID
 
+    if (sanitizedReconnectKey) {
+      const reconnectSlot = Object.entries(game.players || {}).find(([, entry]) => entry?.reconnectKey === sanitizedReconnectKey)?.[0]
+      if (reconnectSlot) {
+        assignedPlayerID = reconnectSlot
+      }
+    }
+
     if (!assignedPlayerID) {
       const playOrder = game.teamMode ? getTeamPlayOrder(maxPlayers) : ['0', '1']
       assignedPlayerID = playOrder.find((id) => !takenPlayers.has(id))
@@ -157,10 +165,32 @@ export async function POST(request) {
       }
       participantID = participantId
     } else {
+      const existingOccupant = game.players[assignedPlayerID]
+      const canReclaimOccupiedSlot = Boolean(
+        existingOccupant &&
+        sanitizedReconnectKey &&
+        existingOccupant.reconnectKey === sanitizedReconnectKey
+      )
+
+      if (existingOccupant && !canReclaimOccupiedSlot) {
+        return NextResponse.json({
+          error: `Player slot ${assignedPlayerID} is already occupied.`
+        }, {
+          status: 409,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type',
+          }
+        })
+      }
+
       game.players[assignedPlayerID] = {
-        name: sanitizedPlayerName || defaultName,
+        ...(existingOccupant || {}),
+        name: sanitizedPlayerName || existingOccupant?.name || defaultName,
         joinTime: Date.now(),
         joined: true,
+        reconnectKey: sanitizedReconnectKey || existingOccupant?.reconnectKey || null,
       }
       if (!game.leaderId) {
         game.leaderId = assignedPlayerID
@@ -191,6 +221,7 @@ export async function POST(request) {
       success: true, 
       gameState: game,
       playerID: participantID,
+      reconnectKey: sanitizedReconnectKey || null,
       message: `Player ${participantID} joined successfully`
     }, {
       headers: {
