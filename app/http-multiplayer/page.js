@@ -921,6 +921,7 @@ export default function HTTPMultiplayerPage() {
     const lobbyFogEnabled = Boolean(gameState?.fogOfWarEnabled)
     const canAddAi = playerID === lobbyLeaderId && !lobbyFogEnabled
     const aiDeploymentUnitCount = Number(gameState?.aiDeploymentUnitCount) || 5
+    const aiDeploymentMode = gameState?.aiDeploymentMode === 'auto' ? 'auto' : 'leader'
     const slotConfig = [
       { id: '0', label: 'Team 1' },
       { id: '1', label: 'Team 2' },
@@ -1021,6 +1022,20 @@ export default function HTTPMultiplayerPage() {
                     Only the lobby leader can change fog settings.
                   </div>
                 )}
+                <div className="rounded-lg bg-slate-800/70 px-3 py-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-200">AI deployment mode</span>
+                    <button
+                      type="button"
+                      onClick={() => sendAction('setAiDeploymentMode', { playerID, mode: aiDeploymentMode === 'leader' ? 'auto' : 'leader' })}
+                      disabled={!canToggleFog}
+                      className="rounded-full bg-slate-700 px-3 py-1 text-[11px] font-semibold text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {aiDeploymentMode === 'leader' ? 'Leader' : 'Auto'}
+                    </button>
+                  </div>
+                  <div className="mt-1 text-[11px] text-slate-500">Leader mode lets the lobby leader place AI units manually during setup.</div>
+                </div>
                 <div className="rounded-lg bg-slate-800/70 px-3 py-2">
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-slate-200">AI deployment size</span>

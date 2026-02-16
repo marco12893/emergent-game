@@ -188,6 +188,7 @@ export default function HTTPMultiplayerPage() {
   const [spectatorVision, setSpectatorVision] = useState('all')
   const [copyStatus, setCopyStatus] = useState('')
   const [isObserverPanelOpen, setIsObserverPanelOpen] = useState(true)
+  const [setupControlPlayerID, setSetupControlPlayerID] = useState('')
   const chatInputRef = useRef(null)
   const isSpectator = useMemo(() => {
     if (playerID === 'spectator') return true
@@ -207,6 +208,12 @@ export default function HTTPMultiplayerPage() {
   const teamMode = Boolean(gameState?.teamMode)
   const chatMessages = gameState?.chatMessages || []
   const shouldShowLobbySelection = forceLobbySelection || gameState?.phase === 'lobby'
+  const isLobbyLeader = String(playerID) === String(gameState?.leaderId)
+  const aiSetupControlSlots = useMemo(() => Object.entries(gameState?.players || {}).filter(([, participant]) => participant?.isAI).map(([id]) => id), [gameState?.players])
+  const canLeaderControlAiSetup = gameState?.phase === 'setup' && isLobbyLeader && aiSetupControlSlots.length > 0
+  const effectiveSetupPlayerID = canLeaderControlAiSetup
+    ? (aiSetupControlSlots.includes(setupControlPlayerID) ? setupControlPlayerID : aiSetupControlSlots[0])
+    : playerID
 
   const handleKickedOut = ({ message }) => {
     setJoined(false)
@@ -300,6 +307,17 @@ export default function HTTPMultiplayerPage() {
     if (!selectedOwnedUnit || gameState?.phase !== 'battle') return false
     return retreatHexes.some(h => h.q === selectedOwnedUnit.q && h.r === selectedOwnedUnit.r)
   }, [selectedOwnedUnit, gameState?.phase, retreatHexes])
+
+
+  useEffect(() => {
+    if (!canLeaderControlAiSetup) {
+      if (setupControlPlayerID) setSetupControlPlayerID('')
+      return
+    }
+    if (!aiSetupControlSlots.includes(setupControlPlayerID)) {
+      setSetupControlPlayerID(aiSetupControlSlots[0] || '')
+    }
+  }, [canLeaderControlAiSetup, aiSetupControlSlots, setupControlPlayerID])
 
   const map4ObjectivePanel = useMemo(() => {
     const mapObjectiveText = getObjectiveText(gameState?.mapId)
@@ -659,7 +677,7 @@ export default function HTTPMultiplayerPage() {
 
   useEffect(() => {
     if (!gameState || gameState.phase !== 'setup') return
-    if (!isMyTurn) {
+    if (!isMyTurn && !canLeaderControlAiSetup) {
       setHighlightedHexes([])
       setAttackableHexes([])
       return
@@ -677,7 +695,7 @@ export default function HTTPMultiplayerPage() {
     })
     setHighlightedHexes(deployableHexes)
     setAttackableHexes([])
-  }, [gameState, isMyTurn, playerID, selectedUnitType, teamMode])
+  }, [gameState, isMyTurn, canLeaderControlAiSetup, effectiveSetupPlayerID, selectedUnitType, teamMode])
 
   useEffect(() => {
     if (!gameState || !hoveredHex || gameState.phase !== 'battle' || !isMyTurn) {
@@ -885,11 +903,11 @@ export default function HTTPMultiplayerPage() {
 
   const sendAction = async (action, payload) => {
     if (!joined) return
-    if (isObserver) {
+    if (isObserver && !canLeaderControlAiSetup) {
       const observerAllowedActions = ['claimSlot', 'moveParticipant']
       const isLobbyLeader = String(playerID) === String(gameState?.leaderId)
       if (isLobbyLeader) {
-        observerAllowedActions.push('setTeamMode', 'setWinterMode', 'setFogOfWar', 'setAiDeploymentUnitCount', 'startBattle', 'kickParticipant', 'addAiPlayer')
+        observerAllowedActions.push('setTeamMode', 'setWinterMode', 'setFogOfWar', 'setAiDeploymentMode', 'setAiDeploymentUnitCount', 'startBattle', 'kickParticipant', 'addAiPlayer')
       }
       if (!observerAllowedActions.includes(action)) {
         setError('Spectators cannot perform game actions.')
@@ -917,6 +935,7 @@ export default function HTTPMultiplayerPage() {
         const data = await response.json()
         setGameState(data.gameState)
         if (data?.reassignedPlayerID && data.reassignedPlayerID !== playerID) {
+          identityTransitionRef.current = { pending: true, until: Date.now() + 6000 }
           setPlayerID(data.reassignedPlayerID)
           if (typeof window !== 'undefined') {
             try {
@@ -932,7 +951,9 @@ export default function HTTPMultiplayerPage() {
             }
           }
         }
-        identityTransitionRef.current = { pending: false, until: 0 }
+        if (!data?.reassignedPlayerID) {
+          identityTransitionRef.current = { pending: false, until: 0 }
+        }
         return data
       } else {
         const errorData = await response.json()
@@ -1043,9 +1064,9 @@ export default function HTTPMultiplayerPage() {
       }
 
       // Check if clicking on own unit to remove it
-      const myUnitOnHex = gameState.units.find(u => u.q === hex.q && u.r === hex.r && u.ownerID === playerID)
+      const myUnitOnHex = gameState.units.find(u => u.q === hex.q && u.r === hex.r && u.ownerID === effectiveSetupPlayerID)
       if (myUnitOnHex) {
-        sendAction('removeUnit', { unitId: myUnitOnHex.id, playerID })
+        sendAction('removeUnit', { unitId: myUnitOnHex.id, playerID: effectiveSetupPlayerID, actingPlayerID: playerID })
         return
       }
 
@@ -1056,7 +1077,7 @@ export default function HTTPMultiplayerPage() {
         hexes: gameState.hexes,
         units: gameState.units,
         terrainMap: gameState.terrainMap,
-        playerID,
+        playerID: effectiveSetupPlayerID,
         mapWidth,
         teamMode,
         deploymentZones: gameState.deploymentZones,
@@ -1067,7 +1088,8 @@ export default function HTTPMultiplayerPage() {
           unitType: selectedUnitType,
           q: hex.q,
           r: hex.r,
-          playerID
+          playerID: effectiveSetupPlayerID,
+          actingPlayerID: playerID,
         })
       } else {
         setError('You can only place units in valid spawn hexes!')
@@ -1194,13 +1216,13 @@ export default function HTTPMultiplayerPage() {
   const readyForBattle = () => {
     if (!joined) return
     const deployedUnits = gameState?.units?.filter(
-      unit => unit.ownerID === playerID && unit.currentHP > 0
+      unit => unit.ownerID === effectiveSetupPlayerID && unit.currentHP > 0
     ).length || 0
     if (deployedUnits === 0) {
       setShowReadyConfirm(true)
       return
     }
-    sendAction('readyForBattle', { playerID })
+    sendAction('readyForBattle', { playerID: effectiveSetupPlayerID, actingPlayerID: playerID })
   }
 
   const claimSlot = async (slotId) => {
@@ -1222,7 +1244,7 @@ export default function HTTPMultiplayerPage() {
 
   const confirmReadyForBattle = () => {
     setShowReadyConfirm(false)
-    sendAction('readyForBattle', { playerID })
+    sendAction('readyForBattle', { playerID: effectiveSetupPlayerID, actingPlayerID: playerID })
   }
 
   if (!joined) {
@@ -1471,6 +1493,7 @@ export default function HTTPMultiplayerPage() {
     const lobbyIsWinter = Boolean(gameState?.isWinter)
     const canAddAi = canChangeLobbySettings && !lobbyFogEnabled
     const aiDeploymentUnitCount = Number(gameState?.aiDeploymentUnitCount) || 5
+    const aiDeploymentMode = gameState?.aiDeploymentMode === 'auto' ? 'auto' : 'leader'
     const canDisableTeamMode = teamMode
       ? !Object.keys(lobbyPlayers).some((id) => Number.parseInt(id, 10) >= 2)
       : true
@@ -1660,6 +1683,20 @@ export default function HTTPMultiplayerPage() {
                     2v2 cannot be disabled while players occupy Green/Yellow slots.
                   </div>
                 )}
+                <div className="rounded-lg bg-slate-800/70 px-3 py-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-200">AI deployment mode</span>
+                    <button
+                      type="button"
+                      onClick={() => sendAction('setAiDeploymentMode', { playerID, mode: aiDeploymentMode === 'leader' ? 'auto' : 'leader' })}
+                      disabled={!canChangeLobbySettings}
+                      className="rounded-full bg-slate-700 px-3 py-1 text-[11px] font-semibold text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {aiDeploymentMode === 'leader' ? 'Leader' : 'Auto'}
+                    </button>
+                  </div>
+                  <div className="mt-1 text-[11px] text-slate-500">Leader mode lets the lobby leader place AI units manually during setup.</div>
+                </div>
                 <div className="rounded-lg bg-slate-800/70 px-3 py-2">
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-slate-200">AI deployment size</span>
@@ -1978,7 +2015,7 @@ export default function HTTPMultiplayerPage() {
       )}
       
       {/* Left Panel - Only visible during setup phase */}
-      {gameState?.phase === 'setup' && !isObserver && (
+      {gameState?.phase === 'setup' && (!isObserver || canLeaderControlAiSetup) && (
         <div className={`fixed left-0 top-0 z-40 transition-all duration-300 ${
           isLeftPanelCollapsed ? 'w-12' : 'w-1/2 sm:w-1/3 md:w-1/4 lg:w-1/5 xl:w-1/6'
         } bg-slate-800/95 border-r border-slate-600 backdrop-blur-sm h-full`}>
@@ -2004,18 +2041,36 @@ export default function HTTPMultiplayerPage() {
                   alt="Player Avatar"
                 />
                 <div>
-                  <div className="text-white font-bold text-sm">Player {playerID}</div>
+                  <div className="text-white font-bold text-sm">Deploying for Player {effectiveSetupPlayerID}</div>
                   <div className={`text-xs ${
-                    playerColor === 'blue' ? 'text-blue-400' :
-                    playerColor === 'green' ? 'text-green-400' :
-                    playerColor === 'yellow' ? 'text-yellow-400' :
+                    getPlayerColor(effectiveSetupPlayerID) === 'blue' ? 'text-blue-400' :
+                    getPlayerColor(effectiveSetupPlayerID) === 'green' ? 'text-green-400' :
+                    getPlayerColor(effectiveSetupPlayerID) === 'yellow' ? 'text-yellow-400' :
                     'text-red-400'
                   }`}>
-                    {playerColor.charAt(0).toUpperCase() + playerColor.slice(1)} Army
+                    {getPlayerColor(effectiveSetupPlayerID).charAt(0).toUpperCase() + getPlayerColor(effectiveSetupPlayerID).slice(1)} Army
                   </div>
                 </div>
               </div>
               
+              {canLeaderControlAiSetup && (
+                <div className="rounded-lg border border-slate-600 bg-slate-900/70 p-2">
+                  <div className="mb-2 text-[11px] text-slate-300">Leader AI setup control</div>
+                  <div className="flex flex-wrap gap-2">
+                    {aiSetupControlSlots.map((slotId) => (
+                      <button
+                        key={slotId}
+                        type="button"
+                        onClick={() => setSetupControlPlayerID(slotId)}
+                        className={`rounded-full px-3 py-1 text-xs font-semibold ${effectiveSetupPlayerID === slotId ? 'bg-amber-500 text-slate-900' : 'bg-slate-700 text-slate-100'}`}
+                      >
+                        AI P{slotId}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Deployment Units */}
               <div className="flex-1 overflow-y-auto">
                 <div className="text-base text-amber-400 font-bold mb-2 bg-slate-800/95 backdrop-blur-sm py-2">
@@ -2045,9 +2100,9 @@ export default function HTTPMultiplayerPage() {
                       
                       {/* Unit image */}
                       <img 
-                        src={getUnitSpriteProps(unit, playerID).src}
+                        src={getUnitSpriteProps(unit, effectiveSetupPlayerID).src}
                         className="w-32 h-32 mb-1"
-                        style={{ filter: getUnitSpriteProps(unit, playerID).filter }}
+                        style={{ filter: getUnitSpriteProps(unit, effectiveSetupPlayerID).filter }}
                         alt={unit.name}
                       />
                       
