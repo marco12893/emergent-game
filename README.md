@@ -168,3 +168,13 @@ npm test
   - deeper lookahead.
 - Distinct AI personalities/difficulties.
 - Time-budgeted search (beam search / minimax-lite for local fights).
+
+
+## Recent AI Lobby Changes (Codex)
+
+- Fixed leader reassignment when a slot player (e.g. Player 0) moves to spectator/waitlist: leaders now retain participant identity instead of staying tied to the numeric slot.
+- AI setup is automatic again (leaders no longer place AI units on the map directly).
+- Added AI card **Settings** popup in lobby for leader-controlled AI composition.
+- Added support for configuring exact AI unit counts by type (`SWORDSMAN`, `ARCHER`, `KNIGHT`, `MILITIA`, `CATAPULT`) with total constrained to 1–20.
+- Added new action `setAiDeploymentComposition` and validation/sanitization support.
+- Kept one-AI-per-lobby enforcement and fog-compatible AI behavior from prior updates.

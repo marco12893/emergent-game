@@ -125,6 +125,27 @@ const sanitizeAiDeploymentUnitCount = (value) => {
   return parsed
 }
 
+const AI_CONFIGURABLE_UNIT_TYPES = ['SWORDSMAN', 'ARCHER', 'KNIGHT', 'MILITIA', 'CATAPULT']
+
+const sanitizeAiDeploymentComposition = (value) => {
+  if (!value || typeof value !== 'object') return null
+  const normalized = {}
+  let total = 0
+  for (const unitType of AI_CONFIGURABLE_UNIT_TYPES) {
+    const parsed = Number.parseInt(value[unitType], 10)
+    if (!Number.isInteger(parsed) || parsed < 0) return null
+    normalized[unitType] = parsed
+    total += parsed
+  }
+  if (total < MIN_AI_DEPLOYMENT_UNIT_COUNT || total > MAX_AI_DEPLOYMENT_UNIT_COUNT) return null
+  return normalized
+}
+
+const createObserverParticipantId = (baseId = 'observer') => {
+  const normalizedBase = String(baseId || 'observer').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24) || 'observer'
+  return `${normalizedBase}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
 const getUnitCountsByOwner = (units = []) => {
   return units.reduce((acc, unit) => {
     if (!unit?.ownerID) return acc
@@ -265,6 +286,7 @@ const chooseAiSetupAction = ({ game, playerID }) => {
   const unitRoster = ['KNIGHT', 'SWORDSMAN', 'ARCHER', 'MILITIA', 'CATAPULT']
   const myUnits = getAliveUnitsForPlayer(game, playerID)
   const desiredUnitCount = sanitizeAiDeploymentUnitCount(game.aiDeploymentUnitCount) || DEFAULT_AI_DEPLOYMENT_UNIT_COUNT
+  const desiredComposition = sanitizeAiDeploymentComposition(game.aiDeploymentComposition)
 
   if (myUnits.length >= desiredUnitCount) {
     if (!game.playersReady?.[playerID]) {
@@ -273,15 +295,47 @@ const chooseAiSetupAction = ({ game, playerID }) => {
     return null
   }
 
-  const availableTypes = unitRoster.filter((type) => {
-    const count = myUnits.filter((unit) => unit.baseType === type || unit.type === type).length
-    if (type === 'CATAPULT') return count < 1
-    if (type === 'KNIGHT') return count < 2
-    if (type === 'ARCHER') return count < 2
-    return true
-  })
+  let candidateType = null
+  if (desiredComposition) {
+    const currentCounts = myUnits.reduce((acc, unit) => {
+      const unitType = unit.baseType || unit.type
+      acc[unitType] = (acc[unitType] || 0) + 1
+      return acc
+    }, {})
 
-  const candidateType = availableTypes[0] || unitRoster[0]
+    const remainingTypes = AI_CONFIGURABLE_UNIT_TYPES.filter((type) =>
+      (desiredComposition[type] || 0) > (currentCounts[type] || 0)
+    )
+
+    for (const type of remainingTypes) {
+      const deployableForType = getDeployableHexes({
+        unitType: type,
+        hexes: game.hexes || [],
+        units: game.units || [],
+        terrainMap: game.terrainMap || {},
+        playerID,
+        mapWidth: game.mapSize?.width || 6,
+        teamMode: Boolean(game.teamMode),
+        deploymentZones: game.deploymentZones || null,
+      })
+      if (deployableForType.length > 0) {
+        candidateType = type
+        break
+      }
+    }
+  }
+
+  if (!candidateType) {
+    const availableTypes = unitRoster.filter((type) => {
+      const count = myUnits.filter((unit) => unit.baseType === type || unit.type === type).length
+      if (type === 'CATAPULT') return count < 1
+      if (type === 'KNIGHT') return count < 2
+      if (type === 'ARCHER') return count < 2
+      return true
+    })
+    candidateType = availableTypes[0] || unitRoster[0]
+  }
+
   const deployable = getDeployableHexes({
     unitType: candidateType,
     hexes: game.hexes || [],
@@ -1297,6 +1351,7 @@ export async function POST(request) {
     }
     game.aiDeploymentUnitCount = sanitizeAiDeploymentUnitCount(game.aiDeploymentUnitCount) || DEFAULT_AI_DEPLOYMENT_UNIT_COUNT
     game.aiDeploymentMode = 'auto'
+    game.aiDeploymentComposition = sanitizeAiDeploymentComposition(game.aiDeploymentComposition)
 
     if (game.phase === 'battle') {
       if (!game.turnStartedAt || !game.turnTimeLimitSeconds) {
@@ -1477,6 +1532,48 @@ export async function POST(request) {
 
 
 
+
+        case 'setAiDeploymentComposition': {
+          const aiCompositionSchema = {
+            playerID: { required: true, sanitize: sanitizeParticipantID },
+            composition: { required: true, sanitize: sanitizeAiDeploymentComposition },
+          }
+          const aiCompositionValidation = validatePayload(payload, aiCompositionSchema)
+          if (aiCompositionValidation.error) {
+            return NextResponse.json({
+              error: 'Invalid payload for setAiDeploymentComposition: ' + aiCompositionValidation.error
+            }, {
+              status: 400,
+              headers: ACTION_CORS_HEADERS
+            })
+          }
+
+          const { playerID: deploymentPlayerID, composition } = aiCompositionValidation.sanitized
+          if (!deploymentPlayerID || !isRegisteredParticipant(deploymentPlayerID, game)) {
+            return NextResponse.json({
+              error: 'Invalid playerID for setAiDeploymentComposition'
+            }, { status: 400, headers: ACTION_CORS_HEADERS })
+          }
+
+          if (game.phase !== 'lobby') {
+            return NextResponse.json({
+              error: 'AI deployment settings can only be updated in the lobby'
+            }, { status: 409, headers: ACTION_CORS_HEADERS })
+          }
+
+          if (game.leaderId && game.leaderId !== deploymentPlayerID) {
+            return NextResponse.json({
+              error: 'Only the lobby leader can update AI deployment settings'
+            }, { status: 403, headers: ACTION_CORS_HEADERS })
+          }
+
+          const total = Object.values(composition).reduce((sum, n) => sum + Number(n || 0), 0)
+          game.aiDeploymentComposition = composition
+          game.aiDeploymentUnitCount = total
+          game.log.push(`AI deployment composition updated (${total} units total).`)
+          break
+        }
+
         case 'setAiDeploymentUnitCount': {
           const aiDeploymentSchema = {
             playerID: { required: true, sanitize: sanitizeParticipantID },
@@ -1577,7 +1674,7 @@ export async function POST(request) {
 
           if (desiredIsSpectator) {
             game.spectators = game.spectators || []
-            const observerId = claimPlayerID
+            const observerId = existingEntry ? createObserverParticipantId(claimPlayerID) : claimPlayerID
             game.spectators.push({ id: observerId, name: sourceName, joinTime: Date.now() })
             if (game.leaderId === claimPlayerID) {
               game.leaderId = observerId
@@ -1587,7 +1684,7 @@ export async function POST(request) {
             }
           } else if (desiredIsWaitlist) {
             game.waitlist = game.waitlist || []
-            const observerId = claimPlayerID
+            const observerId = existingEntry ? createObserverParticipantId(claimPlayerID) : claimPlayerID
             game.waitlist.push({ id: observerId, name: sourceName, joinTime: Date.now() })
             if (game.leaderId === claimPlayerID) {
               game.leaderId = observerId
@@ -1657,7 +1754,7 @@ export async function POST(request) {
           if (waitlistIndex >= 0) game.waitlist.splice(waitlistIndex, 1)
 
           if (destinationIsSpectator) {
-            const observerId = targetID
+            const observerId = currentPlayerEntry ? createObserverParticipantId(targetID) : targetID
             game.spectators.push({ id: observerId, name: sourceEntry.name || `Player ${targetID}`, joinTime: sourceEntry.joinTime || Date.now() })
             if (game.leaderId === targetID) {
               game.leaderId = observerId
@@ -1666,7 +1763,7 @@ export async function POST(request) {
               reassignedPlayerID = observerId
             }
           } else if (destinationIsWaitlist) {
-            const observerId = targetID
+            const observerId = currentPlayerEntry ? createObserverParticipantId(targetID) : targetID
             game.waitlist.push({ id: observerId, name: sourceEntry.name || `Player ${targetID}`, joinTime: sourceEntry.joinTime || Date.now() })
             if (game.leaderId === targetID) {
               game.leaderId = observerId

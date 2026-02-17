@@ -9,6 +9,8 @@ import ConfirmDialog from '@/components/ConfirmDialog'
 const DAMAGE_VARIANCE_MIN = 0.8
 const DAMAGE_VARIANCE_MAX = 1.2
 
+const AI_UNIT_CONFIG_TYPES = ['SWORDSMAN', 'ARCHER', 'KNIGHT', 'MILITIA', 'CATAPULT']
+
 // Unit Info Panel Component
 const UnitInfoPanel = ({ unit, isSelected }) => {
   if (!unit) return null
@@ -95,7 +97,7 @@ export default function HTTPMultiplayerPage() {
   const [damagePreview, setDamagePreview] = useState(null)
   const [showReadyConfirm, setShowReadyConfirm] = useState(false)
   const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false)
-  const [aiUnitCountDraft, setAiUnitCountDraft] = useState(5)
+  const [aiCompositionDraft, setAiCompositionDraft] = useState({ SWORDSMAN: 1, ARCHER: 1, KNIGHT: 1, MILITIA: 1, CATAPULT: 1 })
   const [forceLobbySelection, setForceLobbySelection] = useState(false)
   
   // Dynamic server URL for production
@@ -969,7 +971,7 @@ export default function HTTPMultiplayerPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              setAiUnitCountDraft(Number(gameState?.aiDeploymentUnitCount) || 5)
+                              setAiCompositionDraft(gameState?.aiDeploymentComposition || { SWORDSMAN: 1, ARCHER: 1, KNIGHT: 1, MILITIA: 1, CATAPULT: 1 })
                               setIsAiSettingsOpen(true)
                             }}
                             className="ml-2 rounded-full border border-slate-500 px-2 py-0.5 text-[10px] text-slate-200 hover:bg-slate-700"
@@ -1078,7 +1080,7 @@ export default function HTTPMultiplayerPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              setAiUnitCountDraft(Number(gameState?.aiDeploymentUnitCount) || 5)
+                              setAiCompositionDraft(gameState?.aiDeploymentComposition || { SWORDSMAN: 1, ARCHER: 1, KNIGHT: 1, MILITIA: 1, CATAPULT: 1 })
                               setIsAiSettingsOpen(true)
                             }}
                             className="ml-2 rounded-full border border-slate-500 px-2 py-0.5 text-[10px] text-slate-200 hover:bg-slate-700"
@@ -1116,19 +1118,27 @@ export default function HTTPMultiplayerPage() {
           {isAiSettingsOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4">
               <div className="w-full max-w-sm rounded-xl border border-slate-700 bg-slate-900 p-4">
-                <div className="text-sm font-semibold text-amber-200">AI Unit Count</div>
-                <div className="mt-2 text-xs text-slate-400">Set how many units the AI should deploy during setup.</div>
-                <div className="mt-4 flex items-center justify-center gap-3">
-                  <button type="button" onClick={() => setAiUnitCountDraft((v) => Math.max(1, v - 1))} className="rounded-full bg-slate-700 px-3 py-1 text-white">−</button>
-                  <span className="min-w-10 text-center text-lg font-bold text-amber-200">{aiUnitCountDraft}</span>
-                  <button type="button" onClick={() => setAiUnitCountDraft((v) => Math.min(20, v + 1))} className="rounded-full bg-slate-700 px-3 py-1 text-white">+</button>
+                <div className="text-sm font-semibold text-amber-200">AI Unit Composition</div>
+                <div className="mt-2 text-xs text-slate-400">Set exact counts for each AI unit type.</div>
+                <div className="mt-4 space-y-2">
+                  {AI_UNIT_CONFIG_TYPES.map((type) => (
+                    <div key={type} className="flex items-center justify-between gap-2 text-xs text-slate-200">
+                      <span>{UNIT_TYPES[type]?.name || type}</span>
+                      <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => setAiCompositionDraft((prev) => ({ ...prev, [type]: Math.max(0, Number(prev?.[type] || 0) - 1) }))} className="rounded-full bg-slate-700 px-2 py-0.5">−</button>
+                        <span className="min-w-6 text-center">{Number(aiCompositionDraft?.[type] || 0)}</span>
+                        <button type="button" onClick={() => setAiCompositionDraft((prev) => ({ ...prev, [type]: Math.min(20, Number(prev?.[type] || 0) + 1) }))} className="rounded-full bg-slate-700 px-2 py-0.5">+</button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
+                <div className="mt-2 text-[11px] text-slate-400">Total units: {AI_UNIT_CONFIG_TYPES.reduce((sum, type) => sum + Number(aiCompositionDraft?.[type] || 0), 0)} (must be 1–20)</div>
                 <div className="mt-4 flex justify-end gap-2">
                   <button type="button" onClick={() => setIsAiSettingsOpen(false)} className="rounded-lg bg-slate-700 px-3 py-1 text-xs font-semibold text-white">Cancel</button>
                   <button
                     type="button"
                     onClick={() => {
-                      sendAction('setAiDeploymentUnitCount', { playerID, unitCount: aiUnitCountDraft })
+                      sendAction('setAiDeploymentComposition', { playerID, composition: aiCompositionDraft })
                       setIsAiSettingsOpen(false)
                     }}
                     className="rounded-lg bg-emerald-600 px-3 py-1 text-xs font-semibold text-white"
@@ -1352,3 +1362,4 @@ export default function HTTPMultiplayerPage() {
     </div>
   )
 }
+

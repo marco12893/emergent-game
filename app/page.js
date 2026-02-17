@@ -131,6 +131,8 @@ const UnitInfoPanel = ({ unit, isSelected }) => {
 }
 
 
+const AI_UNIT_CONFIG_TYPES = ['SWORDSMAN', 'ARCHER', 'KNIGHT', 'MILITIA', 'CATAPULT']
+
 const KNIGHT_PENALTY_TERRAINS = new Set(['CITY', 'CASTLE', 'BARRACKS', 'CATHEDRAL', 'MOSQUE', 'HOSPITAL', 'UNIVERSITY', 'LIBRARY', 'FARM'])
 
 const getUnitSpecialNotes = (unitType) => {
@@ -189,7 +191,7 @@ export default function HTTPMultiplayerPage() {
   const [copyStatus, setCopyStatus] = useState('')
   const [isObserverPanelOpen, setIsObserverPanelOpen] = useState(true)
   const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false)
-  const [aiUnitCountDraft, setAiUnitCountDraft] = useState(5)
+  const [aiCompositionDraft, setAiCompositionDraft] = useState({ SWORDSMAN: 1, ARCHER: 1, KNIGHT: 1, MILITIA: 1, CATAPULT: 1 })
   const chatInputRef = useRef(null)
   const isSpectator = useMemo(() => {
     if (playerID === 'spectator') return true
@@ -210,8 +212,6 @@ export default function HTTPMultiplayerPage() {
   const chatMessages = gameState?.chatMessages || []
   const shouldShowLobbySelection = forceLobbySelection || gameState?.phase === 'lobby'
   const isLobbyLeader = String(playerID) === String(gameState?.leaderId)
-  const canLeaderControlAiSetup = false
-  const effectiveSetupPlayerID = playerID
 
   const handleKickedOut = ({ message }) => {
     setJoined(false)
@@ -666,7 +666,7 @@ export default function HTTPMultiplayerPage() {
 
   useEffect(() => {
     if (!gameState || gameState.phase !== 'setup') return
-    if (!isMyTurn && !canLeaderControlAiSetup) {
+    if (!isMyTurn) {
       setHighlightedHexes([])
       setAttackableHexes([])
       return
@@ -684,7 +684,7 @@ export default function HTTPMultiplayerPage() {
     })
     setHighlightedHexes(deployableHexes)
     setAttackableHexes([])
-  }, [gameState, isMyTurn, canLeaderControlAiSetup, effectiveSetupPlayerID, selectedUnitType, teamMode])
+  }, [gameState, isMyTurn, selectedUnitType, teamMode])
 
   useEffect(() => {
     if (!gameState || !hoveredHex || gameState.phase !== 'battle' || !isMyTurn) {
@@ -892,7 +892,7 @@ export default function HTTPMultiplayerPage() {
 
   const sendAction = async (action, payload) => {
     if (!joined) return
-    if (isObserver && !canLeaderControlAiSetup) {
+    if (isObserver) {
       const observerAllowedActions = ['claimSlot', 'moveParticipant']
       const isLobbyLeader = String(playerID) === String(gameState?.leaderId)
       if (isLobbyLeader) {
@@ -1053,9 +1053,9 @@ export default function HTTPMultiplayerPage() {
       }
 
       // Check if clicking on own unit to remove it
-      const myUnitOnHex = gameState.units.find(u => u.q === hex.q && u.r === hex.r && u.ownerID === effectiveSetupPlayerID)
+      const myUnitOnHex = gameState.units.find(u => u.q === hex.q && u.r === hex.r && u.ownerID === playerID)
       if (myUnitOnHex) {
-        sendAction('removeUnit', { unitId: myUnitOnHex.id, playerID: effectiveSetupPlayerID })
+        sendAction('removeUnit', { unitId: myUnitOnHex.id, playerID })
         return
       }
 
@@ -1066,7 +1066,7 @@ export default function HTTPMultiplayerPage() {
         hexes: gameState.hexes,
         units: gameState.units,
         terrainMap: gameState.terrainMap,
-        playerID: effectiveSetupPlayerID,
+        playerID,
         mapWidth,
         teamMode,
         deploymentZones: gameState.deploymentZones,
@@ -1077,7 +1077,7 @@ export default function HTTPMultiplayerPage() {
           unitType: selectedUnitType,
           q: hex.q,
           r: hex.r,
-          playerID: effectiveSetupPlayerID,
+          playerID,
         })
       } else {
         setError('You can only place units in valid spawn hexes!')
@@ -1204,13 +1204,13 @@ export default function HTTPMultiplayerPage() {
   const readyForBattle = () => {
     if (!joined) return
     const deployedUnits = gameState?.units?.filter(
-      unit => unit.ownerID === effectiveSetupPlayerID && unit.currentHP > 0
+      unit => unit.ownerID === playerID && unit.currentHP > 0
     ).length || 0
     if (deployedUnits === 0) {
       setShowReadyConfirm(true)
       return
     }
-    sendAction('readyForBattle', { playerID: effectiveSetupPlayerID })
+    sendAction('readyForBattle', { playerID })
   }
 
   const claimSlot = async (slotId) => {
@@ -1232,7 +1232,7 @@ export default function HTTPMultiplayerPage() {
 
   const confirmReadyForBattle = () => {
     setShowReadyConfirm(false)
-    sendAction('readyForBattle', { playerID: effectiveSetupPlayerID })
+    sendAction('readyForBattle', { playerID })
   }
 
   if (!joined) {
@@ -1571,7 +1571,7 @@ export default function HTTPMultiplayerPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              setAiUnitCountDraft(Number(gameState?.aiDeploymentUnitCount) || 5)
+                              setAiCompositionDraft(gameState?.aiDeploymentComposition || { SWORDSMAN: 1, ARCHER: 1, KNIGHT: 1, MILITIA: 1, CATAPULT: 1 })
                               setIsAiSettingsOpen(true)
                             }}
                             className="ml-2 rounded-full border border-slate-500 px-2 py-0.5 text-[10px] text-slate-200 hover:bg-slate-700"
@@ -1740,7 +1740,7 @@ export default function HTTPMultiplayerPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              setAiUnitCountDraft(Number(gameState?.aiDeploymentUnitCount) || 5)
+                              setAiCompositionDraft(gameState?.aiDeploymentComposition || { SWORDSMAN: 1, ARCHER: 1, KNIGHT: 1, MILITIA: 1, CATAPULT: 1 })
                               setIsAiSettingsOpen(true)
                             }}
                             className="ml-2 rounded-full border border-slate-500 px-2 py-0.5 text-[10px] text-slate-200 hover:bg-slate-700"
@@ -1867,19 +1867,27 @@ export default function HTTPMultiplayerPage() {
           {isAiSettingsOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4">
               <div className="w-full max-w-sm rounded-xl border border-slate-700 bg-slate-900 p-4">
-                <div className="text-sm font-semibold text-amber-200">AI Unit Count</div>
-                <div className="mt-2 text-xs text-slate-400">Set how many units the AI should deploy during setup.</div>
-                <div className="mt-4 flex items-center justify-center gap-3">
-                  <button type="button" onClick={() => setAiUnitCountDraft((v) => Math.max(1, v - 1))} className="rounded-full bg-slate-700 px-3 py-1 text-white">−</button>
-                  <span className="min-w-10 text-center text-lg font-bold text-amber-200">{aiUnitCountDraft}</span>
-                  <button type="button" onClick={() => setAiUnitCountDraft((v) => Math.min(20, v + 1))} className="rounded-full bg-slate-700 px-3 py-1 text-white">+</button>
+                <div className="text-sm font-semibold text-amber-200">AI Unit Composition</div>
+                <div className="mt-2 text-xs text-slate-400">Set exact counts for each AI unit type.</div>
+                <div className="mt-4 space-y-2">
+                  {AI_UNIT_CONFIG_TYPES.map((type) => (
+                    <div key={type} className="flex items-center justify-between gap-2 text-xs text-slate-200">
+                      <span>{UNIT_TYPES[type]?.name || type}</span>
+                      <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => setAiCompositionDraft((prev) => ({ ...prev, [type]: Math.max(0, Number(prev?.[type] || 0) - 1) }))} className="rounded-full bg-slate-700 px-2 py-0.5">−</button>
+                        <span className="min-w-6 text-center">{Number(aiCompositionDraft?.[type] || 0)}</span>
+                        <button type="button" onClick={() => setAiCompositionDraft((prev) => ({ ...prev, [type]: Math.min(20, Number(prev?.[type] || 0) + 1) }))} className="rounded-full bg-slate-700 px-2 py-0.5">+</button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
+                <div className="mt-2 text-[11px] text-slate-400">Total units: {AI_UNIT_CONFIG_TYPES.reduce((sum, type) => sum + Number(aiCompositionDraft?.[type] || 0), 0)} (must be 1–20)</div>
                 <div className="mt-4 flex justify-end gap-2">
                   <button type="button" onClick={() => setIsAiSettingsOpen(false)} className="rounded-lg bg-slate-700 px-3 py-1 text-xs font-semibold text-white">Cancel</button>
                   <button
                     type="button"
                     onClick={() => {
-                      sendAction('setAiDeploymentUnitCount', { playerID, unitCount: aiUnitCountDraft })
+                      sendAction('setAiDeploymentComposition', { playerID, composition: aiCompositionDraft })
                       setIsAiSettingsOpen(false)
                     }}
                     className="rounded-lg bg-emerald-600 px-3 py-1 text-xs font-semibold text-white"
