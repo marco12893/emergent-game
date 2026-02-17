@@ -188,7 +188,8 @@ export default function HTTPMultiplayerPage() {
   const [spectatorVision, setSpectatorVision] = useState('all')
   const [copyStatus, setCopyStatus] = useState('')
   const [isObserverPanelOpen, setIsObserverPanelOpen] = useState(true)
-  const [setupControlPlayerID, setSetupControlPlayerID] = useState('')
+  const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false)
+  const [aiUnitCountDraft, setAiUnitCountDraft] = useState(5)
   const chatInputRef = useRef(null)
   const isSpectator = useMemo(() => {
     if (playerID === 'spectator') return true
@@ -209,11 +210,8 @@ export default function HTTPMultiplayerPage() {
   const chatMessages = gameState?.chatMessages || []
   const shouldShowLobbySelection = forceLobbySelection || gameState?.phase === 'lobby'
   const isLobbyLeader = String(playerID) === String(gameState?.leaderId)
-  const aiSetupControlSlots = useMemo(() => Object.entries(gameState?.players || {}).filter(([, participant]) => participant?.isAI).map(([id]) => id), [gameState?.players])
-  const canLeaderControlAiSetup = gameState?.phase === 'setup' && isLobbyLeader && aiSetupControlSlots.length > 0
-  const effectiveSetupPlayerID = canLeaderControlAiSetup
-    ? (aiSetupControlSlots.includes(setupControlPlayerID) ? setupControlPlayerID : aiSetupControlSlots[0])
-    : playerID
+  const canLeaderControlAiSetup = false
+  const effectiveSetupPlayerID = playerID
 
   const handleKickedOut = ({ message }) => {
     setJoined(false)
@@ -309,15 +307,6 @@ export default function HTTPMultiplayerPage() {
   }, [selectedOwnedUnit, gameState?.phase, retreatHexes])
 
 
-  useEffect(() => {
-    if (!canLeaderControlAiSetup) {
-      if (setupControlPlayerID) setSetupControlPlayerID('')
-      return
-    }
-    if (!aiSetupControlSlots.includes(setupControlPlayerID)) {
-      setSetupControlPlayerID(aiSetupControlSlots[0] || '')
-    }
-  }, [canLeaderControlAiSetup, aiSetupControlSlots, setupControlPlayerID])
 
   const map4ObjectivePanel = useMemo(() => {
     const mapObjectiveText = getObjectiveText(gameState?.mapId)
@@ -907,7 +896,7 @@ export default function HTTPMultiplayerPage() {
       const observerAllowedActions = ['claimSlot', 'moveParticipant']
       const isLobbyLeader = String(playerID) === String(gameState?.leaderId)
       if (isLobbyLeader) {
-        observerAllowedActions.push('setTeamMode', 'setWinterMode', 'setFogOfWar', 'setAiDeploymentMode', 'setAiDeploymentUnitCount', 'startBattle', 'kickParticipant', 'addAiPlayer')
+        observerAllowedActions.push('setTeamMode', 'setWinterMode', 'setFogOfWar', 'setAiDeploymentUnitCount', 'startBattle', 'kickParticipant', 'addAiPlayer')
       }
       if (!observerAllowedActions.includes(action)) {
         setError('Spectators cannot perform game actions.')
@@ -1066,7 +1055,7 @@ export default function HTTPMultiplayerPage() {
       // Check if clicking on own unit to remove it
       const myUnitOnHex = gameState.units.find(u => u.q === hex.q && u.r === hex.r && u.ownerID === effectiveSetupPlayerID)
       if (myUnitOnHex) {
-        sendAction('removeUnit', { unitId: myUnitOnHex.id, playerID: effectiveSetupPlayerID, actingPlayerID: playerID })
+        sendAction('removeUnit', { unitId: myUnitOnHex.id, playerID: effectiveSetupPlayerID })
         return
       }
 
@@ -1089,7 +1078,6 @@ export default function HTTPMultiplayerPage() {
           q: hex.q,
           r: hex.r,
           playerID: effectiveSetupPlayerID,
-          actingPlayerID: playerID,
         })
       } else {
         setError('You can only place units in valid spawn hexes!')
@@ -1222,7 +1210,7 @@ export default function HTTPMultiplayerPage() {
       setShowReadyConfirm(true)
       return
     }
-    sendAction('readyForBattle', { playerID: effectiveSetupPlayerID, actingPlayerID: playerID })
+    sendAction('readyForBattle', { playerID: effectiveSetupPlayerID })
   }
 
   const claimSlot = async (slotId) => {
@@ -1244,7 +1232,7 @@ export default function HTTPMultiplayerPage() {
 
   const confirmReadyForBattle = () => {
     setShowReadyConfirm(false)
-    sendAction('readyForBattle', { playerID: effectiveSetupPlayerID, actingPlayerID: playerID })
+    sendAction('readyForBattle', { playerID: effectiveSetupPlayerID })
   }
 
   if (!joined) {
@@ -1579,6 +1567,18 @@ export default function HTTPMultiplayerPage() {
                           {occupant ? occupant.name : 'Add the player'}
                           {occupant?.isAI && <span className="ml-2 text-emerald-300">(AI)</span>}
                           {isLeader && <span className="ml-2 text-amber-300">(Leader)</span>}
+                        {occupant?.isAI && canChangeLobbySettings && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAiUnitCountDraft(Number(gameState?.aiDeploymentUnitCount) || 5)
+                              setIsAiSettingsOpen(true)
+                            }}
+                            className="ml-2 rounded-full border border-slate-500 px-2 py-0.5 text-[10px] text-slate-200 hover:bg-slate-700"
+                          >
+                            ⚙ Settings
+                          </button>
+                        )}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -1736,6 +1736,18 @@ export default function HTTPMultiplayerPage() {
                           {occupant ? occupant.name : 'Add the player'}
                           {occupant?.isAI && <span className="ml-2 text-emerald-300">(AI)</span>}
                           {isLeader && <span className="ml-2 text-amber-300">(Leader)</span>}
+                        {occupant?.isAI && canChangeLobbySettings && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAiUnitCountDraft(Number(gameState?.aiDeploymentUnitCount) || 5)
+                              setIsAiSettingsOpen(true)
+                            }}
+                            className="ml-2 rounded-full border border-slate-500 px-2 py-0.5 text-[10px] text-slate-200 hover:bg-slate-700"
+                          >
+                            ⚙ Settings
+                          </button>
+                        )}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -1850,6 +1862,34 @@ export default function HTTPMultiplayerPage() {
               )}
             </div>
           </div>
+
+
+          {isAiSettingsOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4">
+              <div className="w-full max-w-sm rounded-xl border border-slate-700 bg-slate-900 p-4">
+                <div className="text-sm font-semibold text-amber-200">AI Unit Count</div>
+                <div className="mt-2 text-xs text-slate-400">Set how many units the AI should deploy during setup.</div>
+                <div className="mt-4 flex items-center justify-center gap-3">
+                  <button type="button" onClick={() => setAiUnitCountDraft((v) => Math.max(1, v - 1))} className="rounded-full bg-slate-700 px-3 py-1 text-white">−</button>
+                  <span className="min-w-10 text-center text-lg font-bold text-amber-200">{aiUnitCountDraft}</span>
+                  <button type="button" onClick={() => setAiUnitCountDraft((v) => Math.min(20, v + 1))} className="rounded-full bg-slate-700 px-3 py-1 text-white">+</button>
+                </div>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button type="button" onClick={() => setIsAiSettingsOpen(false)} className="rounded-lg bg-slate-700 px-3 py-1 text-xs font-semibold text-white">Cancel</button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sendAction('setAiDeploymentUnitCount', { playerID, unitCount: aiUnitCountDraft })
+                      setIsAiSettingsOpen(false)
+                    }}
+                    className="rounded-lg bg-emerald-600 px-3 py-1 text-xs font-semibold text-white"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     )
@@ -1973,7 +2013,7 @@ export default function HTTPMultiplayerPage() {
       )}
       
       {/* Left Panel - Only visible during setup phase */}
-      {gameState?.phase === 'setup' && (!isObserver || canLeaderControlAiSetup) && (
+      {gameState?.phase === 'setup' && !isObserver && (
         <div className={`fixed left-0 top-0 z-40 transition-all duration-300 ${
           isLeftPanelCollapsed ? 'w-12' : 'w-1/2 sm:w-1/3 md:w-1/4 lg:w-1/5 xl:w-1/6'
         } bg-slate-800/95 border-r border-slate-600 backdrop-blur-sm h-full`}>
@@ -1999,35 +2039,19 @@ export default function HTTPMultiplayerPage() {
                   alt="Player Avatar"
                 />
                 <div>
-                  <div className="text-white font-bold text-sm">Deploying for Player {effectiveSetupPlayerID}</div>
+                  <div className="text-white font-bold text-sm">Player {playerID}</div>
                   <div className={`text-xs ${
-                    getPlayerColor(effectiveSetupPlayerID) === 'blue' ? 'text-blue-400' :
-                    getPlayerColor(effectiveSetupPlayerID) === 'green' ? 'text-green-400' :
-                    getPlayerColor(effectiveSetupPlayerID) === 'yellow' ? 'text-yellow-400' :
+                    playerColor === 'blue' ? 'text-blue-400' :
+                    playerColor === 'green' ? 'text-green-400' :
+                    playerColor === 'yellow' ? 'text-yellow-400' :
                     'text-red-400'
                   }`}>
-                    {getPlayerColor(effectiveSetupPlayerID).charAt(0).toUpperCase() + getPlayerColor(effectiveSetupPlayerID).slice(1)} Army
+                    {playerColor.charAt(0).toUpperCase() + playerColor.slice(1)} Army
                   </div>
                 </div>
               </div>
               
-              {canLeaderControlAiSetup && (
-                <div className="rounded-lg border border-slate-600 bg-slate-900/70 p-2">
-                  <div className="mb-2 text-[11px] text-slate-300">Leader AI setup control</div>
-                  <div className="flex flex-wrap gap-2">
-                    {aiSetupControlSlots.map((slotId) => (
-                      <button
-                        key={slotId}
-                        type="button"
-                        onClick={() => setSetupControlPlayerID(slotId)}
-                        className={`rounded-full px-3 py-1 text-xs font-semibold ${effectiveSetupPlayerID === slotId ? 'bg-amber-500 text-slate-900' : 'bg-slate-700 text-slate-100'}`}
-                      >
-                        AI P{slotId}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+
 
               {/* Deployment Units */}
               <div className="flex-1 overflow-y-auto">
@@ -2058,9 +2082,9 @@ export default function HTTPMultiplayerPage() {
                       
                       {/* Unit image */}
                       <img 
-                        src={getUnitSpriteProps(unit, effectiveSetupPlayerID).src}
+                        src={getUnitSpriteProps(unit, playerID).src}
                         className="w-32 h-32 mb-1"
-                        style={{ filter: getUnitSpriteProps(unit, effectiveSetupPlayerID).filter }}
+                        style={{ filter: getUnitSpriteProps(unit, playerID).filter }}
                         alt={unit.name}
                       />
                       
@@ -2180,10 +2204,10 @@ export default function HTTPMultiplayerPage() {
             >
               <img src="/icons/chat%20icon.png" alt="Chat" className="w-6 h-6 lg:w-7 lg:h-7" />
             </button>
-            {(!isObserver || canLeaderControlAiSetup) && (
+            {!isObserver && (
               <button
                 onClick={readyForBattle}
-                disabled={!isMyTurn && !canLeaderControlAiSetup}
+                disabled={!isMyTurn}
                 className="px-4 h-10 lg:px-6 lg:py-3 lg:h-auto bg-amber-500 hover:bg-amber-400 disabled:bg-slate-600 text-white text-sm lg:text-base font-bold rounded-lg shadow-lg transition-all transform hover:scale-105"
               >
                 Ready For Battle
@@ -2201,7 +2225,7 @@ export default function HTTPMultiplayerPage() {
             >
               <img src="/icons/chat%20icon.png" alt="Chat" className="w-6 h-6 lg:w-7 lg:h-7" />
             </button>
-            {(!isObserver || canLeaderControlAiSetup) && (
+            {!isObserver && (
               <>
                 {!fogOfWarEnabled && (
                   <button

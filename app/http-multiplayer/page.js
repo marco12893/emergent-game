@@ -94,6 +94,8 @@ export default function HTTPMultiplayerPage() {
   const [hoveredHex, setHoveredHex] = useState(null)
   const [damagePreview, setDamagePreview] = useState(null)
   const [showReadyConfirm, setShowReadyConfirm] = useState(false)
+  const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false)
+  const [aiUnitCountDraft, setAiUnitCountDraft] = useState(5)
   const [forceLobbySelection, setForceLobbySelection] = useState(false)
   
   // Dynamic server URL for production
@@ -963,6 +965,18 @@ export default function HTTPMultiplayerPage() {
                         {occupant ? occupant.name : 'Add the player'}
                         {occupant?.isAI && <span className="ml-2 text-emerald-300">(AI)</span>}
                         {lobbyLeaderId === slot.id && <span className="ml-2 text-amber-300">(Leader)</span>}
+                        {occupant?.isAI && playerID === lobbyLeaderId && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAiUnitCountDraft(Number(gameState?.aiDeploymentUnitCount) || 5)
+                              setIsAiSettingsOpen(true)
+                            }}
+                            className="ml-2 rounded-full border border-slate-500 px-2 py-0.5 text-[10px] text-slate-200 hover:bg-slate-700"
+                          >
+                            ⚙ Settings
+                          </button>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -1021,7 +1035,7 @@ export default function HTTPMultiplayerPage() {
                     Only the lobby leader can change fog settings.
                   </div>
                 )}
-                <div className="mt-2 text-[11px] text-slate-500">Only one AI commander is currently allowed per lobby.</div>
+                <div className="mt-2 text-[11px] text-slate-500">Only one AI commander is currently allowed per lobby. Configure its unit count from that AI card settings button.</div>
               </div>
               {forceLobbySelection ? (
                 <div className="mt-5 space-y-3">
@@ -1060,6 +1074,18 @@ export default function HTTPMultiplayerPage() {
                         {occupant ? occupant.name : 'Add the player'}
                         {occupant?.isAI && <span className="ml-2 text-emerald-300">(AI)</span>}
                         {lobbyLeaderId === slot.id && <span className="ml-2 text-amber-300">(Leader)</span>}
+                        {occupant?.isAI && playerID === lobbyLeaderId && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAiUnitCountDraft(Number(gameState?.aiDeploymentUnitCount) || 5)
+                              setIsAiSettingsOpen(true)
+                            }}
+                            className="ml-2 rounded-full border border-slate-500 px-2 py-0.5 text-[10px] text-slate-200 hover:bg-slate-700"
+                          >
+                            ⚙ Settings
+                          </button>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -1085,6 +1111,35 @@ export default function HTTPMultiplayerPage() {
               })}
             </div>
           </div>
+
+
+          {isAiSettingsOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4">
+              <div className="w-full max-w-sm rounded-xl border border-slate-700 bg-slate-900 p-4">
+                <div className="text-sm font-semibold text-amber-200">AI Unit Count</div>
+                <div className="mt-2 text-xs text-slate-400">Set how many units the AI should deploy during setup.</div>
+                <div className="mt-4 flex items-center justify-center gap-3">
+                  <button type="button" onClick={() => setAiUnitCountDraft((v) => Math.max(1, v - 1))} className="rounded-full bg-slate-700 px-3 py-1 text-white">−</button>
+                  <span className="min-w-10 text-center text-lg font-bold text-amber-200">{aiUnitCountDraft}</span>
+                  <button type="button" onClick={() => setAiUnitCountDraft((v) => Math.min(20, v + 1))} className="rounded-full bg-slate-700 px-3 py-1 text-white">+</button>
+                </div>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button type="button" onClick={() => setIsAiSettingsOpen(false)} className="rounded-lg bg-slate-700 px-3 py-1 text-xs font-semibold text-white">Cancel</button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sendAction('setAiDeploymentUnitCount', { playerID, unitCount: aiUnitCountDraft })
+                      setIsAiSettingsOpen(false)
+                    }}
+                    className="rounded-lg bg-emerald-600 px-3 py-1 text-xs font-semibold text-white"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
     )

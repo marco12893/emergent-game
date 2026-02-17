@@ -125,13 +125,6 @@ const sanitizeAiDeploymentUnitCount = (value) => {
   return parsed
 }
 
-const canLeaderManageAiSetup = ({ game, actingPlayerID, targetPlayerID }) => {
-  if (!game || game.phase !== 'setup') return false
-  if (!actingPlayerID || !targetPlayerID) return false
-  if (String(game.leaderId) !== String(actingPlayerID)) return false
-  return Boolean(game.players?.[targetPlayerID]?.isAI)
-}
-
 const getUnitCountsByOwner = (units = []) => {
   return units.reduce((acc, unit) => {
     if (!unit?.ownerID) return acc
@@ -272,16 +265,11 @@ const chooseAiSetupAction = ({ game, playerID }) => {
   const unitRoster = ['KNIGHT', 'SWORDSMAN', 'ARCHER', 'MILITIA', 'CATAPULT']
   const myUnits = getAliveUnitsForPlayer(game, playerID)
   const desiredUnitCount = sanitizeAiDeploymentUnitCount(game.aiDeploymentUnitCount) || DEFAULT_AI_DEPLOYMENT_UNIT_COUNT
-  const leaderManagedDeployment = game.aiDeploymentMode === 'leader'
 
   if (myUnits.length >= desiredUnitCount) {
     if (!game.playersReady?.[playerID]) {
       return { type: 'readyForBattle', payload: { playerID } }
     }
-    return null
-  }
-
-  if (leaderManagedDeployment) {
     return null
   }
 
@@ -1308,7 +1296,7 @@ export async function POST(request) {
       game.retreatedUnitIds = []
     }
     game.aiDeploymentUnitCount = sanitizeAiDeploymentUnitCount(game.aiDeploymentUnitCount) || DEFAULT_AI_DEPLOYMENT_UNIT_COUNT
-    game.aiDeploymentMode = game.aiDeploymentMode === 'leader' ? 'leader' : 'auto'
+    game.aiDeploymentMode = 'auto'
 
     if (game.phase === 'battle') {
       if (!game.turnStartedAt || !game.turnTimeLimitSeconds) {
@@ -1488,51 +1476,6 @@ export async function POST(request) {
         }
 
 
-        case 'setAiDeploymentMode': {
-          const aiModeSchema = {
-            playerID: { required: true, sanitize: sanitizeParticipantID },
-            mode: { required: true },
-          }
-          const aiModeValidation = validatePayload(payload, aiModeSchema)
-          if (aiModeValidation.error) {
-            return NextResponse.json({
-              error: 'Invalid payload for setAiDeploymentMode: ' + aiModeValidation.error
-            }, {
-              status: 400,
-              headers: ACTION_CORS_HEADERS
-            })
-          }
-
-          const { playerID: modePlayerID } = aiModeValidation.sanitized
-          const requestedMode = String(aiModeValidation.sanitized.mode || '').toLowerCase()
-          if (!modePlayerID || !isRegisteredParticipant(modePlayerID, game)) {
-            return NextResponse.json({
-              error: 'Invalid playerID for setAiDeploymentMode'
-            }, { status: 400, headers: ACTION_CORS_HEADERS })
-          }
-
-          if (game.phase !== 'lobby') {
-            return NextResponse.json({
-              error: 'AI deployment mode can only be updated in the lobby'
-            }, { status: 409, headers: ACTION_CORS_HEADERS })
-          }
-
-          if (game.leaderId && game.leaderId !== modePlayerID) {
-            return NextResponse.json({
-              error: 'Only the lobby leader can update AI deployment mode'
-            }, { status: 403, headers: ACTION_CORS_HEADERS })
-          }
-
-          if (requestedMode !== 'auto' && requestedMode !== 'leader') {
-            return NextResponse.json({
-              error: 'AI deployment mode must be either auto or leader'
-            }, { status: 400, headers: ACTION_CORS_HEADERS })
-          }
-
-          game.aiDeploymentMode = requestedMode
-          game.log.push(`AI deployment mode set to ${requestedMode === 'leader' ? 'leader-controlled' : 'automatic'}.`)
-          break
-        }
 
         case 'setAiDeploymentUnitCount': {
           const aiDeploymentSchema = {
@@ -2000,7 +1943,6 @@ export async function POST(request) {
             q: { required: true, sanitize: sanitizeCoordinate },
             r: { required: true, sanitize: sanitizeCoordinate },
             playerID: { required: true, sanitize: sanitizePlayerID },
-            actingPlayerID: { required: false, sanitize: sanitizeParticipantID },
           }
           
           const placeUnitValidation = validatePayload(payload, placeUnitSchema)
@@ -2017,9 +1959,7 @@ export async function POST(request) {
             })
           }
           
-          const { unitType, q, r, playerID: placePlayerID, actingPlayerID: placeActingPlayerID } = placeUnitValidation.sanitized
-
-          const placeCommanderID = placeActingPlayerID || placePlayerID
+          const { unitType, q, r, playerID: placePlayerID } = placeUnitValidation.sanitized
 
           if (placePlayerID === 'spectator') {
             return spectatorActionResponse()
@@ -2051,17 +1991,7 @@ export async function POST(request) {
             })
           }
 
-          const canCommanderPlaceForAi = canLeaderManageAiSetup({
-            game,
-            actingPlayerID: placeCommanderID,
-            targetPlayerID: placePlayerID,
-          })
-          if (placeCommanderID !== placePlayerID && !canCommanderPlaceForAi) {
-            return NextResponse.json({
-              error: 'Only the lobby leader can place units for AI players during setup'
-            }, { status: 403, headers: ACTION_CORS_HEADERS })
-          }
-          
+
           // Unit placement logic
           const stats = UNIT_TYPES[unitType]
           if (!stats) {
@@ -2155,8 +2085,7 @@ export async function POST(request) {
           
           game.units.push(newUnit)
           applyEncirclementMorale(game.units, teamMode)
-          const placementActor = placeCommanderID !== placePlayerID ? `Leader ${placeCommanderID}` : `Player ${placePlayerID}`
-          game.log.push(`${placementActor} placed ${newUnit.name} for Player ${placePlayerID} at (${q}, ${r})`)
+          game.log.push(`Player ${placePlayerID} placed ${newUnit.name} at (${q}, ${r})`)
           game.lastUpdate = Date.now()
           break
           
@@ -2165,7 +2094,6 @@ export async function POST(request) {
           const removeUnitSchema = {
             unitId: { required: true, sanitize: sanitizeUnitId },
             playerID: { required: true, sanitize: sanitizePlayerID },
-            actingPlayerID: { required: false, sanitize: sanitizeParticipantID },
           }
           
           const removeUnitValidation = validatePayload(payload, removeUnitSchema)
@@ -2182,9 +2110,7 @@ export async function POST(request) {
             })
           }
           
-          const { unitId: removeUnitId, playerID: removePlayerID, actingPlayerID: removeActingPlayerID } = removeUnitValidation.sanitized
-
-          const removeCommanderID = removeActingPlayerID || removePlayerID
+          const { unitId: removeUnitId, playerID: removePlayerID } = removeUnitValidation.sanitized
 
           if (removePlayerID === 'spectator') {
             return spectatorActionResponse()
@@ -2216,17 +2142,7 @@ export async function POST(request) {
             })
           }
 
-          const canCommanderRemoveForAi = canLeaderManageAiSetup({
-            game,
-            actingPlayerID: removeCommanderID,
-            targetPlayerID: removePlayerID,
-          })
-          if (removeCommanderID !== removePlayerID && !canCommanderRemoveForAi) {
-            return NextResponse.json({
-              error: 'Only the lobby leader can remove units for AI players during setup'
-            }, { status: 403, headers: ACTION_CORS_HEADERS })
-          }
-          
+
           // Find and remove the unit (only allow removing own units)
           const unitToRemove = game.units.find(u => u.id === removeUnitId)
           if (!unitToRemove) {
@@ -2257,8 +2173,7 @@ export async function POST(request) {
           
           game.units = game.units.filter(u => u.id !== removeUnitId)
           applyEncirclementMorale(game.units, teamMode)
-          const removalActor = removeCommanderID !== removePlayerID ? `Leader ${removeCommanderID}` : `Player ${removePlayerID}`
-          game.log.push(`${removalActor} removed ${unitToRemove.name} from Player ${removePlayerID} at (${unitToRemove.q}, ${unitToRemove.r})`)
+          game.log.push(`Player ${removePlayerID} removed ${unitToRemove.name} at (${unitToRemove.q}, ${unitToRemove.r})`)
           game.lastUpdate = Date.now()
           break
           
@@ -3042,7 +2957,6 @@ export async function POST(request) {
           }
 
           const readyPlayerID = sanitizePlayerID(payload.playerID)
-          const readyActingPlayerID = sanitizeParticipantID(payload?.actingPlayerID) || readyPlayerID
           if (!readyPlayerID) {
             return NextResponse.json({ 
               error: 'Invalid playerID for readyForBattle' 
@@ -3086,23 +3000,9 @@ export async function POST(request) {
             })
           }
 
-          const canLeaderReadyAi = canLeaderManageAiSetup({
-            game,
-            actingPlayerID: readyActingPlayerID,
-            targetPlayerID: readyPlayerID,
-          })
-          if (readyActingPlayerID !== readyPlayerID && !canLeaderReadyAi) {
-            return NextResponse.json({
-              error: 'Only the lobby leader can ready AI players during setup'
-            }, { status: 403, headers: ACTION_CORS_HEADERS })
-          }
-          
+
           game.playersReady[readyPlayerID] = true
-          if (readyActingPlayerID !== readyPlayerID) {
-            game.log.push(`Leader ${readyActingPlayerID} marked AI Player ${readyPlayerID} ready for battle.`)
-          } else {
-            game.log.push(`Player ${readyPlayerID} is ready for battle!`)
-          }
+          game.log.push(`Player ${readyPlayerID} is ready for battle!`)
 
           const readyPlayOrder = getGamePlayOrder(game)
           const readyLobbyPlayers = readyPlayOrder.filter(id => game.players?.[id])
