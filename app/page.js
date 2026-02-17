@@ -551,11 +551,12 @@ export default function HTTPMultiplayerPage() {
           
           // Update highlighting when game state changes
           if (state.phase === 'battle' && state.selectedUnitId) {
+            const currentTeamMode = Boolean(state.teamMode)
             const selectedUnit = state.units.find(u => u.id === state.selectedUnitId)
             if (selectedUnit && selectedUnit.ownerID === playerID) {
               const reachable = selectedUnit.hasMoved
                 ? []
-                : getReachableHexes(selectedUnit, state.hexes, state.units, state.terrainMap)
+                : getReachableHexes(selectedUnit, state.hexes, state.units, state.terrainMap, { teamMode: currentTeamMode })
 
               // Calculate attackable hexes (enemy units + destructible walls)
               const isFogActive = Boolean(state.fogOfWarEnabled) && state.phase === 'battle' && playerID !== 'spectator'
@@ -564,8 +565,8 @@ export default function HTTPMultiplayerPage() {
                     units: state.units,
                     hexes: state.hexes,
                     terrainMap: state.terrainMap,
-                    playerID: isObserver ? 'spectator' : playerID,
-                    teamMode,
+                    playerID: playerID === 'spectator' ? 'spectator' : playerID,
+                    teamMode: currentTeamMode,
                   })
                 : state.units
               const attackable = []
@@ -573,7 +574,7 @@ export default function HTTPMultiplayerPage() {
               if (!selectedUnit.hasAttacked) {
                 for (const unit of currentVisibleUnits) {
                   if (unit.currentHP <= 0) continue
-                  if (teamMode ? areAllies(unit.ownerID, playerID) : unit.ownerID === playerID) continue
+                  if (currentTeamMode ? areAllies(unit.ownerID, playerID) : unit.ownerID === playerID) continue
 
                   const distance = Math.max(
                     Math.abs(selectedUnit.q - unit.q),
@@ -620,7 +621,7 @@ export default function HTTPMultiplayerPage() {
     }, 1000) // Poll every second
 
     return () => clearInterval(pollInterval)
-  }, [joined, matchID, playerID, playerName])
+  }, [joined, matchID, playerID, playerName, isObserver])
 
   useEffect(() => {
     const interval = setInterval(() => {
