@@ -9,6 +9,8 @@ import ConfirmDialog from '@/components/ConfirmDialog'
 const DAMAGE_VARIANCE_MIN = 0.8
 const DAMAGE_VARIANCE_MAX = 1.2
 
+const AI_UNIT_CONFIG_TYPES = ['SWORDSMAN', 'ARCHER', 'KNIGHT', 'MILITIA', 'CATAPULT', 'WAR_GALLEY']
+
 // Unit Info Panel Component
 const UnitInfoPanel = ({ unit, isSelected }) => {
   if (!unit) return null
@@ -94,6 +96,8 @@ export default function HTTPMultiplayerPage() {
   const [hoveredHex, setHoveredHex] = useState(null)
   const [damagePreview, setDamagePreview] = useState(null)
   const [showReadyConfirm, setShowReadyConfirm] = useState(false)
+  const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false)
+  const [aiCompositionDraft, setAiCompositionDraft] = useState({ SWORDSMAN: 1, ARCHER: 1, KNIGHT: 1, MILITIA: 1, CATAPULT: 1, WAR_GALLEY: 0 })
   const [forceLobbySelection, setForceLobbySelection] = useState(false)
   
   // Dynamic server URL for production
@@ -919,6 +923,8 @@ export default function HTTPMultiplayerPage() {
     const canStartMatch = playerID === lobbyLeaderId && playerCount >= 2
     const canToggleFog = playerID === lobbyLeaderId
     const lobbyFogEnabled = Boolean(gameState?.fogOfWarEnabled)
+    const aiCount = Object.values(lobbyPlayers).filter((participant) => participant?.isAI).length
+    const canAddAi = playerID === lobbyLeaderId && aiCount < 1
     const slotConfig = [
       { id: '0', label: 'Team 1' },
       { id: '1', label: 'Team 2' },
@@ -959,15 +965,40 @@ export default function HTTPMultiplayerPage() {
                       <div className="text-sm font-semibold text-white">{slot.label}</div>
                       <div className="text-xs text-slate-400">
                         {occupant ? occupant.name : 'Add the player'}
+                        {occupant?.isAI && <span className="ml-2 text-emerald-300">(AI)</span>}
                         {lobbyLeaderId === slot.id && <span className="ml-2 text-amber-300">(Leader)</span>}
+                        {occupant?.isAI && playerID === lobbyLeaderId && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAiCompositionDraft(gameState?.aiDeploymentComposition || { SWORDSMAN: 1, ARCHER: 1, KNIGHT: 1, MILITIA: 1, CATAPULT: 1, WAR_GALLEY: 0 })
+                              setIsAiSettingsOpen(true)
+                            }}
+                            className="ml-2 rounded-full border border-slate-500 px-2 py-0.5 text-[10px] text-slate-200 hover:bg-slate-700"
+                          >
+                            ⚙ Settings
+                          </button>
+                        )}
                       </div>
                     </div>
-                    <button
-                      onClick={() => sendAction('claimSlot', { playerID, desiredSlot: slot.id, playerName: playerName || undefined })}
-                      className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
-                    >
-                      {isCurrent ? 'Your Slot' : 'Join'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => sendAction('claimSlot', { playerID, desiredSlot: slot.id, playerName: playerName || undefined })}
+                        className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
+                      >
+                        {isCurrent ? 'Your Slot' : 'Join'}
+                      </button>
+                      {!occupant && (
+                        <button
+                          onClick={() => sendAction('addAiPlayer', { playerID, desiredSlot: slot.id })}
+                          disabled={!canAddAi}
+                            title={canAddAi ? 'Add AI commander' : 'Only the lobby leader can add one AI commander per lobby'}
+                          className="rounded-full bg-emerald-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800 disabled:opacity-50"
+                        >
+                          +AI
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )
               })}
@@ -1006,6 +1037,7 @@ export default function HTTPMultiplayerPage() {
                     Only the lobby leader can change fog settings.
                   </div>
                 )}
+                <div className="mt-2 text-[11px] text-slate-500">Only one AI commander is currently allowed per lobby. Configure its unit count from that AI card settings button.</div>
               </div>
               {forceLobbySelection ? (
                 <div className="mt-5 space-y-3">
@@ -1042,20 +1074,82 @@ export default function HTTPMultiplayerPage() {
                       <div className="text-sm font-semibold text-white">{slot.label}</div>
                       <div className="text-xs text-slate-400">
                         {occupant ? occupant.name : 'Add the player'}
+                        {occupant?.isAI && <span className="ml-2 text-emerald-300">(AI)</span>}
                         {lobbyLeaderId === slot.id && <span className="ml-2 text-amber-300">(Leader)</span>}
+                        {occupant?.isAI && playerID === lobbyLeaderId && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAiCompositionDraft(gameState?.aiDeploymentComposition || { SWORDSMAN: 1, ARCHER: 1, KNIGHT: 1, MILITIA: 1, CATAPULT: 1, WAR_GALLEY: 0 })
+                              setIsAiSettingsOpen(true)
+                            }}
+                            className="ml-2 rounded-full border border-slate-500 px-2 py-0.5 text-[10px] text-slate-200 hover:bg-slate-700"
+                          >
+                            ⚙ Settings
+                          </button>
+                        )}
                       </div>
                     </div>
-                    <button
-                      onClick={() => sendAction('claimSlot', { playerID, desiredSlot: slot.id, playerName: playerName || undefined })}
-                      className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
-                    >
-                      {isCurrent ? 'Your Slot' : 'Join'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => sendAction('claimSlot', { playerID, desiredSlot: slot.id, playerName: playerName || undefined })}
+                        className="rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800"
+                      >
+                        {isCurrent ? 'Your Slot' : 'Join'}
+                      </button>
+                      {!occupant && (
+                        <button
+                          onClick={() => sendAction('addAiPlayer', { playerID, desiredSlot: slot.id })}
+                          disabled={!canAddAi}
+                            title={canAddAi ? 'Add AI commander' : 'Only the lobby leader can add one AI commander per lobby'}
+                          className="rounded-full bg-emerald-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800 disabled:opacity-50"
+                        >
+                          +AI
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )
               })}
             </div>
           </div>
+
+
+          {isAiSettingsOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4">
+              <div className="w-full max-w-sm rounded-xl border border-slate-700 bg-slate-900 p-4">
+                <div className="text-sm font-semibold text-amber-200">AI Unit Composition</div>
+                <div className="mt-2 text-xs text-slate-400">Set exact counts for each AI unit type.</div>
+                <div className="mt-4 space-y-2">
+                  {AI_UNIT_CONFIG_TYPES.map((type) => (
+                    <div key={type} className="flex items-center justify-between gap-2 text-xs text-slate-200">
+                      <span>{UNIT_TYPES[type]?.name || type}</span>
+                      <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => setAiCompositionDraft((prev) => ({ ...prev, [type]: Math.max(0, Number(prev?.[type] || 0) - 1) }))} className="rounded-full bg-slate-700 px-2 py-0.5">−</button>
+                        <span className="min-w-6 text-center">{Number(aiCompositionDraft?.[type] || 0)}</span>
+                        <button type="button" onClick={() => setAiCompositionDraft((prev) => ({ ...prev, [type]: Math.min(20, Number(prev?.[type] || 0) + 1) }))} className="rounded-full bg-slate-700 px-2 py-0.5">+</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-2 text-[11px] text-slate-400">Total units: {AI_UNIT_CONFIG_TYPES.reduce((sum, type) => sum + Number(aiCompositionDraft?.[type] || 0), 0)} (must be 1–20)</div>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button type="button" onClick={() => setIsAiSettingsOpen(false)} className="rounded-lg bg-slate-700 px-3 py-1 text-xs font-semibold text-white">Cancel</button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sendAction('setAiDeploymentComposition', { playerID, composition: aiCompositionDraft })
+                      setIsAiSettingsOpen(false)
+                    }}
+                    className="rounded-lg bg-emerald-600 px-3 py-1 text-xs font-semibold text-white"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
     )
@@ -1268,3 +1362,4 @@ export default function HTTPMultiplayerPage() {
     </div>
   )
 }
+

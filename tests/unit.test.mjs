@@ -153,6 +153,9 @@ test('sanitizeAction validates allowed action names', () => {
   assert.equal(sanitizeAction('attackTerrain'), 'attackTerrain')
   assert.equal(sanitizeAction('setFogOfWar'), 'setFogOfWar')
   assert.equal(sanitizeAction('kickParticipant'), 'kickParticipant')
+  assert.equal(sanitizeAction('setAiDeploymentUnitCount'), 'setAiDeploymentUnitCount')
+  assert.equal(sanitizeAction('setAiDeploymentComposition'), 'setAiDeploymentComposition')
+  assert.equal(sanitizeAction('addAiPlayer'), 'addAiPlayer')
   assert.equal(sanitizeAction('invalidAction'), null)
 })
 

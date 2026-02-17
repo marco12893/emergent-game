@@ -131,6 +131,8 @@ const UnitInfoPanel = ({ unit, isSelected }) => {
 }
 
 
+const AI_UNIT_CONFIG_TYPES = ['SWORDSMAN', 'ARCHER', 'KNIGHT', 'MILITIA', 'CATAPULT', 'WAR_GALLEY']
+
 const KNIGHT_PENALTY_TERRAINS = new Set(['CITY', 'CASTLE', 'BARRACKS', 'CATHEDRAL', 'MOSQUE', 'HOSPITAL', 'UNIVERSITY', 'LIBRARY', 'FARM'])
 
 const getUnitSpecialNotes = (unitType) => {
@@ -169,6 +171,7 @@ export default function HTTPMultiplayerPage() {
   const [selectedUnitType, setSelectedUnitType] = useState('SWORDSMAN')
   const [error, setError] = useState('')
   const errorTimeoutRef = useRef(null)
+  const identityTransitionRef = useRef({ pending: false, until: 0 })
   const [loading, setLoading] = useState(false)
   const [highlightedHexes, setHighlightedHexes] = useState([])
   const [attackableHexes, setAttackableHexes] = useState([])
@@ -187,6 +190,8 @@ export default function HTTPMultiplayerPage() {
   const [spectatorVision, setSpectatorVision] = useState('all')
   const [copyStatus, setCopyStatus] = useState('')
   const [isObserverPanelOpen, setIsObserverPanelOpen] = useState(true)
+  const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false)
+  const [aiCompositionDraft, setAiCompositionDraft] = useState({ SWORDSMAN: 1, ARCHER: 1, KNIGHT: 1, MILITIA: 1, CATAPULT: 1, WAR_GALLEY: 0 })
   const chatInputRef = useRef(null)
   const isSpectator = useMemo(() => {
     if (playerID === 'spectator') return true
@@ -206,6 +211,7 @@ export default function HTTPMultiplayerPage() {
   const teamMode = Boolean(gameState?.teamMode)
   const chatMessages = gameState?.chatMessages || []
   const shouldShowLobbySelection = forceLobbySelection || gameState?.phase === 'lobby'
+  const isLobbyLeader = String(playerID) === String(gameState?.leaderId)
 
   const handleKickedOut = ({ message }) => {
     setJoined(false)
@@ -299,6 +305,8 @@ export default function HTTPMultiplayerPage() {
     if (!selectedOwnedUnit || gameState?.phase !== 'battle') return false
     return retreatHexes.some(h => h.q === selectedOwnedUnit.q && h.r === selectedOwnedUnit.r)
   }, [selectedOwnedUnit, gameState?.phase, retreatHexes])
+
+
 
   const map4ObjectivePanel = useMemo(() => {
     const mapObjectiveText = getObjectiveText(gameState?.mapId)
@@ -528,7 +536,15 @@ export default function HTTPMultiplayerPage() {
           const isKnownSpectator = currentSpectators.some((spectator) => spectator?.id === playerID)
           const isKnownWaitlist = currentWaitlist.some((entry) => entry?.id === playerID)
           const isStillInMatch = !playerID ? true : (isKnownPlayer || isKnownSpectator || isKnownWaitlist)
+          if (isStillInMatch) {
+            identityTransitionRef.current = { pending: false, until: 0 }
+          }
           if (!isStillInMatch) {
+            const now = Date.now()
+            const transitionPending = identityTransitionRef.current.pending && identityTransitionRef.current.until > now
+            if (transitionPending) {
+              return
+            }
             handleKickedOut({ message: 'You were kicked from this match. Rejoin from the lobby if you want to play again.' })
             return
           }
@@ -668,7 +684,7 @@ export default function HTTPMultiplayerPage() {
     })
     setHighlightedHexes(deployableHexes)
     setAttackableHexes([])
-  }, [gameState, isMyTurn, playerID, selectedUnitType, teamMode])
+  }, [gameState, isMyTurn, selectedUnitType, teamMode])
 
   useEffect(() => {
     if (!gameState || !hoveredHex || gameState.phase !== 'battle' || !isMyTurn) {
@@ -880,7 +896,7 @@ export default function HTTPMultiplayerPage() {
       const observerAllowedActions = ['claimSlot', 'moveParticipant']
       const isLobbyLeader = String(playerID) === String(gameState?.leaderId)
       if (isLobbyLeader) {
-        observerAllowedActions.push('setTeamMode', 'setWinterMode', 'setFogOfWar', 'startBattle', 'kickParticipant')
+        observerAllowedActions.push('setTeamMode', 'setWinterMode', 'setFogOfWar', 'setAiDeploymentUnitCount', 'setAiDeploymentComposition', 'startBattle', 'kickParticipant', 'addAiPlayer')
       }
       if (!observerAllowedActions.includes(action)) {
         setError('Spectators cannot perform game actions.')
@@ -889,6 +905,11 @@ export default function HTTPMultiplayerPage() {
     }
 
     try {
+      const isIdentityTransitionAction = (action === 'claimSlot' || action === 'moveParticipant') && String(payload?.playerID) === String(playerID)
+      if (isIdentityTransitionAction) {
+        identityTransitionRef.current = { pending: true, until: Date.now() + 6000 }
+      }
+
       const requestBody = { gameId: matchID, action, payload }
       
       const response = await fetch(`${serverUrl}/api/action`, {
@@ -903,6 +924,7 @@ export default function HTTPMultiplayerPage() {
         const data = await response.json()
         setGameState(data.gameState)
         if (data?.reassignedPlayerID && data.reassignedPlayerID !== playerID) {
+          identityTransitionRef.current = { pending: true, until: Date.now() + 6000 }
           setPlayerID(data.reassignedPlayerID)
           if (typeof window !== 'undefined') {
             try {
@@ -918,12 +940,16 @@ export default function HTTPMultiplayerPage() {
             }
           }
         }
+        if (!data?.reassignedPlayerID) {
+          identityTransitionRef.current = { pending: false, until: 0 }
+        }
         return data
       } else {
         const errorData = await response.json()
         throw new Error(errorData.error || 'Failed to send action')
       }
     } catch (err) {
+      identityTransitionRef.current = { pending: false, until: 0 }
       console.error('Action error:', err)
       setError(err.message || 'Failed to send action to server')
       return null
@@ -1051,7 +1077,7 @@ export default function HTTPMultiplayerPage() {
           unitType: selectedUnitType,
           q: hex.q,
           r: hex.r,
-          playerID
+          playerID,
         })
       } else {
         setError('You can only place units in valid spawn hexes!')
@@ -1194,10 +1220,8 @@ export default function HTTPMultiplayerPage() {
       desiredSlot: slotId,
       playerName: playerName || undefined,
     })
-    if (result?.success) {
-      if (slotId !== 'spectator' && slotId !== 'waitlist') {
-        setPlayerID(String(slotId))
-      }
+    if (result?.success && !result?.reassignedPlayerID && slotId !== 'spectator' && slotId !== 'waitlist') {
+      setPlayerID(String(slotId))
     }
   }
 
@@ -1455,6 +1479,8 @@ export default function HTTPMultiplayerPage() {
     const canChangeLobbySettings = String(playerID) === String(lobbyLeaderId)
     const lobbyFogEnabled = Boolean(gameState?.fogOfWarEnabled)
     const lobbyIsWinter = Boolean(gameState?.isWinter)
+    const aiCount = Object.values(lobbyPlayers).filter((participant) => participant?.isAI).length
+    const canAddAi = canChangeLobbySettings && aiCount < 1
     const canDisableTeamMode = teamMode
       ? !Object.keys(lobbyPlayers).some((id) => Number.parseInt(id, 10) >= 2)
       : true
@@ -1539,7 +1565,20 @@ export default function HTTPMultiplayerPage() {
                         <div className="text-sm font-semibold text-white">{slot.label}</div>
                         <div className="text-xs text-slate-400">
                           {occupant ? occupant.name : 'Add the player'}
+                          {occupant?.isAI && <span className="ml-2 text-emerald-300">(AI)</span>}
                           {isLeader && <span className="ml-2 text-amber-300">(Leader)</span>}
+                        {occupant?.isAI && canChangeLobbySettings && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAiCompositionDraft(gameState?.aiDeploymentComposition || { SWORDSMAN: 1, ARCHER: 1, KNIGHT: 1, MILITIA: 1, CATAPULT: 1, WAR_GALLEY: 0 })
+                              setIsAiSettingsOpen(true)
+                            }}
+                            className="ml-2 rounded-full border border-slate-500 px-2 py-0.5 text-[10px] text-slate-200 hover:bg-slate-700"
+                          >
+                            ⚙ Settings
+                          </button>
+                        )}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -1550,6 +1589,16 @@ export default function HTTPMultiplayerPage() {
                         >
                           {isSpectator ? 'Join' : isCurrent ? 'Your Slot' : 'Join'}
                         </button>
+                        {!isOccupied && (
+                          <button
+                            onClick={() => sendAction('addAiPlayer', { playerID, desiredSlot: slot.id })}
+                            disabled={!canAddAi}
+                            title={canAddAi ? 'Add AI commander' : 'Only the lobby leader can add one AI commander per lobby'}
+                            className="rounded-full bg-emerald-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800 disabled:opacity-50"
+                          >
+                            +AI
+                          </button>
+                        )}
                         {isOccupied && canKickFromLobby && (
                           <button
                             onClick={() => kickParticipant(slot.id)}
@@ -1633,6 +1682,7 @@ export default function HTTPMultiplayerPage() {
                     2v2 cannot be disabled while players occupy Green/Yellow slots.
                   </div>
                 )}
+                <div className="text-[11px] text-slate-500">Only one AI commander is currently allowed per lobby.</div>
               </div>
 
               {forceLobbySelection ? (
@@ -1684,7 +1734,20 @@ export default function HTTPMultiplayerPage() {
                         <div className="text-sm font-semibold text-white">{slot.label}</div>
                         <div className="text-xs text-slate-400">
                           {occupant ? occupant.name : 'Add the player'}
+                          {occupant?.isAI && <span className="ml-2 text-emerald-300">(AI)</span>}
                           {isLeader && <span className="ml-2 text-amber-300">(Leader)</span>}
+                        {occupant?.isAI && canChangeLobbySettings && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAiCompositionDraft(gameState?.aiDeploymentComposition || { SWORDSMAN: 1, ARCHER: 1, KNIGHT: 1, MILITIA: 1, CATAPULT: 1, WAR_GALLEY: 0 })
+                              setIsAiSettingsOpen(true)
+                            }}
+                            className="ml-2 rounded-full border border-slate-500 px-2 py-0.5 text-[10px] text-slate-200 hover:bg-slate-700"
+                          >
+                            ⚙ Settings
+                          </button>
+                        )}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -1695,6 +1758,16 @@ export default function HTTPMultiplayerPage() {
                         >
                           {isSpectator ? 'Join' : isCurrent ? 'Your Slot' : 'Join'}
                         </button>
+                        {!isOccupied && (
+                          <button
+                            onClick={() => sendAction('addAiPlayer', { playerID, desiredSlot: slot.id })}
+                            disabled={!canAddAi}
+                            title={canAddAi ? 'Add AI commander' : 'Only the lobby leader can add one AI commander per lobby'}
+                            className="rounded-full bg-emerald-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800 disabled:opacity-50"
+                          >
+                            +AI
+                          </button>
+                        )}
                         {isOccupied && canKickFromLobby && (
                           <button
                             onClick={() => kickParticipant(slot.id)}
@@ -1789,6 +1862,42 @@ export default function HTTPMultiplayerPage() {
               )}
             </div>
           </div>
+
+
+          {isAiSettingsOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4">
+              <div className="w-full max-w-sm rounded-xl border border-slate-700 bg-slate-900 p-4">
+                <div className="text-sm font-semibold text-amber-200">AI Unit Composition</div>
+                <div className="mt-2 text-xs text-slate-400">Set exact counts for each AI unit type.</div>
+                <div className="mt-4 space-y-2">
+                  {AI_UNIT_CONFIG_TYPES.map((type) => (
+                    <div key={type} className="flex items-center justify-between gap-2 text-xs text-slate-200">
+                      <span>{UNIT_TYPES[type]?.name || type}</span>
+                      <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => setAiCompositionDraft((prev) => ({ ...prev, [type]: Math.max(0, Number(prev?.[type] || 0) - 1) }))} className="rounded-full bg-slate-700 px-2 py-0.5">−</button>
+                        <span className="min-w-6 text-center">{Number(aiCompositionDraft?.[type] || 0)}</span>
+                        <button type="button" onClick={() => setAiCompositionDraft((prev) => ({ ...prev, [type]: Math.min(20, Number(prev?.[type] || 0) + 1) }))} className="rounded-full bg-slate-700 px-2 py-0.5">+</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-2 text-[11px] text-slate-400">Total units: {AI_UNIT_CONFIG_TYPES.reduce((sum, type) => sum + Number(aiCompositionDraft?.[type] || 0), 0)} (must be 1–20)</div>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button type="button" onClick={() => setIsAiSettingsOpen(false)} className="rounded-lg bg-slate-700 px-3 py-1 text-xs font-semibold text-white">Cancel</button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sendAction('setAiDeploymentComposition', { playerID, composition: aiCompositionDraft })
+                      setIsAiSettingsOpen(false)
+                    }}
+                    className="rounded-lg bg-emerald-600 px-3 py-1 text-xs font-semibold text-white"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     )
@@ -1950,6 +2059,8 @@ export default function HTTPMultiplayerPage() {
                 </div>
               </div>
               
+
+
               {/* Deployment Units */}
               <div className="flex-1 overflow-y-auto">
                 <div className="text-base text-amber-400 font-bold mb-2 bg-slate-800/95 backdrop-blur-sm py-2">
@@ -2206,16 +2317,16 @@ export default function HTTPMultiplayerPage() {
       
       {/* Unit Info Box - Right Side */}
       {selectedUnitForInfo && (
-        <div className="fixed left-2 right-2 bottom-24 lg:left-auto lg:right-4 lg:top-1/2 lg:bottom-auto transform-none lg:-translate-y-1/2 z-20 pointer-events-none">
-          <div className={`p-3 lg:p-4 rounded-lg border-2 shadow-xl backdrop-blur-sm ${
+        <div className="fixed right-2 top-[5.2rem] w-[44vw] max-w-[14rem] lg:left-auto lg:right-4 lg:top-1/2 lg:w-72 lg:max-w-[70vw] lg:bottom-auto transform-none lg:-translate-y-1/2 z-20 pointer-events-none">
+          <div className={`p-2 lg:p-4 rounded-lg border-2 shadow-xl backdrop-blur-sm ${
             selectedUnitForInfo.ownerID === playerID 
               ? 'border-amber-400 bg-amber-400/10' 
               : 'border-slate-600 bg-slate-800/90'
           }`}>
             <div className="flex items-center gap-3 mb-3">
-              <span className="text-2xl lg:text-3xl">{selectedUnitForInfo.emoji || '⚔️'}</span>
+              <span className="text-xl lg:text-3xl">{selectedUnitForInfo.emoji || '⚔️'}</span>
               <div>
-                <div className="font-bold text-white text-base lg:text-lg">{selectedUnitForInfo.name || 'Unit'}</div>
+                <div className="font-bold text-white text-sm lg:text-lg">{selectedUnitForInfo.name || 'Unit'}</div>
                 <div className={`text-xs lg:text-sm ${selectedUnitForInfo.ownerID === '0' ? 'text-blue-400' : 'text-red-400'}`}>
                   Player {selectedUnitForInfo.ownerID}
                 </div>
@@ -2224,13 +2335,13 @@ export default function HTTPMultiplayerPage() {
             
             {/* HP Bar */}
             <div className="mb-3">
-              <div className="flex justify-between text-sm text-slate-300 mb-1">
+              <div className="flex justify-between text-xs lg:text-sm text-slate-300 mb-1">
                 <span>HP</span>
                 <span>{selectedUnitForInfo.currentHP}/{selectedUnitForInfo.maxHP}</span>
               </div>
-              <div className="w-full bg-slate-700 rounded-full h-3">
+              <div className="w-full bg-slate-700 rounded-full h-2 lg:h-3">
                 <div 
-                  className={`h-3 rounded-full transition-all ${
+                  className={`h-2 lg:h-3 rounded-full transition-all ${
                     selectedUnitForInfo.currentHP / selectedUnitForInfo.maxHP > 0.5 
                       ? 'bg-green-500' 
                       : selectedUnitForInfo.currentHP / selectedUnitForInfo.maxHP > 0.25 
@@ -2243,20 +2354,20 @@ export default function HTTPMultiplayerPage() {
             </div>
             
             {/* Stats Grid */}
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <div className="bg-slate-700/50 p-2 rounded text-center">
+            <div className="grid grid-cols-2 gap-1.5 lg:gap-2 text-xs lg:text-sm">
+              <div className="bg-slate-700/50 p-1.5 lg:p-2 rounded text-center">
                 <div className="text-red-400 font-bold">⚔️ {selectedUnitForInfo.attackPower}</div>
                 <div className="text-slate-400 text-xs">ATK</div>
               </div>
-              <div className="bg-slate-700/50 p-2 rounded text-center">
+              <div className="bg-slate-700/50 p-1.5 lg:p-2 rounded text-center">
                 <div className="text-blue-400 font-bold">👟 {selectedUnitForInfo.movePoints}</div>
                 <div className="text-slate-400 text-xs">MOV</div>
               </div>
-              <div className="bg-slate-700/50 p-2 rounded text-center">
+              <div className="bg-slate-700/50 p-1.5 lg:p-2 rounded text-center">
                 <div className="text-purple-400 font-bold">🎯 {selectedUnitForInfo.range}</div>
                 <div className="text-slate-400 text-xs">RNG</div>
               </div>
-              <div className="bg-slate-700/50 p-2 rounded text-center">
+              <div className="bg-slate-700/50 p-1.5 lg:p-2 rounded text-center">
                 <div className="text-green-400 font-bold">🛡️ {selectedUnitForInfo.maxMovePoints}</div>
                 <div className="text-slate-400 text-xs">MAX</div>
               </div>
@@ -2264,7 +2375,7 @@ export default function HTTPMultiplayerPage() {
             
             {/* Action Status */}
             {(selectedUnitForInfo.hasMoved || selectedUnitForInfo.hasAttacked) && (
-              <div className="text-xs text-slate-400 mt-2">
+              <div className="text-[10px] lg:text-xs text-slate-400 mt-1.5 lg:mt-2">
                 {selectedUnitForInfo.hasMoved && <span className="mr-2">✓ Moved</span>}
                 {selectedUnitForInfo.hasAttacked && <span>✓ Attacked</span>}
               </div>
@@ -2273,7 +2384,7 @@ export default function HTTPMultiplayerPage() {
             {/* Close button */}
             <button
               onClick={() => setSelectedUnitForInfoId(null)}
-              className="mt-3 w-full py-1 bg-slate-600 hover:bg-slate-500 text-white text-sm rounded transition-all"
+              className="mt-2 lg:mt-3 w-full py-1 bg-slate-600 hover:bg-slate-500 text-white text-xs lg:text-sm rounded transition-all"
             >
               Close
             </button>
