@@ -9,7 +9,7 @@ import ConfirmDialog from '@/components/ConfirmDialog'
 const DAMAGE_VARIANCE_MIN = 0.8
 const DAMAGE_VARIANCE_MAX = 1.2
 
-const AI_UNIT_CONFIG_TYPES = ['SWORDSMAN', 'ARCHER', 'KNIGHT', 'MILITIA', 'CATAPULT']
+const AI_UNIT_CONFIG_TYPES = ['SWORDSMAN', 'ARCHER', 'KNIGHT', 'MILITIA', 'CATAPULT', 'WAR_GALLEY']
 
 // Unit Info Panel Component
 const UnitInfoPanel = ({ unit, isSelected }) => {
@@ -97,7 +97,7 @@ export default function HTTPMultiplayerPage() {
   const [damagePreview, setDamagePreview] = useState(null)
   const [showReadyConfirm, setShowReadyConfirm] = useState(false)
   const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false)
-  const [aiCompositionDraft, setAiCompositionDraft] = useState({ SWORDSMAN: 1, ARCHER: 1, KNIGHT: 1, MILITIA: 1, CATAPULT: 1 })
+  const [aiCompositionDraft, setAiCompositionDraft] = useState({ SWORDSMAN: 1, ARCHER: 1, KNIGHT: 1, MILITIA: 1, CATAPULT: 1, WAR_GALLEY: 0 })
   const [forceLobbySelection, setForceLobbySelection] = useState(false)
   
   // Dynamic server URL for production
@@ -971,7 +971,7 @@ export default function HTTPMultiplayerPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              setAiCompositionDraft(gameState?.aiDeploymentComposition || { SWORDSMAN: 1, ARCHER: 1, KNIGHT: 1, MILITIA: 1, CATAPULT: 1 })
+                              setAiCompositionDraft(gameState?.aiDeploymentComposition || { SWORDSMAN: 1, ARCHER: 1, KNIGHT: 1, MILITIA: 1, CATAPULT: 1, WAR_GALLEY: 0 })
                               setIsAiSettingsOpen(true)
                             }}
                             className="ml-2 rounded-full border border-slate-500 px-2 py-0.5 text-[10px] text-slate-200 hover:bg-slate-700"
@@ -1080,7 +1080,7 @@ export default function HTTPMultiplayerPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              setAiCompositionDraft(gameState?.aiDeploymentComposition || { SWORDSMAN: 1, ARCHER: 1, KNIGHT: 1, MILITIA: 1, CATAPULT: 1 })
+                              setAiCompositionDraft(gameState?.aiDeploymentComposition || { SWORDSMAN: 1, ARCHER: 1, KNIGHT: 1, MILITIA: 1, CATAPULT: 1, WAR_GALLEY: 0 })
                               setIsAiSettingsOpen(true)
                             }}
                             className="ml-2 rounded-full border border-slate-500 px-2 py-0.5 text-[10px] text-slate-200 hover:bg-slate-700"

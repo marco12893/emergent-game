@@ -131,7 +131,7 @@ const UnitInfoPanel = ({ unit, isSelected }) => {
 }
 
 
-const AI_UNIT_CONFIG_TYPES = ['SWORDSMAN', 'ARCHER', 'KNIGHT', 'MILITIA', 'CATAPULT']
+const AI_UNIT_CONFIG_TYPES = ['SWORDSMAN', 'ARCHER', 'KNIGHT', 'MILITIA', 'CATAPULT', 'WAR_GALLEY']
 
 const KNIGHT_PENALTY_TERRAINS = new Set(['CITY', 'CASTLE', 'BARRACKS', 'CATHEDRAL', 'MOSQUE', 'HOSPITAL', 'UNIVERSITY', 'LIBRARY', 'FARM'])
 
@@ -191,7 +191,7 @@ export default function HTTPMultiplayerPage() {
   const [copyStatus, setCopyStatus] = useState('')
   const [isObserverPanelOpen, setIsObserverPanelOpen] = useState(true)
   const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false)
-  const [aiCompositionDraft, setAiCompositionDraft] = useState({ SWORDSMAN: 1, ARCHER: 1, KNIGHT: 1, MILITIA: 1, CATAPULT: 1 })
+  const [aiCompositionDraft, setAiCompositionDraft] = useState({ SWORDSMAN: 1, ARCHER: 1, KNIGHT: 1, MILITIA: 1, CATAPULT: 1, WAR_GALLEY: 0 })
   const chatInputRef = useRef(null)
   const isSpectator = useMemo(() => {
     if (playerID === 'spectator') return true
@@ -896,7 +896,7 @@ export default function HTTPMultiplayerPage() {
       const observerAllowedActions = ['claimSlot', 'moveParticipant']
       const isLobbyLeader = String(playerID) === String(gameState?.leaderId)
       if (isLobbyLeader) {
-        observerAllowedActions.push('setTeamMode', 'setWinterMode', 'setFogOfWar', 'setAiDeploymentUnitCount', 'startBattle', 'kickParticipant', 'addAiPlayer')
+        observerAllowedActions.push('setTeamMode', 'setWinterMode', 'setFogOfWar', 'setAiDeploymentUnitCount', 'setAiDeploymentComposition', 'startBattle', 'kickParticipant', 'addAiPlayer')
       }
       if (!observerAllowedActions.includes(action)) {
         setError('Spectators cannot perform game actions.')
@@ -1571,7 +1571,7 @@ export default function HTTPMultiplayerPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              setAiCompositionDraft(gameState?.aiDeploymentComposition || { SWORDSMAN: 1, ARCHER: 1, KNIGHT: 1, MILITIA: 1, CATAPULT: 1 })
+                              setAiCompositionDraft(gameState?.aiDeploymentComposition || { SWORDSMAN: 1, ARCHER: 1, KNIGHT: 1, MILITIA: 1, CATAPULT: 1, WAR_GALLEY: 0 })
                               setIsAiSettingsOpen(true)
                             }}
                             className="ml-2 rounded-full border border-slate-500 px-2 py-0.5 text-[10px] text-slate-200 hover:bg-slate-700"
@@ -1740,7 +1740,7 @@ export default function HTTPMultiplayerPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              setAiCompositionDraft(gameState?.aiDeploymentComposition || { SWORDSMAN: 1, ARCHER: 1, KNIGHT: 1, MILITIA: 1, CATAPULT: 1 })
+                              setAiCompositionDraft(gameState?.aiDeploymentComposition || { SWORDSMAN: 1, ARCHER: 1, KNIGHT: 1, MILITIA: 1, CATAPULT: 1, WAR_GALLEY: 0 })
                               setIsAiSettingsOpen(true)
                             }}
                             className="ml-2 rounded-full border border-slate-500 px-2 py-0.5 text-[10px] text-slate-200 hover:bg-slate-700"

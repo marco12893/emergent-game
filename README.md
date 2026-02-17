@@ -178,3 +178,7 @@ npm test
 - Added support for configuring exact AI unit counts by type (`SWORDSMAN`, `ARCHER`, `KNIGHT`, `MILITIA`, `CATAPULT`) with total constrained to 1–20.
 - Added new action `setAiDeploymentComposition` and validation/sanitization support.
 - Kept one-AI-per-lobby enforcement and fog-compatible AI behavior from prior updates.
+
+- Fixed leader reassignment bug on slot→spectator/waitlist transitions so leadership no longer remains attached to Player 0/slot IDs.
+- Spectator leaders can now open AI card settings and update AI composition in lobby.
+- AI composition now supports `WAR_GALLEY` counts in addition to land unit types.

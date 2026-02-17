@@ -125,7 +125,7 @@ const sanitizeAiDeploymentUnitCount = (value) => {
   return parsed
 }
 
-const AI_CONFIGURABLE_UNIT_TYPES = ['SWORDSMAN', 'ARCHER', 'KNIGHT', 'MILITIA', 'CATAPULT']
+const AI_CONFIGURABLE_UNIT_TYPES = ['SWORDSMAN', 'ARCHER', 'KNIGHT', 'MILITIA', 'CATAPULT', 'WAR_GALLEY']
 
 const sanitizeAiDeploymentComposition = (value) => {
   if (!value || typeof value !== 'object') return null
@@ -283,7 +283,7 @@ const getPreferredDeployOrder = (terrainMap, hexes) => {
 }
 
 const chooseAiSetupAction = ({ game, playerID }) => {
-  const unitRoster = ['KNIGHT', 'SWORDSMAN', 'ARCHER', 'MILITIA', 'CATAPULT']
+  const unitRoster = ['KNIGHT', 'SWORDSMAN', 'ARCHER', 'MILITIA', 'CATAPULT', 'WAR_GALLEY']
   const myUnits = getAliveUnitsForPlayer(game, playerID)
   const desiredUnitCount = sanitizeAiDeploymentUnitCount(game.aiDeploymentUnitCount) || DEFAULT_AI_DEPLOYMENT_UNIT_COUNT
   const desiredComposition = sanitizeAiDeploymentComposition(game.aiDeploymentComposition)
@@ -1609,6 +1609,7 @@ export async function POST(request) {
           }
 
           game.aiDeploymentUnitCount = unitCount
+          game.aiDeploymentComposition = null
           game.log.push(`AI deployment target updated to ${unitCount} unit${unitCount === 1 ? '' : 's'}.`)
           break
         }
