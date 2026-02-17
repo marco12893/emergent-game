@@ -231,6 +231,19 @@ test('map 4 defender wins at turn 40 when holding at least one objective', () =>
   assert.equal(victory?.winner, '0')
   assert.equal(victory?.victoryType, 'objective_defense')
 })
+
+test('setup phase can end when all players are ready even if someone deployed no units', () => {
+  const shouldEnd = MedievalBattleGame.phases.setup.endIf({
+    G: {
+      playersReady: { '0': true, '1': true, '2': true, '3': true },
+      units: [{ id: 'u1', ownerID: '0' }, { id: 'u2', ownerID: '1' }],
+    },
+    ctx: { playOrder: ['0', '1', '2', '3'] },
+  })
+
+  assert.equal(shouldEnd, true)
+})
+
 test('sanitizeWinterFlag and teamMode flag parse booleans', () => {
   assert.equal(sanitizeWinterFlag(true), true)
   assert.equal(sanitizeWinterFlag('true'), true)
@@ -1097,7 +1110,7 @@ test('deployable hexes stay in spawn zones and respect team mode', () => {
   )
 })
 
-test('setup readiness ends when all active players are ready', () => {
+test('setup readiness ends when all eligible players are ready', () => {
   const G = {
     units: [createUnit('SWORDSMAN', '0', 0, 0), createUnit('SWORDSMAN', '1', 1, 0)],
     playersReady: { '0': true, '1': true },
@@ -1105,6 +1118,36 @@ test('setup readiness ends when all active players are ready', () => {
   const ctx = { playOrder: ['0', '1'] }
   const result = MedievalBattleGame.phases.setup.endIf({ G, ctx })
   assert.equal(result, true)
+})
+
+test('team battle continues when a teammate has units even if one player deployed none', () => {
+  const G = {
+    teamMode: true,
+    gameMode: 'ELIMINATION',
+    turn: 1,
+    units: [
+      createUnit('SWORDSMAN', '0', 0, 0),
+      createUnit('SWORDSMAN', '1', 1, 0),
+    ],
+  }
+  const ctx = { phase: 'battle' }
+
+  const result = MedievalBattleGame.endIf({ G, ctx })
+  assert.equal(result, undefined)
+})
+
+test('team elimination declares loss when one full team has no units', () => {
+  const G = {
+    teamMode: true,
+    gameMode: 'ELIMINATION',
+    turn: 1,
+    units: [createUnit('SWORDSMAN', '1', 1, 0)],
+  }
+  const ctx = { phase: 'battle' }
+
+  const result = MedievalBattleGame.endIf({ G, ctx })
+  assert.equal(result?.winnerTeam, 'red-yellow')
+  assert.equal(result?.victoryType, 'elimination')
 })
 
 test('elimination victory triggers when one player has no units', () => {

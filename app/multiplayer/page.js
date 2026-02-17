@@ -141,7 +141,7 @@ const BattleBoard = ({ ctx, G, moves, playerID, isActive }) => {
     }
 
     if (selectedUnit && phase === 'battle') {
-      const reachable = getReachableHexes(selectedUnit, G.hexes, G.units, G.terrainMap)
+      const reachable = getReachableHexes(selectedUnit, G.hexes, G.units, G.terrainMap, { teamMode })
       setHighlightedHexes(reachable)
       
       const attackable = getAttackableHexes(selectedUnit, G.hexes, visibleUnits, { teamMode })
