@@ -1,19 +1,29 @@
 import { kv } from '@vercel/kv'
 import { v4 as uuidv4 } from 'uuid'
 import { NextResponse } from 'next/server'
+import { getAllowedOrigin } from '@/lib/cors'
 
 // Helper function to handle CORS
-function handleCORS(response) {
-  response.headers.set('Access-Control-Allow-Origin', process.env.CORS_ORIGINS || '*')
+function handleCORS(response, request) {
+  const allowedOrigin = getAllowedOrigin(request)
   response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
   response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-  response.headers.set('Access-Control-Allow-Credentials', 'true')
+
+  if (allowedOrigin) {
+    response.headers.set('Access-Control-Allow-Origin', allowedOrigin)
+  }
+
+  if (allowedOrigin && allowedOrigin !== '*') {
+    response.headers.set('Access-Control-Allow-Credentials', 'true')
+    response.headers.set('Vary', 'Origin')
+  }
+
   return response
 }
 
 // OPTIONS handler for CORS
-export async function OPTIONS() {
-  return handleCORS(new NextResponse(null, { status: 200 }))
+export async function OPTIONS(request) {
+  return handleCORS(new NextResponse(null, { status: 200 }), request)
 }
 
 // Route handler function
@@ -35,7 +45,7 @@ async function handleRoute(request, { params }) {
           game: "GET /api/game/:id",
           health: "GET /api/game/health"
         }
-      }))
+      }), request)
     }
 
     // Status endpoints - POST /api/status
@@ -46,7 +56,7 @@ async function handleRoute(request, { params }) {
         return handleCORS(NextResponse.json(
           { error: "client_name is required" }, 
           { status: 400 }
-        ))
+        ), request)
       }
 
       const statusObj = {
@@ -57,7 +67,7 @@ async function handleRoute(request, { params }) {
 
       // Store in KV with 24 hour TTL
       await kv.set(`status:${statusObj.id}`, statusObj, { ex: 86400 })
-      return handleCORS(NextResponse.json(statusObj))
+      return handleCORS(NextResponse.json(statusObj), request)
     }
 
     // Status endpoints - GET /api/status
@@ -76,13 +86,13 @@ async function handleRoute(request, { params }) {
         // Sort by timestamp (newest first)
         statusChecks.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
         
-        return handleCORS(NextResponse.json(statusChecks.slice(0, 1000))) // Limit to 1000
+        return handleCORS(NextResponse.json(statusChecks.slice(0, 1000)), request) // Limit to 1000
       } catch (kvError) {
         console.error('KV error fetching status:', kvError)
         return handleCORS(NextResponse.json(
           { error: "Failed to retrieve status checks" }, 
           { status: 503 }
-        ))
+        ), request)
       }
     }
 
@@ -102,7 +112,7 @@ async function handleRoute(request, { params }) {
         ]
       }, 
       { status: 404 }
-    ))
+    ), request)
 
   } catch (error) {
     console.error('API Error:', error)
@@ -113,7 +123,7 @@ async function handleRoute(request, { params }) {
         timestamp: new Date().toISOString()
       }, 
       { status: 500 }
-    ))
+    ), request)
   }
 }
 

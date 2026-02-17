@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { INVALID_MOVE } from 'boardgame.io/dist/cjs/core.js'
 import { cn } from '../lib/utils.js'
+import { getAllowedOrigin } from '../lib/cors.js'
 import {
   sanitizeAction,
   sanitizeChatMessage,
@@ -163,6 +164,26 @@ test('sanitizeChatMessage strips control chars and HTML', () => {
   assert.equal(sanitizeChatMessage('hello'), 'hello')
   assert.equal(sanitizeChatMessage('hey<>there'), 'heythere')
   assert.equal(sanitizeChatMessage('a'.repeat(200)).length, 120)
+})
+
+
+test('getAllowedOrigin supports wildcard, allowlist, and rejects disallowed origins', () => {
+  const makeRequest = (origin) => ({
+    headers: {
+      get: (key) => (key.toLowerCase() === 'origin' ? origin : null),
+    },
+  })
+
+  assert.equal(getAllowedOrigin(makeRequest('https://example.com'), '*'), '*')
+  assert.equal(
+    getAllowedOrigin(makeRequest('https://allowed.com'), 'https://allowed.com,https://other.com'),
+    'https://allowed.com',
+  )
+  assert.equal(
+    getAllowedOrigin(makeRequest('https://blocked.com'), 'https://allowed.com,https://other.com'),
+    null,
+  )
+  assert.equal(getAllowedOrigin(makeRequest(null), 'https://allowed.com'), null)
 })
 
 test('sanitizeMapId validates map identifiers', () => {
