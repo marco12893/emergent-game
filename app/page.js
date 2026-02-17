@@ -1491,9 +1491,8 @@ export default function HTTPMultiplayerPage() {
     const canChangeLobbySettings = String(playerID) === String(lobbyLeaderId)
     const lobbyFogEnabled = Boolean(gameState?.fogOfWarEnabled)
     const lobbyIsWinter = Boolean(gameState?.isWinter)
-    const canAddAi = canChangeLobbySettings && !lobbyFogEnabled
-    const aiDeploymentUnitCount = Number(gameState?.aiDeploymentUnitCount) || 5
-    const aiDeploymentMode = gameState?.aiDeploymentMode === 'auto' ? 'auto' : 'leader'
+    const aiCount = Object.values(lobbyPlayers).filter((participant) => participant?.isAI).length
+    const canAddAi = canChangeLobbySettings && aiCount < 1
     const canDisableTeamMode = teamMode
       ? !Object.keys(lobbyPlayers).some((id) => Number.parseInt(id, 10) >= 2)
       : true
@@ -1594,7 +1593,7 @@ export default function HTTPMultiplayerPage() {
                           <button
                             onClick={() => sendAction('addAiPlayer', { playerID, desiredSlot: slot.id })}
                             disabled={!canAddAi}
-                            title={canAddAi ? 'Add AI commander' : 'Only the lobby leader can add AI, and fog must be disabled'}
+                            title={canAddAi ? 'Add AI commander' : 'Only the lobby leader can add one AI commander per lobby'}
                             className="rounded-full bg-emerald-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800 disabled:opacity-50"
                           >
                             +AI
@@ -1683,48 +1682,7 @@ export default function HTTPMultiplayerPage() {
                     2v2 cannot be disabled while players occupy Green/Yellow slots.
                   </div>
                 )}
-                <div className="rounded-lg bg-slate-800/70 px-3 py-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-slate-200">AI deployment mode</span>
-                    <button
-                      type="button"
-                      onClick={() => sendAction('setAiDeploymentMode', { playerID, mode: aiDeploymentMode === 'leader' ? 'auto' : 'leader' })}
-                      disabled={!canChangeLobbySettings}
-                      className="rounded-full bg-slate-700 px-3 py-1 text-[11px] font-semibold text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {aiDeploymentMode === 'leader' ? 'Leader' : 'Auto'}
-                    </button>
-                  </div>
-                  <div className="mt-1 text-[11px] text-slate-500">Leader mode lets the lobby leader place AI units manually during setup.</div>
-                </div>
-                <div className="rounded-lg bg-slate-800/70 px-3 py-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-slate-200">AI deployment size</span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => sendAction('setAiDeploymentUnitCount', { playerID, unitCount: Math.max(1, aiDeploymentUnitCount - 1) })}
-                        disabled={!canChangeLobbySettings || aiDeploymentUnitCount <= 1}
-                        className="rounded-full bg-slate-700 px-2 py-0.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        −
-                      </button>
-                      <span className="min-w-8 text-center text-[11px] font-semibold text-amber-200">{aiDeploymentUnitCount}</span>
-                      <button
-                        type="button"
-                        onClick={() => sendAction('setAiDeploymentUnitCount', { playerID, unitCount: Math.min(20, aiDeploymentUnitCount + 1) })}
-                        disabled={!canChangeLobbySettings || aiDeploymentUnitCount >= 20}
-                        className="rounded-full bg-slate-700 px-2 py-0.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                  <div className="mt-1 text-[11px] text-slate-500">Lobby leader controls how many units each AI deploys in setup (1–20).</div>
-                </div>
-                <div className="text-[11px] text-slate-500">
-                  AI commanders are available in non-fog matches only.
-                </div>
+                <div className="text-[11px] text-slate-500">Only one AI commander is currently allowed per lobby.</div>
               </div>
 
               {forceLobbySelection ? (
@@ -1792,7 +1750,7 @@ export default function HTTPMultiplayerPage() {
                           <button
                             onClick={() => sendAction('addAiPlayer', { playerID, desiredSlot: slot.id })}
                             disabled={!canAddAi}
-                            title={canAddAi ? 'Add AI commander' : 'Only the lobby leader can add AI, and fog must be disabled'}
+                            title={canAddAi ? 'Add AI commander' : 'Only the lobby leader can add one AI commander per lobby'}
                             className="rounded-full bg-emerald-700 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-800 disabled:opacity-50"
                           >
                             +AI

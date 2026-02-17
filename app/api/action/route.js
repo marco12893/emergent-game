@@ -269,10 +269,6 @@ const getPreferredDeployOrder = (terrainMap, hexes) => {
 }
 
 const chooseAiSetupAction = ({ game, playerID }) => {
-  if (game.fogOfWarEnabled) {
-    return null
-  }
-
   const unitRoster = ['KNIGHT', 'SWORDSMAN', 'ARCHER', 'MILITIA', 'CATAPULT']
   const myUnits = getAliveUnitsForPlayer(game, playerID)
   const desiredUnitCount = sanitizeAiDeploymentUnitCount(game.aiDeploymentUnitCount) || DEFAULT_AI_DEPLOYMENT_UNIT_COUNT
@@ -392,7 +388,7 @@ const chooseAiRetreatCandidate = ({ game, playerID, teamMode }) => {
 }
 
 const chooseAiBattleAction = ({ game, playerID, teamMode }) => {
-  if (game.fogOfWarEnabled || game.gameOver) {
+  if (game.gameOver) {
     return null
   }
 
@@ -507,10 +503,6 @@ const chooseAiBattleAction = ({ game, playerID, teamMode }) => {
 
 const getAiDecision = ({ game, playerID }) => {
   if (!game || game.gameOver || !playerID || !game.players?.[playerID]?.isAI) {
-    return null
-  }
-
-  if (game.fogOfWarEnabled) {
     return null
   }
 
@@ -1869,10 +1861,6 @@ export async function POST(request) {
             return NextResponse.json({ error: 'AI players can only be added while in the lobby' }, { status: 409, headers: ACTION_CORS_HEADERS })
           }
 
-          if (game.fogOfWarEnabled) {
-            return NextResponse.json({ error: 'AI players are currently available only when fog of war is disabled' }, { status: 409, headers: ACTION_CORS_HEADERS })
-          }
-
           if (game.leaderId && game.leaderId !== actingPlayerID) {
             return NextResponse.json({ error: 'Only the lobby leader can add AI players' }, { status: 403, headers: ACTION_CORS_HEADERS })
           }
@@ -1886,6 +1874,11 @@ export async function POST(request) {
 
           if (game.players?.[slotId]) {
             return NextResponse.json({ error: 'That slot is already occupied' }, { status: 409, headers: ACTION_CORS_HEADERS })
+          }
+
+          const aiCount = Object.values(game.players || {}).filter((participant) => participant?.isAI).length
+          if (aiCount >= 1) {
+            return NextResponse.json({ error: 'Only one AI commander is allowed per lobby right now' }, { status: 409, headers: ACTION_CORS_HEADERS })
           }
 
           game.players = game.players || {}
