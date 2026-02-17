@@ -231,6 +231,19 @@ test('map 4 defender wins at turn 40 when holding at least one objective', () =>
   assert.equal(victory?.winner, '0')
   assert.equal(victory?.victoryType, 'objective_defense')
 })
+
+test('setup phase can end when all players are ready even if someone deployed no units', () => {
+  const shouldEnd = MedievalBattleGame.phases.setup.endIf({
+    G: {
+      playersReady: { '0': true, '1': true, '2': true, '3': true },
+      units: [{ id: 'u1', ownerID: '0' }, { id: 'u2', ownerID: '1' }],
+    },
+    ctx: { playOrder: ['0', '1', '2', '3'] },
+  })
+
+  assert.equal(shouldEnd, true)
+})
+
 test('sanitizeWinterFlag and teamMode flag parse booleans', () => {
   assert.equal(sanitizeWinterFlag(true), true)
   assert.equal(sanitizeWinterFlag('true'), true)

@@ -853,12 +853,10 @@ const setupPhase = {
     },
   },
   
-  endIf: ({ G }) => {
-    // End setup when both players are ready and have at least 1 unit
-    const p0Units = G.units.filter(u => u.ownerID === '0').length
-    const p1Units = G.units.filter(u => u.ownerID === '1').length
-    
-    return G.playersReady['0'] && G.playersReady['1'] && p0Units > 0 && p1Units > 0
+  endIf: ({ G, ctx }) => {
+    const eligiblePlayers = ctx.playOrder.filter((id) => G.playersReady[id] !== undefined)
+    if (eligiblePlayers.length < 2) return false
+    return eligiblePlayers.every((id) => G.playersReady[id])
   },
   
   next: 'battle',
@@ -1318,11 +1316,9 @@ export const MedievalBattleGame = {
     setup: {
       ...setupPhase,
       endIf: ({ G, ctx }) => {
-        const activePlayers = ctx.playOrder.filter(id =>
-          G.units.some(u => u.ownerID === id)
-        )
-        if (activePlayers.length < 2) return false
-        return activePlayers.every(id => G.playersReady[id])
+        const eligiblePlayers = ctx.playOrder.filter((id) => G.playersReady[id] !== undefined)
+        if (eligiblePlayers.length < 2) return false
+        return eligiblePlayers.every((id) => G.playersReady[id])
       },
       onEnd: ({ G, ctx }) => {
         const inactivePlayers = ctx.playOrder.filter(id =>
