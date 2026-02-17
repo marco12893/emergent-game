@@ -1091,7 +1091,8 @@ const resolveSetupReadiness = ({ game, readyPlayerID }) => {
     const setupVictoryInfo = evaluateVictoryInfo({ game, teamMode: Boolean(game.teamMode) })
     if (setupVictoryInfo) {
       game.gameOver = setupVictoryInfo
-      clearTurnTimer(game)
+      game.turnStartedAt = null
+      game.turnTimeLimitSeconds = null
       game.log.push(`🏆 ${setupVictoryInfo.message}`)
     }
     return

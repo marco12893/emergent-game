@@ -1110,7 +1110,7 @@ test('deployable hexes stay in spawn zones and respect team mode', () => {
   )
 })
 
-test('setup readiness ends when all active players are ready', () => {
+test('setup readiness ends when all eligible players are ready', () => {
   const G = {
     units: [createUnit('SWORDSMAN', '0', 0, 0), createUnit('SWORDSMAN', '1', 1, 0)],
     playersReady: { '0': true, '1': true },
@@ -1118,6 +1118,36 @@ test('setup readiness ends when all active players are ready', () => {
   const ctx = { playOrder: ['0', '1'] }
   const result = MedievalBattleGame.phases.setup.endIf({ G, ctx })
   assert.equal(result, true)
+})
+
+test('team battle continues when a teammate has units even if one player deployed none', () => {
+  const G = {
+    teamMode: true,
+    gameMode: 'ELIMINATION',
+    turn: 1,
+    units: [
+      createUnit('SWORDSMAN', '0', 0, 0),
+      createUnit('SWORDSMAN', '1', 1, 0),
+    ],
+  }
+  const ctx = { phase: 'battle' }
+
+  const result = MedievalBattleGame.endIf({ G, ctx })
+  assert.equal(result, undefined)
+})
+
+test('team elimination declares loss when one full team has no units', () => {
+  const G = {
+    teamMode: true,
+    gameMode: 'ELIMINATION',
+    turn: 1,
+    units: [createUnit('SWORDSMAN', '1', 1, 0)],
+  }
+  const ctx = { phase: 'battle' }
+
+  const result = MedievalBattleGame.endIf({ G, ctx })
+  assert.equal(result?.winnerTeam, 'red-yellow')
+  assert.equal(result?.victoryType, 'elimination')
 })
 
 test('elimination victory triggers when one player has no units', () => {
